@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Omens — Signal from Noise</title>
+  <meta name="description" content="Omens monitors social media and uses AI to extract signal from noise. Self-hostable, open source.">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #09090b;
+      color: #fafafa;
+      line-height: 1.6;
+    }
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    header {
+      padding: 24px 0;
+      border-bottom: 1px solid #27272a;
+    }
+    header .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; text-decoration: none; color: #fafafa; }
+    .nav { display: flex; gap: 16px; }
+    .nav a {
+      color: #a1a1aa;
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    .nav a:hover { color: #fafafa; }
+    .hero {
+      padding: 96px 0 64px;
+      text-align: center;
+    }
+    h1 {
+      font-size: 48px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 16px;
+    }
+    .subtitle {
+      font-size: 18px;
+      color: #a1a1aa;
+      max-width: 480px;
+      margin: 0 auto 40px;
+    }
+    .cta {
+      display: inline-flex;
+      gap: 12px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #10b981;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #059669; }
+    .btn-secondary {
+      background: #27272a;
+      color: #fafafa;
+    }
+    .btn-secondary:hover { background: #3f3f46; }
+    .features {
+      padding: 64px 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 32px;
+    }
+    .feature h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .feature p {
+      font-size: 14px;
+      color: #a1a1aa;
+    }
+    .how {
+      padding: 48px 0;
+      border-top: 1px solid #27272a;
+    }
+    .how h2 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 32px;
+      letter-spacing: -0.02em;
+    }
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .step {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .step-num {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      background: #27272a;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: #10b981;
+    }
+    .step-text h4 { font-size: 15px; font-weight: 600; }
+    .step-text p { font-size: 14px; color: #a1a1aa; }
+    .cli-section {
+      padding: 48px 0;
+      border-top: 1px solid #27272a;
+    }
+    .cli-section h2 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      letter-spacing: -0.02em;
+    }
+    pre {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      padding: 20px;
+      font-size: 13px;
+      overflow-x: auto;
+      color: #a1a1aa;
+      line-height: 1.7;
+    }
+    pre span { color: #10b981; }
+    footer {
+      padding: 32px 0;
+      border-top: 1px solid #27272a;
+      text-align: center;
+      font-size: 13px;
+      color: #52525b;
+    }
+    footer a { color: #a1a1aa; text-decoration: none; }
+    footer a:hover { color: #fafafa; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <a href="/" class="logo">Omens</a>
+      <div class="nav">
+        <a href="https://github.com/niceborodutch/omens">GitHub</a>
+        <a href="https://app.omens.online">App</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="container">
+      <h1>Signal from noise</h1>
+      <p class="subtitle">
+        Omens monitors Twitter, Reddit, and more — then uses AI to surface
+        only what matters to you.
+      </p>
+      <div class="cta">
+        <a href="https://app.omens.online" class="btn btn-primary">Try Omens</a>
+        <a href="https://github.com/niceborodutch/omens" class="btn btn-secondary">Self-host</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="container">
+    <div class="features">
+      <div class="feature">
+        <h3>Pluggable Sources</h3>
+        <p>Reddit, Twitter/X via Nitter, RSS — add any source with a simple adapter interface.</p>
+      </div>
+      <div class="feature">
+        <h3>Any LLM</h3>
+        <p>Fireworks (Kimi K2.5), OpenAI, Anthropic, Ollama — bring your own model and provider.</p>
+      </div>
+      <div class="feature">
+        <h3>Self-hostable</h3>
+        <p>One Docker container. SQLite database. Your data stays yours.</p>
+      </div>
+      <div class="feature">
+        <h3>CLI + API</h3>
+        <p>Full CLI and REST API with API key auth. Automate everything.</p>
+      </div>
+      <div class="feature">
+        <h3>Flexible Outputs</h3>
+        <p>Web feed today. Telegram, webhooks, and more coming soon.</p>
+      </div>
+      <div class="feature">
+        <h3>Open Source</h3>
+        <p>MIT licensed. Fork it, extend it, make it yours.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container how">
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-text">
+          <h4>Connect sources</h4>
+          <p>Add subreddits, Twitter accounts, or RSS feeds you want to monitor.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-text">
+          <h4>Describe your interests</h4>
+          <p>Tell the AI what matters to you in plain language.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-text">
+          <h4>Get signal</h4>
+          <p>Omens polls your sources, scores each item 0-100, and surfaces only what's relevant.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container cli-section">
+    <h2>CLI</h2>
+    <pre><span>$</span> omens config --api-url https://app.omens.online --api-key omens_abc123_...
+<span>$</span> omens sources add --type reddit --config '{"subreddits":["technology","programming"]}'
+<span>$</span> omens feed --min-score 60
+
+[ 92] reddit  OpenAI releases GPT-5 with 1M context window
+       Major leap in reasoning capabilities, likely to reshape...
+       Tags: ai, llm, breakthrough
+       https://reddit.com/r/technology/comments/...
+
+[ 78] reddit  Show HN: I built an open-source alternative to Notion
+       Clean architecture, extensible plugin system...
+       Tags: open-source, productivity, launch</pre>
+  </section>
+
+  <footer>
+    <div class="container">
+      <p>Omens &mdash; good omens for your information diet. <a href="https://github.com/niceborodutch/omens">Source on GitHub</a></p>
+    </div>
+  </footer>
+</body>
+</html>

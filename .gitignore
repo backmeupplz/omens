@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.turbo/
+*.db
+*.db-journal
+.env
+.env.local
+.DS_Store
+docker/.env

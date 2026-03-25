@@ -1,0 +1,17 @@
+services:
+  omens:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - '3000:3000'
+    volumes:
+      - omens_data:/app/data
+    env_file: .env
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/omens.db
+
+volumes:
+  omens_data:

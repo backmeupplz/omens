@@ -1,0 +1,25 @@
+{
+  "name": "@omens/web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@omens/shared": "workspace:*",
+    "preact": "^10",
+    "wouter-preact": "^3"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2",
+    "autoprefixer": "^10",
+    "postcss": "^8",
+    "tailwindcss": "^4",
+    "@tailwindcss/vite": "^4",
+    "typescript": "^5.8",
+    "vite": "^6"
+  }
+}

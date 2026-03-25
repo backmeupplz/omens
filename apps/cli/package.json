@@ -1,0 +1,19 @@
+{
+  "name": "@omens/cli",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "omens": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun src/index.ts",
+    "build": "bun build src/index.ts --outfile dist/omens --target bun --compile"
+  },
+  "dependencies": {
+    "@omens/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8"
+  }
+}

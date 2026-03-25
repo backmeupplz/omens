@@ -1,0 +1,25 @@
+{
+  "name": "@omens/db",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push"
+  },
+  "dependencies": {
+    "@paralleldrive/cuid2": "^2.2",
+    "drizzle-orm": "^0.44"
+  },
+  "devDependencies": {
+    "better-sqlite3": "^11",
+    "@types/better-sqlite3": "^7",
+    "drizzle-kit": "^0.31",
+    "typescript": "^5.8"
+  }
+}
