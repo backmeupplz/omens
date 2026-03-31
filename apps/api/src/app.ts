@@ -10,6 +10,7 @@ import apiKeysRouter from './routes/apikeys'
 import authRoutes from './routes/auth'
 import feedRouter from './routes/feed'
 import xRouter from './routes/x'
+import { fetchOg } from './x/og'
 
 async function securityHeaders(c: Context, next: Next) {
   await next()
@@ -20,7 +21,7 @@ async function securityHeaders(c: Context, next: Next) {
   c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
   c.header(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.twimg.com; media-src *; connect-src 'self'",
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https:; media-src *; connect-src 'self'",
   )
 }
 
@@ -60,6 +61,16 @@ export function createApp() {
   app.use('/feed', authMiddleware)
   app.use('/x/*', authMiddleware)
   app.use('/api-keys/*', authMiddleware)
+  app.use('/og', authMiddleware)
+
+  // OG metadata proxy (cached)
+  app.get('/og', async (c) => {
+    const url = c.req.query('url')
+    if (!url) return c.json({ error: 'url required' }, 400)
+    const data = await fetchOg(url)
+    if (!data) return c.json(null)
+    return c.json(data)
+  })
 
   app.route('/feed', feedRouter)
   app.route('/x', xRouter)

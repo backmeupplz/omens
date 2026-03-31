@@ -100,7 +100,6 @@ function XGuard({
   auth: AuthState
   children: preact.ComponentChildren
 }) {
-  // Wait until X session check completes before deciding
   if (!auth.xChecked) return <p class="text-zinc-500">Loading...</p>
   if (!auth.xConnected) return <Redirect to="/settings" />
   return <>{children}</>
@@ -109,69 +108,99 @@ function XGuard({
 export function App() {
   const [location] = useLocation()
   const auth = useAuth()
+  const [refreshFn, setRefreshFn] = useState<(() => Promise<void>) | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = async () => {
+    if (!refreshFn || refreshing) return
+    setRefreshing(true)
+    await refreshFn()
+    setRefreshing(false)
+  }
 
   const showFeed = auth.loggedIn && auth.xConnected
 
   return (
     <div class="min-h-screen bg-zinc-950 text-zinc-100">
-      <nav class="border-b border-zinc-800 px-6 py-4">
-        <div class="mx-auto flex max-w-4xl items-center justify-between">
-          <Link href="/" class="text-xl font-bold tracking-tight">
-            Omens
-          </Link>
-          <div class="flex items-center gap-4 text-sm">
+      <nav class="border-b border-zinc-800 px-4 py-3">
+        <div class="mx-auto max-w-xl flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <Link href="/" class="text-lg font-bold tracking-tight">
+              Omens
+            </Link>
+            {showFeed && location === '/' && (
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                class="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+                title="Refresh feed"
+              >
+                <svg
+                  class={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            )}
+          </div>
+          <div class="flex items-center gap-2">
             {showFeed && (
               <Link
                 href="/"
-                class={
-                  location === '/' ? 'text-zinc-100' : 'text-zinc-400 hover:text-zinc-100'
-                }
+                class={`p-1.5 rounded-lg transition-colors ${
+                  location === '/'
+                    ? 'text-zinc-100 bg-zinc-800'
+                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
+                }`}
+                title="Feed"
               >
-                Feed
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
+                </svg>
               </Link>
             )}
             {auth.loggedIn && (
               <Link
                 href="/settings"
-                class={
+                class={`p-1.5 rounded-lg transition-colors ${
                   location.startsWith('/settings')
-                    ? 'text-zinc-100'
-                    : 'text-zinc-400 hover:text-zinc-100'
-                }
+                    ? 'text-zinc-100 bg-zinc-800'
+                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
+                }`}
+                title="Settings"
               >
-                {auth.xConnected ? 'Settings' : 'Connect X'}
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
               </Link>
             )}
-            {!auth.singleUser && auth.loggedIn && (
-              <button
-                type="button"
-                onClick={auth.logout}
-                class="text-zinc-500 hover:text-zinc-300"
-              >
-                Logout
-              </button>
-            )}
             {!auth.singleUser && auth.checked && !auth.loggedIn && (
-              <Link href="/login" class="text-zinc-400 hover:text-zinc-100">
+              <Link href="/login" class="text-sm text-zinc-400 hover:text-zinc-100">
                 Login
               </Link>
             )}
           </div>
         </div>
       </nav>
-      <main class="mx-auto max-w-4xl px-6 py-8">
+      <main class="mx-auto max-w-xl px-4 py-4">
         <Switch>
           <Route path="/login" component={Login} />
           <Route path="/">
             <AuthGuard auth={auth}>
               <XGuard auth={auth}>
-                <Feed />
+                <Feed onRefreshRef={(fn) => setRefreshFn(() => fn)} />
               </XGuard>
             </AuthGuard>
           </Route>
           <Route path="/settings">
             <AuthGuard auth={auth}>
-              <Settings onXChange={auth.recheckX} xConnected={auth.xConnected} />
+              <Settings onXChange={auth.recheckX} xConnected={auth.xConnected} singleUser={auth.singleUser} onLogout={auth.logout} />
             </AuthGuard>
           </Route>
         </Switch>

@@ -51,6 +51,7 @@ export const tweets = pgTable(
     mediaUrls: text('media_urls'), // JSON array of image/video URLs
     isRetweet: text('is_retweet'), // original author handle if retweet
     quotedTweet: text('quoted_tweet'), // JSON: {authorName, authorHandle, authorAvatar, content, url}
+    card: text('card'), // JSON: {title, description, thumbnail, domain, url}
     url: text('url').notNull(),
     likes: integer('likes').notNull().default(0),
     retweets: integer('retweets').notNull().default(0),
@@ -63,6 +64,16 @@ export const tweets = pgTable(
     uniqueIndex('tweets_dedup_idx').on(table.userId, table.tweetId),
   ],
 )
+
+export const ogCache = pgTable('og_cache', {
+  url: text('url').primaryKey(), // the resolved URL (after redirects)
+  originalUrl: text('original_url').unique(), // the t.co or short URL
+  title: text('title'),
+  description: text('description'),
+  thumbnail: text('thumbnail'),
+  domain: text('domain').notNull(),
+  fetchedAt: timestamp('fetched_at').notNull().defaultNow(),
+})
 
 export const apiKeys = pgTable('api_keys', {
   id: text('id')

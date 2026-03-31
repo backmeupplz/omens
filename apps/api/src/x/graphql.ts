@@ -60,11 +60,20 @@ export interface ParsedTweet {
   content: string
   media: MediaItem[] | null
   isRetweet: string | null
+  card: {
+    title: string
+    description: string | null
+    thumbnail: string | null
+    domain: string
+    url: string
+  } | null
   quotedTweet: {
     authorName: string
     authorHandle: string
     authorAvatar: string | null
     content: string
+    media: MediaItem[] | null
+    card: ParsedTweet['card'] | null
     url: string
   } | null
   url: string
@@ -172,29 +181,65 @@ function getFullText(tweetResult: any, legacy: any): string {
   const noteText = tweetResult.note_tweet?.note_tweet_results?.result?.text
   let text = noteText || legacy.full_text || ''
 
-  // Strip trailing t.co URLs when media is present (X's web client does this)
+  // Strip trailing t.co URLs when media or cards are present (X's web client does this)
   const hasMedia = legacy.extended_entities?.media?.length > 0 ||
     legacy.entities?.media?.length > 0
-  if (hasMedia) {
+  const hasCard = tweetResult.card?.legacy?.binding_values?.length > 0
+  if (hasMedia || hasCard) {
     text = text.replace(/\s*https:\/\/t\.co\/\w+\s*$/, '')
   }
 
   return text.trim()
 }
 
+function extractCard(tweetResult: any): ParsedTweet['card'] {
+  const card = tweetResult.card?.legacy
+  if (!card?.binding_values) return null
+
+  const vals: Record<string, string> = {}
+  for (const bv of card.binding_values) {
+    if (bv.value?.string_value) vals[bv.key] = bv.value.string_value
+    if (bv.value?.image_value?.url) vals[bv.key] = bv.value.image_value.url
+  }
+
+  const title = vals.title
+  if (!title) return null
+
+  return {
+    title,
+    description: vals.description || null,
+    thumbnail: vals.thumbnail_image_original || vals.thumbnail_image || vals.player_image_original || vals.player_image || null,
+    domain: vals.vanity_url || vals.domain || '',
+    url: vals.card_url || vals.url || card.url || '',
+  }
+}
+
 function extractQuotedTweet(tweetResult: any): ParsedTweet['quotedTweet'] {
   let qt = tweetResult.quoted_status_result?.result
   if (!qt) return null
   if (qt.__typename === 'TweetWithVisibilityResults') qt = qt.tweet
-  if (!qt?.legacy || !qt?.core?.user_results?.result?.legacy) return null
+  if (!qt?.legacy) return null
   const qLegacy = qt.legacy
-  const qUser = qt.core.user_results.result.legacy
+  const qUserResult = qt.core?.user_results?.result
+  const qUserLegacy = qUserResult?.legacy
+  const qUserCore = qUserResult?.core
+  if (!qUserLegacy && !qUserCore) return null
+
+  const name = qUserCore?.name || qUserLegacy?.name || ''
+  const handle = qUserCore?.screen_name || qUserLegacy?.screen_name || ''
+  const avatar =
+    qUserResult?.avatar?.image_url?.replace('_normal', '_bigger') ||
+    qUserLegacy?.profile_image_url_https?.replace('_normal', '_bigger') ||
+    null
+
   return {
-    authorName: qUser.name || '',
-    authorHandle: qUser.screen_name || '',
-    authorAvatar: qUser.profile_image_url_https?.replace('_normal', '_bigger') || null,
+    authorName: name,
+    authorHandle: handle,
+    authorAvatar: avatar,
     content: getFullText(qt, qLegacy),
-    url: `https://x.com/${qUser.screen_name}/status/${qLegacy.id_str || qt.rest_id}`,
+    media: extractMedia(qLegacy),
+    card: extractCard(qt),
+    url: `https://x.com/${handle}/status/${qLegacy.id_str || qt.rest_id}`,
   }
 }
 
@@ -254,6 +299,7 @@ function parseTweetData(tweetResult: any): ParsedTweet | null {
     content: getFullText(tweetResult, legacy),
     media: extractMedia(legacy),
     isRetweet: null,
+    card: extractCard(tweetResult),
     quotedTweet: extractQuotedTweet(tweetResult),
     url: `https://x.com/${userLegacy.screen_name}/status/${legacy.id_str || tweetResult.rest_id}`,
     likes: legacy.favorite_count || 0,

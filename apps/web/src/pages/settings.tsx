@@ -213,9 +213,13 @@ function ApiKeysSection() {
 export function Settings({
   onXChange,
   xConnected,
+  singleUser,
+  onLogout,
 }: {
   onXChange: () => void
   xConnected: boolean
+  singleUser: boolean
+  onLogout: () => void
 }) {
   return (
     <div>
@@ -226,6 +230,20 @@ export function Settings({
           <>
             <hr class="border-zinc-800" />
             <ApiKeysSection />
+          </>
+        )}
+        {!singleUser && (
+          <>
+            <hr class="border-zinc-800" />
+            <div>
+              <button
+                type="button"
+                onClick={onLogout}
+                class="rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
+              >
+                Log out
+              </button>
+            </div>
           </>
         )}
       </div>

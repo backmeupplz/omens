@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+button, a, [role="button"] {
+  cursor: pointer;
+}
+
 .scrollbar-dark::-webkit-scrollbar {
   width: 6px;
 }
