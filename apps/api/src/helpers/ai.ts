@@ -5,15 +5,51 @@
 
 import type { AiProvider } from '@omens/shared'
 
-export const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant analyzing a user's X/Twitter feed. Your job is to surface the most important, interesting, and actionable items from the posts below.
+export const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant analyzing a user's X/Twitter feed. Your job is to surface the most important, interesting, and actionable items.
 
-Structure your report as:
-1. **Key Headlines** — The most important news or developments
-2. **Trending Topics** — Themes that multiple people are discussing
-3. **Notable Takes** — Interesting opinions or analysis worth reading
-4. **Action Items** — Things the user might want to act on or follow up
+Prioritize:
+- Breaking news and important developments
+- Trending topics discussed by multiple people
+- Interesting opinions and analysis
+- Actionable items the user should follow up on
 
-Be concise but informative. Reference specific posts and authors (@handle) when relevant. Skip low-value content like generic promotions or spam. Use markdown formatting.`
+Deprioritize:
+- Generic promotions and spam
+- Low-engagement filler content
+- Repetitive retweets of the same story`
+
+export const REPORT_SYSTEM_PROMPT = `You are an AI assistant generating a feed report. Analyze the posts and create a well-structured markdown report.
+
+Structure your report with clear sections using ## headers. Be concise but informative.
+
+IMPORTANT: When referencing specific posts, embed them using this exact format on its own line:
+[[tweet:TWEET_DB_ID]]
+where TWEET_DB_ID is the [ID: xxx] value shown before each post. This renders the actual tweet inline. Use 3-8 inline tweets for the most significant posts. Do NOT repeat the tweet content in text when you embed it.`
+
+export const FILTER_SYSTEM_PROMPT = `You are a tweet relevance scorer. Score each tweet from 0 to 100 based on the user's preferences described below.
+
+Score guidelines:
+- 90-100: Must-see, directly matches interests
+- 70-89: Interesting and relevant
+- 50-69: Somewhat relevant
+- 20-49: Low relevance
+- 0-19: Spam or noise
+
+Respond with ONLY a JSON array, no markdown, no explanation.
+Format: [{"id":"tweet_db_id","score":85},...]`
+
+export const META_PROMPT = `You are a prompt engineer. Refine an AI system prompt based on user feedback.
+
+You will receive:
+1. The DEFAULT base prompt
+2. The CURRENT custom prompt
+3. User feedback: THUMBS UP (show more like this), THUMBS DOWN (show less), and TEXT INSTRUCTIONS
+
+Generate an IMPROVED system prompt that:
+- Retains the core structure of the default prompt
+- Incorporates user preferences as specific, actionable guidance
+- Stays under 1500 characters
+- Outputs ONLY the new prompt text, nothing else`
 
 interface AiConfig {
   provider: AiProvider
@@ -273,31 +309,32 @@ function timeAgo(date: Date): string {
   return `${Math.floor(hours / 24)}d ago`
 }
 
-export function formatTweetsForAI(
-  tweets: {
-    authorHandle: string
-    authorName: string
-    authorFollowers: number
-    content: string
-    likes: number
-    retweets: number
-    replies: number
-    views: number
-    publishedAt: Date | null
-    isRetweet: string | null
-    quotedTweet: string | null
-    card: string | null
-  }[],
-): string {
+export interface TweetForAI {
+  id: string // DB id
+  authorHandle: string
+  authorName: string
+  authorFollowers: number
+  content: string
+  likes: number
+  retweets: number
+  replies: number
+  views: number
+  publishedAt: Date | null
+  isRetweet: string | null
+  quotedTweet: string | null
+  card: string | null
+}
+
+export function formatTweetsForAI(tweets: TweetForAI[]): string {
   return tweets
     .map((t) => {
       const lines: string[] = []
       const rt = t.isRetweet ? ` (RT by @${t.isRetweet})` : ''
       const time = t.publishedAt ? ` - ${timeAgo(t.publishedAt)}` : ''
+      lines.push(`[ID: ${t.id}]`)
       lines.push(
         `@${t.authorHandle} (${t.authorName}, ${t.authorFollowers} followers)${rt}${time}`,
       )
-      // Truncate long content to save tokens
       const content = t.content.length > 500 ? t.content.slice(0, 500) + '...' : t.content
       lines.push(content)
       lines.push(

@@ -43,3 +43,12 @@ export const aiSettingsSchema = z.object({
   model: z.string().min(1),
   systemPrompt: z.string().max(10000).optional().default(''),
 })
+
+export const nudgeSchema = z.object({
+  tweetId: z.string().min(1),
+  direction: z.enum(['up', 'down']),
+})
+
+export const promptChangeSchema = z.object({
+  instruction: z.string().min(1).max(500),
+})

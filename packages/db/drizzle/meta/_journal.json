@@ -57,6 +57,13 @@
       "when": 1774973066788,
       "tag": "0007_dark_purifiers",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1774990156714,
+      "tag": "0008_lyrical_iron_fist",
+      "breakpoints": true
     }
   ]
 }

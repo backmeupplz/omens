@@ -1,5 +1,6 @@
 import { createId } from '@paralleldrive/cuid2'
 import {
+  boolean,
   integer,
   pgTable,
   text,
@@ -88,6 +89,7 @@ export const aiSettings = pgTable('ai_settings', {
   baseUrl: text('base_url'),
   model: text('model').notNull(),
   systemPrompt: text('system_prompt'),
+  promptLastRegenAt: timestamp('prompt_last_regen_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
@@ -102,8 +104,62 @@ export const aiReports = pgTable('ai_reports', {
   content: text('content').notNull(),
   model: text('model').notNull(),
   tweetCount: integer('tweet_count').notNull(),
+  tweetRefs: text('tweet_refs'), // JSON array of tweet DB ids referenced in the report
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
+
+export const nudges = pgTable(
+  'nudges',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tweetId: text('tweet_id')
+      .notNull()
+      .references(() => tweets.id, { onDelete: 'cascade' }),
+    direction: text('direction').notNull(), // 'up' | 'down'
+    consumed: boolean('consumed').notNull().default(false),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('nudges_user_tweet_idx').on(table.userId, table.tweetId),
+  ],
+)
+
+export const promptChanges = pgTable('prompt_changes', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  instruction: text('instruction').notNull(),
+  consumed: boolean('consumed').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const tweetScores = pgTable(
+  'tweet_scores',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tweetId: text('tweet_id')
+      .notNull()
+      .references(() => tweets.id, { onDelete: 'cascade' }),
+    score: integer('score').notNull(), // 0-100
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('tweet_scores_user_tweet_idx').on(table.userId, table.tweetId),
+  ],
+)
 
 export const apiKeys = pgTable('api_keys', {
   id: text('id')

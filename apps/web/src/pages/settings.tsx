@@ -386,80 +386,138 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
   )
 }
 
-// === AI Prompt Section ===
+// === AI Tuning Section ===
 
-function AiPromptSection() {
-  const { data: settings, refetch } = useApi<{ configured: boolean; systemPrompt?: string; defaultPrompt: string }>('/ai/settings')
-  const [prompt, setPrompt] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+interface InternalsData {
+  currentPrompt: string
+  defaultPrompt: string
+  pendingNudges: Array<{ id: string; tweetId: string; tweetContent: string; authorHandle: string; direction: string; createdAt: string }>
+  pendingInstructions: Array<{ id: string; instruction: string; createdAt: string }>
+  lastRegenAt: string | null
+}
+
+function AiTuningSection() {
+  const { data: settings } = useApi<{ configured: boolean }>('/ai/settings')
+  const { data: internals, refetch } = useApi<InternalsData>('/ai/internals')
+  const [instruction, setInstruction] = useState('')
+  const [regenerating, setRegenerating] = useState(false)
   const [error, setError] = useState('')
+  const [showPrompt, setShowPrompt] = useState(false)
 
-  // Pre-fill with current prompt or default
-  useEffect(() => {
-    if (!settings) return
-    if (prompt !== null) return // already edited
-    setPrompt(settings.systemPrompt || settings.defaultPrompt || '')
-  }, [settings, prompt])
+  if (!settings?.configured || !internals) return null
 
-  if (!settings?.configured) return null
-
-  const isDefault = !settings.systemPrompt && prompt === settings.defaultPrompt
-  const hasChanges = prompt !== (settings.systemPrompt || settings.defaultPrompt)
-
-  const save = async () => {
-    setSaving(true)
+  const addInstruction = async () => {
+    if (!instruction.trim()) return
     setError('')
-    setSaved(false)
     try {
-      await api('/ai/settings/prompt', {
-        method: 'PUT',
-        body: JSON.stringify({ systemPrompt: prompt === settings.defaultPrompt ? '' : prompt }),
-      })
-      setSaved(true)
+      await api('/ai/prompt-change', { method: 'POST', body: JSON.stringify({ instruction: instruction.trim() }) })
+      setInstruction('')
       refetch()
-      setTimeout(() => setSaved(false), 3000)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save prompt')
-    } finally {
-      setSaving(false)
+      setError(e instanceof Error ? e.message : 'Failed to add instruction')
     }
   }
 
-  const resetToDefault = () => {
-    if (!confirm('Reset prompt to default? Your custom prompt will be lost.')) return
-    setPrompt(settings.defaultPrompt)
+  const removeNudge = async (tweetId: string) => {
+    await api(`/ai/nudge/${tweetId}`, { method: 'DELETE' }).catch(() => {})
+    refetch()
   }
 
+  const removeInstruction = async (id: string) => {
+    await api(`/ai/prompt-change/${id}`, { method: 'DELETE' }).catch(() => {})
+    refetch()
+  }
+
+  const regenerate = async () => {
+    setRegenerating(true)
+    setError('')
+    try {
+      await api('/ai/regenerate-prompt', { method: 'POST' })
+      refetch()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to regenerate')
+    } finally {
+      setRegenerating(false)
+    }
+  }
+
+  const hasPending = internals.pendingNudges.length > 0 || internals.pendingInstructions.length > 0
+
   return (
-    <div class="space-y-3">
-      <h3 class="font-medium">AI Prompt</h3>
-      <p class="text-sm text-zinc-500">Customize the instructions AI uses when analyzing your feed.</p>
+    <div class="space-y-4">
+      <h3 class="font-medium">AI Tuning</h3>
+
       {error && <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>}
-      {saved && <p class="text-sm text-emerald-400 bg-emerald-900/20 rounded px-3 py-2">Prompt saved</p>}
-      <textarea
-        class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700 resize-y scrollbar-dark"
-        style="min-height: 120px; field-sizing: content; max-height: 60vh;"
-        value={prompt || ''}
-        onInput={(e) => setPrompt((e.target as HTMLTextAreaElement).value)}
-      />
-      <div class="flex gap-2">
-        <button
-          type="button"
-          onClick={save}
-          disabled={saving || !hasChanges}
-          class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
-        >
-          {saving ? 'Saving...' : 'Save prompt'}
+
+      {/* Quick instruction input */}
+      <div>
+        <label class="text-xs text-zinc-400 mb-1 block">Tell the AI what you want to see</label>
+        <div class="flex gap-2">
+          <input
+            type="text"
+            class="flex-1 rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700 min-w-0"
+            placeholder='e.g. "show me more memes", "less crypto"'
+            value={instruction}
+            onInput={(e) => setInstruction((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') addInstruction() }}
+          />
+          <button type="button" onClick={addInstruction} disabled={!instruction.trim()}
+            class="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700 disabled:opacity-50 shrink-0">Add</button>
+        </div>
+      </div>
+
+      {/* Pending changes */}
+      {hasPending && (
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-zinc-400">Pending changes ({internals.pendingNudges.length + internals.pendingInstructions.length})</span>
+            <button type="button" onClick={regenerate} disabled={regenerating}
+              class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium hover:bg-emerald-500 disabled:opacity-50">
+              {regenerating ? 'Regenerating...' : 'Apply now'}
+            </button>
+          </div>
+
+          {internals.pendingInstructions.map((p) => (
+            <div key={p.id} class="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-3 py-2">
+              <span class="text-sm text-zinc-300">"{p.instruction}"</span>
+              <button type="button" onClick={() => removeInstruction(p.id)}
+                class="text-zinc-500 hover:text-zinc-300 text-xs ml-2 shrink-0">&times;</button>
+            </div>
+          ))}
+
+          {internals.pendingNudges.map((n) => (
+            <div key={n.id} class="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-3 py-2">
+              <span class="text-sm text-zinc-300">
+                <span class={n.direction === 'up' ? 'text-emerald-400' : 'text-red-400'}>
+                  {n.direction === 'up' ? '+' : '-'}
+                </span>
+                {' '}@{n.authorHandle}: {n.tweetContent}
+              </span>
+              <button type="button" onClick={() => removeNudge(n.tweetId)}
+                class="text-zinc-500 hover:text-zinc-300 text-xs ml-2 shrink-0">&times;</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!hasPending && (
+        <p class="text-xs text-zinc-500">No pending changes. Use thumbs up/down on posts or add instructions above to tune the AI.</p>
+      )}
+
+      {internals.lastRegenAt && (
+        <p class="text-xs text-zinc-600">Last regenerated: {new Date(internals.lastRegenAt).toLocaleString()}</p>
+      )}
+
+      {/* Current prompt (collapsible) */}
+      <div>
+        <button type="button" onClick={() => setShowPrompt(!showPrompt)}
+          class="text-xs text-zinc-500 hover:text-zinc-300">
+          {showPrompt ? 'Hide' : 'Show'} current prompt
         </button>
-        {!isDefault && (
-          <button
-            type="button"
-            onClick={resetToDefault}
-            class="rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-          >
-            Reset to default
-          </button>
+        {showPrompt && (
+          <pre class="mt-2 rounded bg-zinc-900 border border-zinc-800 px-3 py-2 text-xs text-zinc-400 whitespace-pre-wrap overflow-auto max-h-60 scrollbar-dark">
+            {internals.currentPrompt || internals.defaultPrompt}
+          </pre>
         )}
       </div>
     </div>
@@ -595,7 +653,8 @@ export function Settings({
           <>
             <hr class="border-zinc-800" />
             <AiSection />
-            <AiPromptSection />
+            <hr class="border-zinc-800" />
+            <AiTuningSection />
             <hr class="border-zinc-800" />
             <ApiKeysSection />
           </>

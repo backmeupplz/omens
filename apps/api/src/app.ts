@@ -65,11 +65,10 @@ export function createApp() {
   app.use('/ai/*', authMiddleware)
   app.use('/og/*', authMiddleware)
 
-  // Rate limit AI report generation
-  app.post(
-    '/ai/report',
-    rateLimiter({ windowMs: 60_000, max: 3, keyPrefix: 'ai-report' }),
-  )
+  // Rate limit AI endpoints
+  app.post('/ai/report', rateLimiter({ windowMs: 60_000, max: 3, keyPrefix: 'ai-report' }))
+  app.post('/ai/filter', rateLimiter({ windowMs: 60_000, max: 3, keyPrefix: 'ai-filter' }))
+  app.post('/ai/regenerate-prompt', rateLimiter({ windowMs: 60_000, max: 5, keyPrefix: 'ai-regen' }))
 
   // OG metadata proxy (cached)
   app.get('/og', async (c) => {

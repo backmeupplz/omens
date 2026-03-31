@@ -1,6 +1,7 @@
 import { runMigrations } from '@omens/db'
 import { createApp } from './app'
 import env from './env'
+import { initPromptBatcher } from './helpers/promptBatch'
 import { initFetcher } from './x/fetcher'
 
 // Run DB migrations on startup
@@ -8,8 +9,9 @@ await runMigrations(env.DATABASE_URL)
 
 const app = createApp()
 
-// Start tweet fetcher
+// Start background jobs
 initFetcher()
+initPromptBatcher()
 
 if (env.SINGLE_USER_MODE) {
   console.warn(

@@ -469,7 +469,12 @@ function TweetContent({ text, hideUrls }: { text: string; hideUrls?: boolean }) 
   )
 }
 
-function TweetCard({ tweet }: { tweet: Tweet }) {
+function TweetCard({ tweet, nudge, onNudge, score }: {
+  tweet: Tweet
+  nudge?: 'up' | 'down' | null
+  onNudge?: (tweetId: string, direction: 'up' | 'down') => void
+  score?: number | null
+}) {
   const media: MediaItem[] = tweet.mediaUrls ? JSON.parse(tweet.mediaUrls) : []
   const quoted: QuotedTweet | null = tweet.quotedTweet ? JSON.parse(tweet.quotedTweet) : null
   const cardRaw = tweet.card ? JSON.parse(tweet.card) : null
@@ -628,20 +633,51 @@ function TweetCard({ tweet }: { tweet: Tweet }) {
                 {fmt(tweet.views)}
               </span>
             )}
-            <a
-              href={tweet.url}
-              target="_blank"
-              rel="noopener"
-              class="ml-auto flex items-center gap-1 hover:text-zinc-300 transition-colors"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
-              </svg>
-              View on X
-            </a>
+            <span class="ml-auto flex items-center gap-3">
+              {onNudge && (
+                <span class="flex items-center gap-1">
+                  <button
+                    type="button"
+                    class={`p-0.5 rounded transition-colors ${nudge === 'up' ? 'text-emerald-400' : 'hover:text-emerald-400'}`}
+                    onClick={(e) => { e.stopPropagation(); onNudge(tweet.id, 'up') }}
+                    title="Show more like this"
+                  >
+                    <svg class="w-3.5 h-3.5" fill={nudge === 'up' ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                      <path d="M7.5 15h2.25m8.024-9.75c.011.05.028.1.037.15.091.529.02 1.076-.207 1.559L12.75 15.5H9.236a2 2 0 01-1.897-1.368l-1.029-3.09A1 1 0 017.262 10H10.5l-1.27-4.574A1 1 0 0110.192 4h.358a1 1 0 01.948.684l1.128 3.316h3.349a2 2 0 011.5.674z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class={`p-0.5 rounded transition-colors ${nudge === 'down' ? 'text-red-400' : 'hover:text-red-400'}`}
+                    onClick={(e) => { e.stopPropagation(); onNudge(tweet.id, 'down') }}
+                    title="Show less like this"
+                  >
+                    <svg class="w-3.5 h-3.5" fill={nudge === 'down' ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                      <path d="M16.5 9h-2.25M8.476 18.75c-.011-.05-.028-.1-.037-.15-.091-.529-.02-1.076.207-1.559L13.25 8.5h3.514a2 2 0 011.897 1.368l1.029 3.09A1 1 0 0118.738 14H15.5l1.27 4.574A1 1 0 0115.808 20h-.358a1 1 0 01-.948-.684l-1.128-3.316h-3.349a2 2 0 01-1.5-.674z" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+              {score != null && (
+                <span class={`text-[10px] font-medium px-1.5 py-0.5 rounded ${score >= 70 ? 'bg-emerald-900/40 text-emerald-400' : score >= 50 ? 'bg-yellow-900/40 text-yellow-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                  {score}
+                </span>
+              )}
+              <a
+                href={tweet.url}
+                target="_blank"
+                rel="noopener"
+                class="flex items-center gap-1 hover:text-zinc-300 transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  <polyline points="15 3 21 3 21 9" />
+                  <line x1="10" y1="14" x2="21" y2="3" />
+                </svg>
+                View on X
+              </a>
+            </span>
       </div>
     </div>
   )
@@ -702,9 +738,105 @@ function simpleMarkdown(text: string): preact.ComponentChildren[] {
   })
 }
 
+// === Nudge Hook ===
+
+function useNudges() {
+  const [nudges, setNudges] = useState<Map<string, 'up' | 'down'>>(new Map())
+  const [feedback, setFeedback] = useState<string | null>(null)
+
+  useEffect(() => {
+    api<{ nudges: Array<{ tweetId: string; direction: 'up' | 'down' }> }>('/ai/nudges')
+      .then((r) => {
+        const map = new Map<string, 'up' | 'down'>()
+        for (const n of r.nudges) map.set(n.tweetId, n.direction as 'up' | 'down')
+        setNudges(map)
+      })
+      .catch(() => {})
+  }, [])
+
+  const onNudge = useCallback((tweetId: string, direction: 'up' | 'down') => {
+    setNudges((prev) => {
+      const next = new Map(prev)
+      if (next.get(tweetId) === direction) {
+        next.delete(tweetId)
+        api(`/ai/nudge/${tweetId}`, { method: 'DELETE' }).catch(() => {})
+      } else {
+        next.set(tweetId, direction)
+        api('/ai/nudge', { method: 'POST', body: JSON.stringify({ tweetId, direction }) }).catch(() => {})
+      }
+      return next
+    })
+    setFeedback(direction === 'up' ? 'Will show more like this' : 'Will show less like this')
+    setTimeout(() => setFeedback(null), 2000)
+  }, [])
+
+  return { nudges, onNudge, feedback }
+}
+
+// === AI Report with Inline Tweets ===
+
+interface AiReportData {
+  content: string
+  model: string
+  tweetCount: number
+  tweetRefs: string[]
+  refTweets: Tweet[]
+  createdAt: string
+}
+
+function renderReportContent(
+  text: string,
+  refTweets: Map<string, Tweet>,
+): preact.ComponentChildren[] {
+  const lines = text.split('\n')
+  const result: preact.ComponentChildren[] = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+
+    // Inline tweet embed
+    const tweetMatch = line.match(/^\[\[tweet:([^\]]+)\]\]$/)
+    if (tweetMatch) {
+      const tweet = refTweets.get(tweetMatch[1])
+      if (tweet) {
+        result.push(<div key={`t-${i}`} class="my-2"><TweetCard tweet={tweet} /></div>)
+      }
+      continue
+    }
+
+    // Bold processing
+    const processed = line.replace(/\*\*(.+?)\*\*/g, '\x01$1\x02')
+    const parts: preact.ComponentChildren[] = []
+    let last = 0
+    for (let j = 0; j < processed.length; j++) {
+      if (processed[j] === '\x01') {
+        if (j > last) parts.push(processed.slice(last, j))
+        const end = processed.indexOf('\x02', j + 1)
+        if (end !== -1) {
+          parts.push(<strong key={`${i}-${j}`} class="text-zinc-100">{processed.slice(j + 1, end)}</strong>)
+          last = end + 1
+          j = end
+        }
+      }
+    }
+    if (last < processed.length) parts.push(processed.slice(last))
+    const content = parts.length > 0 ? parts : [line]
+
+    if (line.startsWith('### ')) result.push(<h4 key={i} class="text-sm font-bold text-zinc-100 mt-3 mb-1">{content}</h4>)
+    else if (line.startsWith('## ')) result.push(<h3 key={i} class="text-base font-bold text-zinc-100 mt-4 mb-1">{content}</h3>)
+    else if (line.startsWith('# ')) result.push(<h2 key={i} class="text-lg font-bold text-zinc-100 mt-4 mb-2">{content}</h2>)
+    else if (line.match(/^[-*]\s/)) result.push(<li key={i} class="text-sm text-zinc-300 ml-4 list-disc">{content}</li>)
+    else if (line.match(/^\d+\.\s/)) result.push(<li key={i} class="text-sm text-zinc-300 ml-4 list-decimal">{content}</li>)
+    else if (line.trim() === '') result.push(<br key={i} />)
+    else result.push(<p key={i} class="text-sm text-zinc-300 leading-relaxed">{content}</p>)
+  }
+
+  return result
+}
+
 function AiReportView() {
   const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean }>('/ai/settings')
-  const { data, loading, refetch } = useApi<{ report: AiReport | null }>('/ai/report')
+  const { data, loading, refetch } = useApi<{ report: AiReportData | null }>('/ai/report')
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -722,28 +854,25 @@ function AiReportView() {
   }
 
   if (settingsLoading || loading) return <p class="text-zinc-500 py-8 text-center">Loading...</p>
-
-  // Show AI setup if not configured
-  if (!settings?.configured) {
-    return <AiSection onSave={refetchSettings} />
-  }
+  if (!settings?.configured) return <AiSection onSave={refetchSettings} />
 
   const report = data?.report
+  const refTweetMap = new Map<string, Tweet>()
+  if (report?.refTweets) {
+    for (const t of report.refTweets) refTweetMap.set(t.id, t)
+  }
 
   return (
     <div>
       {error && <p class="text-red-400 text-sm text-center mb-3">{error}</p>}
-
       {report ? (
         <div class="space-y-2">
           <div class="flex items-center justify-between text-xs text-zinc-500">
-            <span>
-              {report.model} — {report.tweetCount} posts analyzed
-            </span>
+            <span>{report.model} — {report.tweetCount} posts (last 24h)</span>
             <span>{new Date(report.createdAt).toLocaleString()}</span>
           </div>
           <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
-            {simpleMarkdown(report.content)}
+            {renderReportContent(report.content, refTweetMap)}
           </div>
           <button
             type="button"
@@ -756,7 +885,7 @@ function AiReportView() {
         </div>
       ) : (
         <div class="text-center py-12">
-          <p class="text-zinc-400 mb-4">No AI report yet. Generate one to surface the most important items from your feed.</p>
+          <p class="text-zinc-400 mb-4">Generate an AI report to surface the most important items from your last 24 hours.</p>
           <button
             type="button"
             onClick={generate}
@@ -771,18 +900,96 @@ function AiReportView() {
   )
 }
 
+// === Pagination ===
+
+function Pagination({ page, totalPages, onPage }: { page: number; totalPages: number; onPage: (p: number) => void }) {
+  if (totalPages <= 1) return null
+  return (
+    <div class="mt-6 flex items-center justify-center gap-4">
+      <button type="button" onClick={() => onPage(Math.max(1, page - 1))} disabled={page <= 1}
+        class="rounded bg-zinc-800 px-3 py-1.5 text-sm hover:bg-zinc-700 disabled:opacity-50">Previous</button>
+      <span class="text-sm text-zinc-500">Page {page} of {totalPages}</span>
+      <button type="button" onClick={() => onPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages}
+        class="rounded bg-zinc-800 px-3 py-1.5 text-sm hover:bg-zinc-700 disabled:opacity-50">Next</button>
+    </div>
+  )
+}
+
 // === Exported Pages ===
 
 export function AiReportPage() {
   return <AiReportView />
 }
 
+export function FilteredFeed() {
+  const { nudges, onNudge, feedback } = useNudges()
+  const [page, setPage] = useState(1)
+  const { data, loading, error, refetch } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}`)
+  const [filtering, setFiltering] = useState(false)
+  const [filterError, setFilterError] = useState<string | null>(null)
+
+  const runFilter = async () => {
+    setFiltering(true)
+    setFilterError(null)
+    try {
+      await api('/ai/filter', { method: 'POST' })
+      refetch()
+    } catch (e) {
+      setFilterError(e instanceof Error ? e.message : 'Failed to filter feed')
+    } finally {
+      setFiltering(false)
+    }
+  }
+
+  return (
+    <div>
+      {feedback && (
+        <div class="fixed top-16 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-200 shadow-lg">
+          {feedback}
+        </div>
+      )}
+      {loading && <p class="text-zinc-500 py-8 text-center">Loading...</p>}
+      {filterError && <p class="text-red-400 text-sm text-center mb-2">{filterError}</p>}
+      {error && <p class="text-red-400 text-center">{error}</p>}
+
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs text-zinc-500">Showing posts scored 50+ by AI</span>
+        <button
+          type="button"
+          onClick={runFilter}
+          disabled={filtering}
+          class="rounded bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+        >
+          {filtering ? 'Filtering...' : 'Re-filter feed'}
+        </button>
+      </div>
+
+      {data?.data.length === 0 && !loading && (
+        <div class="text-center py-12">
+          <p class="text-zinc-400 mb-4">No scored posts yet. Run the AI filter to score your feed.</p>
+          <button type="button" onClick={runFilter} disabled={filtering}
+            class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
+            {filtering ? 'Filtering...' : 'Filter my feed'}
+          </button>
+        </div>
+      )}
+
+      <div class="flex flex-col gap-2">
+        {data?.data.map((tweet: any) => (
+          <TweetCard key={tweet.id} tweet={tweet} nudge={nudges.get(tweet.id) || null} onNudge={onNudge} score={tweet.score} />
+        ))}
+      </div>
+      {data?.pagination && <Pagination page={page} totalPages={data.pagination.totalPages} onPage={setPage} />}
+    </div>
+  )
+}
+
 export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
+  const { nudges, onNudge, feedback } = useNudges()
   const [page, setPage] = useState(1)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
-  const path = `/feed?limit=50&page=${page}`
-  const { data, loading, error, refetch } = useApi<FeedResponse>(path)
+  const { data, loading, error, refetch } = useApi<FeedResponse>(`/feed?limit=50&page=${page}`)
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
@@ -803,6 +1010,11 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
 
   return (
     <div>
+      {feedback && (
+        <div class="fixed top-16 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-200 shadow-lg">
+          {feedback}
+        </div>
+      )}
       {loading && <p class="text-zinc-500 py-8 text-center">Loading...</p>}
       {refreshError && <p class="text-red-400 text-sm text-center mb-2">{refreshError}</p>}
       {error && <p class="text-red-400 text-center">{error}</p>}
@@ -813,33 +1025,10 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
 
       <div class="flex flex-col gap-2">
         {data?.data.map((tweet) => (
-          <TweetCard key={tweet.id} tweet={tweet} />
+          <TweetCard key={tweet.id} tweet={tweet} nudge={nudges.get(tweet.id) || null} onNudge={onNudge} />
         ))}
       </div>
-
-      {data?.pagination && data.pagination.totalPages > 1 && (
-        <div class="mt-6 flex items-center justify-center gap-4">
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            class="rounded bg-zinc-800 px-3 py-1.5 text-sm hover:bg-zinc-700 disabled:opacity-50"
-          >
-            Previous
-          </button>
-          <span class="text-sm text-zinc-500">
-            Page {page} of {data.pagination.totalPages}
-          </span>
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.min(data.pagination.totalPages, p + 1))}
-            disabled={page >= data.pagination.totalPages}
-            class="rounded bg-zinc-800 px-3 py-1.5 text-sm hover:bg-zinc-700 disabled:opacity-50"
-          >
-            Next
-          </button>
-        </div>
-      )}
+      {data?.pagination && <Pagination page={page} totalPages={data.pagination.totalPages} onPage={setPage} />}
     </div>
   )
 }
