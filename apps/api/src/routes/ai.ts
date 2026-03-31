@@ -411,6 +411,7 @@ aiRouter.get('/filtered-feed', async (c) => {
 
   const page = Math.max(1, Number(c.req.query('page') || '1') || 1)
   const limit = Math.max(1, Math.min(Number(c.req.query('limit') || '50') || 50, 100))
+  const minScore = Math.max(0, Math.min(100, Number(c.req.query('min_score') || '50') || 50))
   const offset = (page - 1) * limit
 
   const result = await db
@@ -425,7 +426,7 @@ aiRouter.get('/filtered-feed', async (c) => {
     ))
     .where(and(
       eq(tweets.userId, user.id),
-      gte(tweetScores.score, 50),
+      gte(tweetScores.score, minScore),
     ))
     .orderBy(desc(tweetScores.score), desc(tweets.publishedAt))
     .limit(limit)
@@ -438,7 +439,7 @@ aiRouter.get('/filtered-feed', async (c) => {
       eq(tweetScores.tweetId, tweets.id),
       eq(tweetScores.userId, user.id),
     ))
-    .where(and(eq(tweets.userId, user.id), gte(tweetScores.score, 50)))
+    .where(and(eq(tweets.userId, user.id), gte(tweetScores.score, minScore)))
 
   return c.json({
     data: result.map((r) => ({ ...r.tweet, score: r.score })),

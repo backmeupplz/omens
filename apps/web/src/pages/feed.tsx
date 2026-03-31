@@ -1008,7 +1008,8 @@ export function AiReportPage() {
 export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
   const { nudges, onNudge, feedback } = useNudges()
   const [page, setPage] = useState(1)
-  const { data, loading, error, refetch } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}`)
+  const [minScore, setMinScore] = useState(50)
+  const { data, loading, error, refetch } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}&min_score=${minScore}`)
   const [filtering, setFiltering] = useState(false)
   const [filterError, setFilterError] = useState<string | null>(null)
   const [refreshCount, setRefreshCount] = useState<number | null>(null)
@@ -1068,13 +1069,28 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
           </div>
         </div>
       )}
+      {/* Relevance slider */}
+      <div class="mb-3 flex items-center gap-3">
+        <span class="text-xs text-zinc-500 shrink-0">Relevance</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          step="5"
+          value={minScore}
+          onInput={(e) => { setMinScore(Number((e.target as HTMLInputElement).value)); setPage(1) }}
+          class="flex-1 h-1 accent-emerald-500 bg-zinc-700 rounded-full appearance-none cursor-pointer"
+        />
+        <span class="text-xs text-zinc-400 w-8 text-right">{minScore}</span>
+      </div>
+
       {loading && <p class="text-zinc-500 py-8 text-center">Loading...</p>}
       {filterError && <p class="text-red-400 text-sm text-center mb-2">{filterError}</p>}
       {error && <p class="text-red-400 text-center">{error}</p>}
 
       {data?.data.length === 0 && !loading && !filtering && (
         <div class="text-center py-12">
-          <p class="text-zinc-400 mb-4">No scored posts yet. Run the AI filter to score your feed.</p>
+          <p class="text-zinc-400 mb-4">{minScore > 0 ? `No posts scored ${minScore}+. Try lowering the slider.` : 'No scored posts yet. Run the AI filter to score your feed.'}</p>
           <button type="button" onClick={runFilter} disabled={filtering}
             class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
             Filter my feed

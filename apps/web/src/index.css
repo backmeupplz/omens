@@ -16,6 +16,31 @@ button:disabled, [role="button"][aria-disabled="true"] {
   background-size: 1.25em 1.25em;
 }
 
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #3f3f46;
+  border-radius: 9999px;
+  height: 4px;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #10b981;
+  cursor: pointer;
+  border: 2px solid #09090b;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #10b981;
+  cursor: pointer;
+  border: 2px solid #09090b;
+}
+
 .scrollbar-dark::-webkit-scrollbar {
   width: 6px;
 }
