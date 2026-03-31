@@ -534,23 +534,41 @@ aiRouter.post('/report', async (c) => {
   if (!ai) return c.json({ error: 'AI not configured. Go to Settings to set up your AI provider.' }, 400)
   const db = getDb(env.DATABASE_URL)
 
-  // Last 24 hours of tweets
+  // Use scored-above-threshold tweets from last 24h for a focused report
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const recentTweets = await db.select().from(tweets)
-    .where(and(eq(tweets.userId, user.id), gte(tweets.publishedAt, since)))
+  const [settings] = await db.select({ minScore: aiSettings.minScore })
+    .from(aiSettings).where(eq(aiSettings.userId, user.id)).limit(1)
+  const minScore = settings?.minScore ?? 50
+
+  // Try filtered tweets first, fall back to all tweets if none scored yet
+  let recentTweets = await db.select({ tweet: tweets, score: tweetScores.score })
+    .from(tweets)
+    .innerJoin(tweetScores, and(eq(tweetScores.tweetId, tweets.id), eq(tweetScores.userId, user.id)))
+    .where(and(eq(tweets.userId, user.id), gte(tweets.publishedAt, since), gte(tweetScores.score, minScore)))
     .orderBy(desc(tweets.publishedAt))
-    .limit(200)
+    .limit(150)
+    .then((rows) => rows.map((r) => r.tweet))
 
   if (recentTweets.length === 0) {
+    // Fallback: use all tweets if nothing is scored yet
+    recentTweets = await db.select().from(tweets)
+      .where(and(eq(tweets.userId, user.id), gte(tweets.publishedAt, since)))
+      .orderBy(desc(tweets.publishedAt))
+      .limit(200)
+  }
+
+  const tweetList = recentTweets
+
+  if (tweetList.length === 0) {
     return c.json({ error: 'No posts from the last 24 hours to analyze.' }, 400)
   }
 
-  reportGenerating.set(user.id, { startedAt: new Date(), tweetCount: recentTweets.length })
+  reportGenerating.set(user.id, { startedAt: new Date(), tweetCount: tweetList.length })
 
   try {
     const systemPrompt = `${ai.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT}\n\n${REPORT_SYSTEM_PROMPT}`
-    const tweetText = formatTweetsForAI(recentTweets)
-    const userContent = `Here are ${recentTweets.length} posts from the last 24 hours. Analyze and create a report:\n\n${tweetText}`
+    const tweetText = formatTweetsForAI(tweetList)
+    const userContent = `Here are ${tweetList.length} posts from the last 24 hours (pre-filtered by relevance). Analyze and create a report:\n\n${tweetText}`
 
     const content = await callAI(ai.config, systemPrompt, userContent)
 
@@ -562,7 +580,7 @@ aiRouter.post('/report', async (c) => {
       userId: user.id,
       content,
       model: ai.settings.model,
-      tweetCount: recentTweets.length,
+      tweetCount: tweetList.length,
       tweetRefs: tweetRefIds.length > 0 ? JSON.stringify(tweetRefIds) : null,
     }).returning()
 

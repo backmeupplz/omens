@@ -1053,12 +1053,11 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   const [feedKey, setFeedKey] = useState(0) // bump to re-fetch feed
   const { data, loading, error } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}&_=${feedKey}`)
   const [filterError, setFilterError] = useState<string | null>(null)
-  const [scoringTotal, setScoringTotal] = useState(0)
-  const [scoringDone, setScoringDone] = useState(0)
   const [pendingCount, setPendingCount] = useState(0)
   const [scoringActive, setScoringActive] = useState(false)
   const [scoringBatch, setScoringBatch] = useState(0)
   const [scoringTotalBatches, setScoringTotalBatches] = useState(0)
+  const jobSizeRef = useRef<number>(0) // pending count when scoring started
   const [newReady, setNewReady] = useState(0)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -1071,12 +1070,14 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   const baselineRef = useRef<number | null>(null) // above-threshold count when scoring started
 
   const updateStatus = useCallback((st: ScoringStatus) => {
-    setScoringTotal(st.total)
-    setScoringDone(st.scored)
     setPendingCount(st.pending)
     setScoringActive(st.active)
     setScoringBatch(st.batch)
     setScoringTotalBatches(st.totalBatches)
+    // Capture job size on first poll when scoring starts
+    if (jobSizeRef.current === 0 && st.pending > 0) {
+      jobSizeRef.current = st.pending
+    }
     // Track new above-threshold posts since scoring started
     if (baselineRef.current === null && (st.active || st.pending > 0)) {
       baselineRef.current = st.aboveThreshold
@@ -1096,6 +1097,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
           if (st.pending === 0 && !st.active) {
             stopPolling()
             baselineRef.current = null
+            jobSizeRef.current = 0
           }
         })
         .catch(() => {})
@@ -1124,7 +1126,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 
       // Scoring will start automatically server-side; poll for progress
       setPendingCount(res.count)
-      setScoringTotal((prev) => prev + res.count)
+      jobSizeRef.current = res.count
       startPolling()
     } catch (e) {
       setFilterError(e instanceof Error ? e.message : 'Failed to refresh')
@@ -1155,32 +1157,34 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
       )}
 
       {/* Scoring progress */}
-      {(pendingCount > 0 || scoringActive) && (
-        <div class="mb-3 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-3">
-          <div class="flex items-center justify-between text-sm mb-2">
-            <div class="flex items-center gap-2 text-zinc-300">
-              <svg class="w-4 h-4 animate-spin shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              {scoringActive && scoringTotalBatches > 0
-                ? `Scoring batch ${scoringBatch} of ${scoringTotalBatches}`
-                : pendingCount > 0
-                  ? 'Waiting for scoring to start...'
-                  : 'Finishing up...'}
+      {(pendingCount > 0 || scoringActive) && (() => {
+        const jobSize = jobSizeRef.current || pendingCount
+        const done = Math.max(0, jobSize - pendingCount)
+        const pct = jobSize > 0 ? (done / jobSize) * 100 : 0
+        return (
+          <div class="mb-3 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-3">
+            <div class="flex items-center justify-between text-sm mb-2">
+              <div class="flex items-center gap-2 text-zinc-300">
+                <svg class="w-4 h-4 animate-spin shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12a9 9 0 11-6.219-8.56" />
+                </svg>
+                {scoringActive && scoringTotalBatches > 0
+                  ? `Scoring batch ${scoringBatch} of ${scoringTotalBatches}`
+                  : pendingCount > 0
+                    ? 'Waiting for scoring to start...'
+                    : 'Finishing up...'}
+              </div>
+              <span class="text-xs text-zinc-400 tabular-nums">{done} / {jobSize} new posts</span>
             </div>
-            <span class="text-xs text-zinc-400 tabular-nums">{scoringDone} / {scoringTotal} posts</span>
+            <div class="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div
+                class="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
           </div>
-          <div class="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              class="h-full bg-emerald-500 rounded-full transition-all duration-500"
-              style={{ width: `${scoringTotal > 0 ? (scoringDone / scoringTotal) * 100 : 0}%` }}
-            />
-          </div>
-          {scoringActive && scoringTotalBatches > 0 && (
-            <p class="text-xs text-zinc-500 mt-1.5">Processing {Math.min(10, pendingCount)} posts with AI... Each batch takes a few seconds.</p>
-          )}
-        </div>
-      )}
+        )
+      })()}
 
       {/* New posts floating banner — like X's "Show N new posts" */}
       {newReady > 0 && (
