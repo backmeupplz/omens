@@ -8,7 +8,8 @@ import { encrypt } from '../helpers/crypto'
 import type { AuthUser } from '../middleware/auth'
 import { xLogin } from '../x/auth'
 import { fetchForUser } from '../x/fetcher'
-import { getHomeTimeline } from '../x/graphql'
+import { decrypt } from '../helpers/crypto'
+import { getHomeTimeline, getTweetReplies } from '../x/graphql'
 
 const xRouter = new Hono<{ Variables: { user: AuthUser } }>()
 
@@ -124,6 +125,33 @@ xRouter.post('/refresh', async (c) => {
     return c.json({ ok: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Refresh failed'
+    return c.json({ error: message }, 500)
+  }
+})
+
+xRouter.get('/replies/:tweetId', async (c) => {
+  const user = c.get('user')
+  const tweetId = c.req.param('tweetId')
+  const db = getDb(env.DATABASE_URL)
+
+  const [session] = await db
+    .select()
+    .from(xSessions)
+    .where(eq(xSessions.userId, user.id))
+    .limit(1)
+
+  if (!session) {
+    return c.json({ error: 'X not connected' }, 400)
+  }
+
+  try {
+    const authToken = await decrypt(session.authToken)
+    const ct0 = await decrypt(session.ct0)
+    const cursor = c.req.query('cursor')
+    const result = await getTweetReplies({ authToken, ct0 }, tweetId, cursor || undefined)
+    return c.json(result)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to fetch replies'
     return c.json({ error: message }, 500)
   }
 })

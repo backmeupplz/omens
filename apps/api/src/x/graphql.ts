@@ -10,7 +10,9 @@ const GRAPHQL_BASE = 'https://x.com/i/api/graphql'
 
 // These rotate with X deploys — update as needed
 const ENDPOINTS = {
+  HomeTimeline: 'c-CzHF1LboFilMpsx4ZCrQ/HomeTimeline',
   HomeLatestTimeline: 'BKB7oi212Fi7kQtCBGE4zA/HomeLatestTimeline',
+  TweetDetail: 'YVyS4SfwYW7Uw5qwy0mQCA/TweetDetail',
 } as const
 
 const GQL_FEATURES = {
@@ -167,11 +169,17 @@ function extractMedia(legacy: any): MediaItem[] | null {
 }
 
 function getFullText(tweetResult: any, legacy: any): string {
-  // note_tweet has the full untruncated text for long tweets
-  const noteText =
-    tweetResult.note_tweet?.note_tweet_results?.result?.text
-  if (noteText) return noteText
-  return legacy.full_text || ''
+  const noteText = tweetResult.note_tweet?.note_tweet_results?.result?.text
+  let text = noteText || legacy.full_text || ''
+
+  // Strip trailing t.co URLs when media is present (X's web client does this)
+  const hasMedia = legacy.extended_entities?.media?.length > 0 ||
+    legacy.entities?.media?.length > 0
+  if (hasMedia) {
+    text = text.replace(/\s*https:\/\/t\.co\/\w+\s*$/, '')
+  }
+
+  return text.trim()
 }
 
 function extractQuotedTweet(tweetResult: any): ParsedTweet['quotedTweet'] {
@@ -204,37 +212,45 @@ function parseTweetData(tweetResult: any): ParsedTweet | null {
   const legacy = tweetResult.legacy
   if (!legacy) return null
 
+  // Skip ads/promoted content
+  if (tweetResult.promotedMetadata || legacy.is_ad) return null
+
   const userResult = tweetResult.core?.user_results?.result
   const userLegacy = userResult?.legacy
-  if (!userLegacy) return null
+  const userCore = userResult?.core
+  if (!userLegacy && !userCore) return null
 
   // Check for retweet
   const rtResult = legacy.retweeted_status_result?.result
   if (rtResult) {
-    // Parse the original tweet instead
     const original = parseTweetData(rtResult)
     if (original) {
+      const handle = userCore?.screen_name || userLegacy?.screen_name || ''
       return {
         ...original,
-        // Use the retweet's ID so we dedup correctly
         tweetId: legacy.id_str || tweetResult.rest_id,
-        isRetweet: userLegacy.screen_name,
-        // Keep retweet timestamp
+        isRetweet: handle,
         publishedAt: new Date(legacy.created_at),
       }
     }
   }
 
-  const avatar = userLegacy.profile_image_url_https?.replace('_normal', '_bigger') || null
+  // User data: try new API paths first, fall back to legacy
+  const name = userCore?.name || userLegacy?.name || ''
+  const handle = userCore?.screen_name || userLegacy?.screen_name || ''
+  const avatar =
+    userResult?.avatar?.image_url?.replace('_normal', '_bigger') ||
+    userLegacy?.profile_image_url_https?.replace('_normal', '_bigger') ||
+    null
 
   return {
     tweetId: legacy.id_str || tweetResult.rest_id,
-    authorId: userResult.rest_id || '',
-    authorName: userLegacy.name || '',
-    authorHandle: userLegacy.screen_name || '',
+    authorId: userResult?.rest_id || '',
+    authorName: name,
+    authorHandle: handle,
     authorAvatar: avatar,
-    authorFollowers: userLegacy.followers_count || 0,
-    authorBio: userLegacy.description || null,
+    authorFollowers: userLegacy?.followers_count || 0,
+    authorBio: userLegacy?.description || null,
     content: getFullText(tweetResult, legacy),
     media: extractMedia(legacy),
     isRetweet: null,
@@ -288,7 +304,7 @@ export async function getHomeTimeline(
   }
   if (cursor) variables.cursor = cursor
 
-  const data = await graphqlRequest(ENDPOINTS.HomeLatestTimeline, variables, session)
+  const data = await graphqlRequest(ENDPOINTS.HomeTimeline, variables, session)
 
   const instructions = data?.data?.home?.home_timeline_urt?.instructions || []
   const tweets: ParsedTweet[] = []
@@ -332,4 +348,133 @@ export async function getHomeTimeline(
   }
 
   return { tweets, bottomCursor }
+}
+
+export interface Reply {
+  authorName: string
+  authorHandle: string
+  authorAvatar: string | null
+  authorFollowers: number
+  content: string
+  likes: number
+  publishedAt: Date
+}
+
+export interface RepliesResult {
+  replies: Reply[]
+  cursor: string | null
+}
+
+export async function getTweetReplies(
+  session: Session,
+  tweetId: string,
+  cursor?: string,
+): Promise<RepliesResult> {
+  const variables: Record<string, unknown> = {
+    focalTweetId: tweetId,
+    referrer: 'tweet',
+    with_rux_injections: false,
+    includePromotedContent: false,
+    withCommunity: true,
+    withQuickPromoteEligibilityTweetFields: false,
+    withBirdwatchNotes: false,
+    withVoice: false,
+    withV2Timeline: true,
+  }
+  if (cursor) variables.cursor = cursor
+
+  const fieldToggles = {
+    withArticleRichContentState: true,
+    withArticlePlainText: false,
+    withGrokAnalyze: false,
+    withDisallowedReplyControls: false,
+  }
+
+  const params = new URLSearchParams({
+    variables: JSON.stringify(variables),
+    features: JSON.stringify(GQL_FEATURES),
+    fieldToggles: JSON.stringify(fieldToggles),
+  })
+
+  const url = `${GRAPHQL_BASE}/${ENDPOINTS.TweetDetail}?${params}`
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: buildHeaders(session),
+  })
+
+  if (!res.ok) return { replies: [], cursor: null }
+
+  const data = await res.json()
+  const instructions =
+    data?.data?.threaded_conversation_with_injections_v2?.instructions || []
+
+  const replies: Reply[] = []
+  let nextCursor: string | null = null
+
+  function tryExtractReply(obj: any) {
+    if (!obj) return
+    const itemContent = obj.itemContent || obj
+    let result = itemContent?.tweet_results?.result
+    if (!result) return
+    if (result.__typename === 'TweetWithVisibilityResults')
+      result = result.tweet
+    if (!result?.legacy) return
+
+    const legacy = result.legacy
+    if (legacy.id_str === tweetId) return
+
+    // User data can be in multiple places depending on API version:
+    // New: result.core.user_results.result.core.{name,screen_name} + result.core.user_results.result.avatar.image_url
+    // Old: result.core.user_results.result.legacy.{name,screen_name,profile_image_url_https}
+    const userResult = result.core?.user_results?.result
+    const userLegacy = userResult?.legacy
+    const userCore = userResult?.core
+
+    const name = userCore?.name || userLegacy?.name || ''
+    const handle = userCore?.screen_name || userLegacy?.screen_name || ''
+    const avatar =
+      userResult?.avatar?.image_url?.replace('_normal', '_bigger') ||
+      userLegacy?.profile_image_url_https?.replace('_normal', '_bigger') ||
+      null
+    const followers = userLegacy?.followers_count || 0
+
+    replies.push({
+      authorName: name,
+      authorHandle: handle,
+      authorAvatar: avatar,
+      authorFollowers: followers,
+      content: getFullText(result, legacy),
+      likes: legacy.favorite_count || 0,
+      publishedAt: new Date(legacy.created_at),
+    })
+  }
+
+  for (const instruction of instructions) {
+    const entries = instruction.entries || []
+    for (const entry of entries) {
+      // Extract cursor for pagination
+      if (entry.entryId?.startsWith('cursor-bottom')) {
+        nextCursor = entry.content?.itemContent?.value ||
+          entry.content?.value || null
+        continue
+      }
+      if (entry.entryId?.startsWith('cursor-')) continue
+
+      const content = entry.content
+      if (!content) continue
+
+      // Conversation thread module (most replies come here)
+      if (content.items) {
+        for (const item of content.items) {
+          tryExtractReply(item?.item)
+        }
+        continue
+      }
+
+      // Single tweet entry
+      tryExtractReply(content)
+    }
+  }
+
+  return { replies, cursor: nextCursor }
 }

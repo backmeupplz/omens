@@ -94,6 +94,138 @@ interface MediaItem {
   thumbnail: string
 }
 
+// === Replies Modal ===
+
+interface ReplyData {
+  authorName: string
+  authorHandle: string
+  authorAvatar: string | null
+  authorFollowers: number
+  content: string
+  likes: number
+  publishedAt: string
+}
+
+function RepliesModal({
+  tweetId,
+  onClose,
+}: {
+  tweetId: string
+  onClose: () => void
+}) {
+  const [replies, setReplies] = useState<ReplyData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [cursor, setCursor] = useState<string | null>(null)
+
+  const fetchReplies = useCallback(
+    (c?: string) => {
+      const url = c ? `/x/replies/${tweetId}?cursor=${encodeURIComponent(c)}` : `/x/replies/${tweetId}`
+      return api<{ replies: ReplyData[]; cursor: string | null }>(url)
+    },
+    [tweetId],
+  )
+
+  useEffect(() => {
+    fetchReplies()
+      .then((r) => {
+        setReplies(r.replies)
+        setCursor(r.cursor)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [fetchReplies])
+
+  const loadMore = async () => {
+    if (!cursor || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const r = await fetchReplies(cursor)
+      setReplies((prev) => [...prev, ...r.replies])
+      setCursor(r.cursor)
+    } catch {
+      // ignore
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+      onClick={onClose}
+    >
+      <div
+        class="w-full max-w-lg max-h-[80vh] rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div class="flex items-center justify-between p-4 pb-2 border-b border-zinc-800">
+          <h3 class="font-semibold text-zinc-100">Replies</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            class="text-zinc-400 hover:text-zinc-200 text-xl leading-none"
+          >
+            &times;
+          </button>
+        </div>
+        <div class="overflow-y-auto flex-1 p-4 scrollbar-dark">
+          {loading && <p class="text-zinc-500 text-sm py-8 text-center">Loading replies...</p>}
+          {!loading && replies.length === 0 && (
+            <p class="text-zinc-500 text-sm py-8 text-center">No replies yet.</p>
+          )}
+          <div class="space-y-4">
+            {replies.map((r, i) => (
+              <div key={i} class="flex gap-2.5">
+                {r.authorAvatar ? (
+                  <img src={r.authorAvatar} alt="" class="w-8 h-8 rounded-full shrink-0 bg-zinc-700" />
+                ) : (
+                  <div class="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">
+                    {(r.authorName || '?').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-baseline gap-1 mb-0.5 flex-wrap">
+                    <span class="text-sm font-semibold text-zinc-200">{r.authorName}</span>
+                    {r.authorHandle && (
+                      <span class="text-xs text-zinc-500">@{r.authorHandle}</span>
+                    )}
+                    {r.authorFollowers > 0 && (
+                      <span class="text-xs text-zinc-600">&middot; {fmt(r.authorFollowers)}</span>
+                    )}
+                    {r.likes > 0 && (
+                      <span class="text-xs text-zinc-600">&middot; {fmt(r.likes)} likes</span>
+                    )}
+                  </div>
+                  <p class="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{r.content}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          {cursor && (
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              class="mt-4 w-full rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+            >
+              {loadingMore ? 'Loading...' : 'Load more replies'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface QuotedTweet {
   authorName: string
   authorHandle: string
@@ -144,10 +276,35 @@ function fmt(n: number): string {
   return String(n)
 }
 
+const MAX_CHARS = 400
+
+function TweetContent({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const needsTruncation = text.length > MAX_CHARS
+
+  return (
+    <div>
+      <p class="text-[15px] text-zinc-200 whitespace-pre-wrap leading-relaxed">
+        {needsTruncation && !expanded ? `${text.slice(0, MAX_CHARS)}...` : text}
+      </p>
+      {needsTruncation && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }}
+          class="text-sm text-blue-400 hover:text-blue-300 mt-1"
+        >
+          {expanded ? 'Show less' : 'Show full post'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function TweetCard({ tweet }: { tweet: Tweet }) {
   const media: MediaItem[] = tweet.mediaUrls ? JSON.parse(tweet.mediaUrls) : []
   const quoted: QuotedTweet | null = tweet.quotedTweet ? JSON.parse(tweet.quotedTweet) : null
   const [lightbox, setLightbox] = useState<number | null>(null)
+  const [showReplies, setShowReplies] = useState(false)
 
   return (
     <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 hover:border-zinc-700 transition-colors">
@@ -157,6 +314,9 @@ function TweetCard({ tweet }: { tweet: Tweet }) {
           index={lightbox}
           onClose={() => setLightbox(null)}
         />
+      )}
+      {showReplies && (
+        <RepliesModal tweetId={tweet.tweetId} onClose={() => setShowReplies(false)} />
       )}
       {/* Retweet indicator */}
       {tweet.isRetweet && (
@@ -216,9 +376,7 @@ function TweetCard({ tweet }: { tweet: Tweet }) {
           </div>
 
           {/* Content */}
-          <p class="text-[15px] text-zinc-200 whitespace-pre-wrap leading-relaxed">
-            {tweet.content}
-          </p>
+          <TweetContent text={tweet.content} />
 
           {/* Media thumbnails */}
           {media.length > 0 && (
@@ -286,18 +444,16 @@ function TweetCard({ tweet }: { tweet: Tweet }) {
 
           {/* Engagement */}
           <div class="flex items-center gap-5 mt-2 text-xs text-zinc-500">
-            <a
-              href={tweet.url}
-              target="_blank"
-              rel="noopener"
+            <button
+              type="button"
               class="flex items-center gap-1 hover:text-blue-400 transition-colors"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); setShowReplies(true) }}
             >
               <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
               </svg>
               {tweet.replies > 0 && fmt(tweet.replies)}
-            </a>
+            </button>
             {tweet.retweets > 0 && (
               <span class="flex items-center gap-1">
                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
