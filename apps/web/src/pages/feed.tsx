@@ -899,31 +899,7 @@ function AiReportView() {
 
   return (
     <div>
-      {/* Top controls */}
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={generate}
-            disabled={generating}
-            class="rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
-          >
-            {generating ? 'Generating...' : 'Generate report'}
-          </button>
-          {viewingReportId && (
-            <button type="button" onClick={backToLatest}
-              class="rounded bg-zinc-800 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200">
-              Back to latest
-            </button>
-          )}
-        </div>
-        {pastData && pastData.reports.length > 1 && (
-          <button type="button" onClick={() => setShowPastReports(!showPastReports)}
-            class="text-xs text-zinc-500 hover:text-zinc-300">
-            {showPastReports ? 'Hide' : 'Past reports'}
-          </button>
-        )}
-      </div>
+      {error && <p class="text-red-400 text-sm text-center mb-3">{error}</p>}
 
       {generating && (
         <div class="mb-4 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-3 text-sm text-zinc-400">
@@ -935,8 +911,6 @@ function AiReportView() {
           </div>
         </div>
       )}
-
-      {error && <p class="text-red-400 text-sm text-center mb-3">{error}</p>}
 
       {/* Past reports dropdown */}
       {showPastReports && pastData && (
@@ -959,17 +933,51 @@ function AiReportView() {
 
       {activeReport ? (
         <div>
-          <div class="flex items-center justify-between text-xs text-zinc-500 mb-2">
-            <span>{activeReport.model} — {activeReport.tweetCount} posts (last 24h)</span>
-            <span>{new Date(activeReport.createdAt).toLocaleString()}</span>
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={generate}
+                disabled={generating}
+                class="rounded bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+              >
+                {generating ? 'Generating...' : 'Regenerate'}
+              </button>
+              {viewingReportId && (
+                <button type="button" onClick={backToLatest}
+                  class="rounded bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200">
+                  Back to latest
+                </button>
+              )}
+            </div>
+            <div class="flex items-center gap-3">
+              {pastData && pastData.reports.length > 1 && (
+                <button type="button" onClick={() => setShowPastReports(!showPastReports)}
+                  class="text-xs text-zinc-500 hover:text-zinc-300">
+                  {showPastReports ? 'Hide history' : 'History'}
+                </button>
+              )}
+              <span class="text-xs text-zinc-600">{new Date(activeReport.createdAt).toLocaleString()}</span>
+            </div>
           </div>
-          <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-4 pb-5">
+          <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-5">
             {renderReportContent(activeReport.content, refTweetMap)}
           </div>
         </div>
       ) : !generating ? (
-        <div class="text-center py-12">
-          <p class="text-zinc-500">No report yet. Click "Generate report" to create one.</p>
+        <div class="flex flex-col items-center justify-center py-24">
+          <svg class="w-12 h-12 text-zinc-700 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+          </svg>
+          <p class="text-zinc-400 mb-4">Generate an AI report from your last 24 hours of posts</p>
+          <button
+            type="button"
+            onClick={generate}
+            disabled={generating}
+            class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+          >
+            Generate report
+          </button>
         </div>
       ) : null}
     </div>
