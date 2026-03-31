@@ -1059,11 +1059,15 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
     }, 2000)
   }, [stopPolling, updateStatus])
 
-  // Check initial scoring status and poll if pending or active
+  // Check initial scoring status — if pending but not active, kick off scoring
   useEffect(() => {
     api<ScoringStatus>('/ai/scoring-status')
       .then((s) => {
         updateStatus(s)
+        if (s.pending > 0 && !s.active) {
+          // Scoring isn't running — trigger it
+          api('/ai/filter', { method: 'POST' }).catch(() => {})
+        }
         if (s.pending > 0 || s.active) startPolling()
       })
       .catch(() => {})
