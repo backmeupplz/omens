@@ -1014,6 +1014,7 @@ function useMinScore(): number {
 export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
   const { nudges, onNudge, feedback } = useNudges()
   const minScore = useMinScore()
+  const { data: aiSettings } = useApi<{ configured: boolean }>('/ai/settings')
   const [page, setPage] = useState(1)
   const [feedKey, setFeedKey] = useState(0) // bump to re-fetch feed
   const { data, loading, error } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}&_=${feedKey}`)
@@ -1028,12 +1029,30 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
   }, [])
 
-  // Check initial scoring status
+  // Check initial scoring status and poll if pending
   useEffect(() => {
     api<{ pending: number }>('/ai/scoring-status')
-      .then((s) => { if (s.pending > 0) setPendingCount(s.pending) })
+      .then((s) => {
+        if (s.pending > 0) {
+          setPendingCount(s.pending)
+          // Start polling since scoring is happening in background
+          stopPolling()
+          pollRef.current = setInterval(() => {
+            api<{ pending: number }>('/ai/scoring-status')
+              .then((st) => {
+                setPendingCount(st.pending)
+                if (st.pending === 0) {
+                  stopPolling()
+                  setNewReady((prev) => prev > 0 ? prev : 1) // signal new posts available
+                }
+              })
+              .catch(() => {})
+          }, 3000)
+        }
+      })
       .catch(() => {})
-  }, [])
+    return stopPolling
+  }, [stopPolling])
 
   const refresh = useCallback(async () => {
     try {
@@ -1100,7 +1119,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
       )}
 
       {/* Scoring progress */}
-      {filtering && pendingCount > 0 && (
+      {pendingCount > 0 && (
         <div class="mb-3 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-sm text-zinc-400">
           <div class="flex items-center gap-2">
             <svg class="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -1126,13 +1145,27 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
       {filterError && <p class="text-red-400 text-sm text-center mb-2">{filterError}</p>}
       {error && <p class="text-red-400 text-center">{error}</p>}
 
-      {data?.data.length === 0 && !loading && !filtering && (
-        <div class="text-center py-12">
-          <p class="text-zinc-400 mb-4">No scored posts yet. Run the AI filter to score your feed.</p>
-          <button type="button" onClick={runFilter} disabled={filtering}
-            class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
-            Filter my feed
-          </button>
+      {data?.data.length === 0 && !loading && !filtering && pendingCount === 0 && (
+        <div class="flex flex-col items-center justify-center py-20">
+          <svg class="w-10 h-10 text-zinc-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+            <path d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+          </svg>
+          {!aiSettings?.configured ? (
+            <>
+              <p class="text-zinc-400 mb-4">Set up an AI provider to filter your feed</p>
+              <a href="/settings" class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500">
+                Go to Settings
+              </a>
+            </>
+          ) : (
+            <>
+              <p class="text-zinc-400 mb-4">No posts to show yet. Fetch your feed first.</p>
+              <button type="button" onClick={refresh}
+                class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500">
+                Fetch posts
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -1189,7 +1222,16 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
       {error && <p class="text-red-400 text-center">{error}</p>}
 
       {data?.data.length === 0 && !loading && (
-        <p class="text-zinc-500 py-8 text-center">No posts yet.</p>
+        <div class="flex flex-col items-center justify-center py-20">
+          <svg class="w-10 h-10 text-zinc-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+            <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
+          </svg>
+          <p class="text-zinc-400 mb-4">No posts yet. Fetch your X feed to get started.</p>
+          <button type="button" onClick={refresh} disabled={refreshing}
+            class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
+            {refreshing ? 'Fetching...' : 'Fetch posts'}
+          </button>
+        </div>
       )}
 
       <div class="flex flex-col gap-2">
