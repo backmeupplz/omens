@@ -365,25 +365,24 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
   if (!ai) return 0
   const db = getDb(env.DATABASE_URL)
 
-  const unscored = await db
+  // Get ALL unscored tweets using a NOT EXISTS subquery
+  const allTweets = await db
     .select()
     .from(tweets)
-    .where(eq(tweets.userId, userId))
+    .where(and(
+      eq(tweets.userId, userId),
+      sql`NOT EXISTS (SELECT 1 FROM tweet_scores WHERE tweet_scores.tweet_id = tweets.id AND tweet_scores.user_id = ${userId})`,
+    ))
     .orderBy(desc(tweets.publishedAt))
-    .limit(200)
 
-  const existingScores = await db.select({ tweetId: tweetScores.tweetId })
-    .from(tweetScores).where(eq(tweetScores.userId, userId))
-  const scoredSet = new Set(existingScores.map((s) => s.tweetId))
-  const toScore = unscored.filter((t) => !scoredSet.has(t.id))
-
-  if (toScore.length === 0) return 0
+  if (allTweets.length === 0) return 0
 
   const userPrefs = ai.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT
   let totalScored = 0
 
-  for (let i = 0; i < toScore.length; i += 50) {
-    const batch = toScore.slice(i, i + 50)
+  // Process in batches of 50
+  for (let i = 0; i < allTweets.length; i += 50) {
+    const batch = allTweets.slice(i, i + 50)
     const tweetText = formatTweetsForAI(batch)
     const prompt = `${FILTER_SYSTEM_PROMPT}\n\nUser preferences:\n${userPrefs}`
 
@@ -407,7 +406,7 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
     }
   }
 
-  console.log(`[ai] Scored ${totalScored} tweets for user ${userId}`)
+  if (totalScored > 0) console.log(`[ai] Scored ${totalScored} tweets for user ${userId}`)
   return totalScored
 }
 
