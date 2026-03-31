@@ -1,15 +1,21 @@
 import { runMigrations } from '@omens/db'
 import { createApp } from './app'
-import { initScheduler } from './scheduler'
 import env from './env'
+import { initFetcher } from './x/fetcher'
 
 // Run DB migrations on startup
-runMigrations(env.DATABASE_URL)
+await runMigrations(env.DATABASE_URL)
 
 const app = createApp()
 
-// Start scheduler after app is ready
-void initScheduler()
+// Start tweet fetcher
+initFetcher()
+
+if (env.SINGLE_USER_MODE) {
+  console.warn(
+    '[security] Running in SINGLE_USER_MODE — all requests bypass authentication. Do not expose to the internet.',
+  )
+}
 
 console.log(`Omens API starting on port ${env.PORT}`)
 

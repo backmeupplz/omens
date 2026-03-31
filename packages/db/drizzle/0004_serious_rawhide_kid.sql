@@ -1,0 +1,1 @@
+ALTER TABLE "tweets" ADD COLUMN "quoted_tweet" text;

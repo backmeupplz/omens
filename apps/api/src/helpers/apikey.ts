@@ -1,9 +1,11 @@
-import { createId } from '@paralleldrive/cuid2'
-
 export function generateApiKey(): { key: string; prefix: string } {
-  const prefix = `omens_${createId().slice(0, 8)}`
-  const secret = createId() + createId()
-  const key = `${prefix}_${secret}`
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  const secret = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+  const prefix = `omens_${secret.slice(0, 8)}`
+  const key = `${prefix}_${secret.slice(8)}`
   return { key, prefix }
 }
 

@@ -1,7 +1,5 @@
-const encoder = new TextEncoder()
-
 export async function hashPassword(password: string): Promise<string> {
-  return Bun.password.hash(password, { algorithm: 'bcrypt', cost: 10 })
+  return Bun.password.hash(password, { algorithm: 'bcrypt', cost: 12 })
 }
 
 export async function verifyPassword(

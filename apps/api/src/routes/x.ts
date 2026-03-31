@@ -1,0 +1,131 @@
+import { zValidator } from '@hono/zod-validator'
+import { getDb, tweets, xSessions } from '@omens/db'
+import { xLoginSchema } from '@omens/shared'
+import { eq } from 'drizzle-orm'
+import { Hono } from 'hono'
+import env from '../env'
+import { encrypt } from '../helpers/crypto'
+import type { AuthUser } from '../middleware/auth'
+import { xLogin } from '../x/auth'
+import { fetchForUser } from '../x/fetcher'
+import { getHomeTimeline } from '../x/graphql'
+
+const xRouter = new Hono<{ Variables: { user: AuthUser } }>()
+
+xRouter.post('/login', zValidator('json', xLoginSchema), async (c) => {
+  const user = c.get('user')
+  const { username, password, totp } = c.req.valid('json')
+  const db = getDb(env.DATABASE_URL)
+
+  try {
+    const session = await xLogin(username, password, totp)
+
+    // Validate session actually works before storing
+    try {
+      await getHomeTimeline({
+        authToken: session.authToken,
+        ct0: session.ct0,
+      })
+    } catch {
+      console.log(`[x] Session validation failed for user ${user.id} (@${username})`)
+      return c.json({ error: 'X login succeeded but session is not working' }, 400)
+    }
+
+    // Encrypt credentials before storage
+    const encAuthToken = await encrypt(session.authToken)
+    const encCt0 = await encrypt(session.ct0)
+
+    // Upsert session (one per user)
+    const existing = await db
+      .select({ id: xSessions.id })
+      .from(xSessions)
+      .where(eq(xSessions.userId, user.id))
+      .limit(1)
+
+    if (existing.length > 0) {
+      await db
+        .update(xSessions)
+        .set({
+          xId: session.xId,
+          username: session.username,
+          authToken: encAuthToken,
+          ct0: encCt0,
+        })
+        .where(eq(xSessions.userId, user.id))
+    } else {
+      await db.insert(xSessions).values({
+        userId: user.id,
+        xId: session.xId,
+        username: session.username,
+        authToken: encAuthToken,
+        ct0: encCt0,
+      })
+    }
+
+    // Delete old tweets so reconnection gets fresh data
+    await db.delete(tweets).where(eq(tweets.userId, user.id))
+
+    console.log(`[x] User ${user.id} connected X @${session.username}`)
+
+    // Trigger initial fetch in background
+    void fetchForUser(user.id)
+
+    return c.json({ connected: true, username: session.username })
+  } catch (err) {
+    console.log(
+      `[x] Login failed for user ${user.id}: ${err instanceof Error ? err.message : 'unknown'}`,
+    )
+    const message = err instanceof Error ? err.message : 'Login failed'
+    return c.json({ error: message }, 400)
+  }
+})
+
+xRouter.get('/session', async (c) => {
+  const user = c.get('user')
+  const db = getDb(env.DATABASE_URL)
+
+  const [session] = await db
+    .select({
+      username: xSessions.username,
+      createdAt: xSessions.createdAt,
+    })
+    .from(xSessions)
+    .where(eq(xSessions.userId, user.id))
+    .limit(1)
+
+  if (!session) {
+    return c.json({ connected: false })
+  }
+
+  return c.json({
+    connected: true,
+    username: session.username,
+    connectedAt: session.createdAt,
+  })
+})
+
+xRouter.delete('/session', async (c) => {
+  const user = c.get('user')
+  const db = getDb(env.DATABASE_URL)
+
+  await db.delete(xSessions).where(eq(xSessions.userId, user.id))
+  await db.delete(tweets).where(eq(tweets.userId, user.id))
+
+  console.log(`[x] User ${user.id} disconnected X`)
+
+  return c.json({ ok: true })
+})
+
+xRouter.post('/refresh', async (c) => {
+  const user = c.get('user')
+
+  try {
+    await fetchForUser(user.id)
+    return c.json({ ok: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Refresh failed'
+    return c.json({ error: message }, 500)
+  }
+})
+
+export default xRouter

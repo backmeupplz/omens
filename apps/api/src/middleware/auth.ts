@@ -1,9 +1,10 @@
-import type { Context, Next } from 'hono'
+import { apiKeys, getDb, users } from '@omens/db'
 import { eq } from 'drizzle-orm'
-import { getDb, users, apiKeys } from '@omens/db'
-import { verifyToken } from '../helpers/jwt'
-import { hashApiKey } from '../helpers/apikey'
+import type { Context, Next } from 'hono'
+import { getCookie } from 'hono/cookie'
 import env from '../env'
+import { hashApiKey } from '../helpers/apikey'
+import { verifyToken } from '../helpers/jwt'
 
 export type AuthUser = {
   id: string
@@ -24,7 +25,6 @@ async function ensureSingleUser() {
     await db.insert(users).values({
       id: DEFAULT_USER_ID,
       email: 'local@omens.local',
-      settings: { interests: '', minScore: 30, language: 'en' },
     })
   }
 }
@@ -42,8 +42,7 @@ export async function authMiddleware(c: Context, next: Next) {
   }
 
   // Try API key first (X-API-Key header or query param)
-  const apiKey =
-    c.req.header('X-API-Key') || c.req.query('api_key')
+  const apiKey = c.req.header('X-API-Key') || c.req.query('api_key')
   if (apiKey) {
     const keyHash = await hashApiKey(apiKey)
     const db = getDb(env.DATABASE_URL)
@@ -77,13 +76,16 @@ export async function authMiddleware(c: Context, next: Next) {
     return next()
   }
 
-  // Try Bearer token
+  // Try httpOnly cookie, then Bearer header
+  const cookieToken = getCookie(c, 'omens_token')
   const header = c.req.header('Authorization')
-  if (!header?.startsWith('Bearer ')) {
+  const bearerToken = header?.startsWith('Bearer ') ? header.slice(7) : null
+  const token = cookieToken || bearerToken
+
+  if (!token) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 
-  const token = header.slice(7)
   const payload = await verifyToken(token)
   if (!payload?.sub) {
     return c.json({ error: 'Invalid token' }, 401)

@@ -1,12 +1,40 @@
 {
   "version": "7",
-  "dialect": "sqlite",
+  "dialect": "postgresql",
   "entries": [
     {
       "idx": 0,
-      "version": "6",
-      "when": 1774441779639,
-      "tag": "0000_wooden_pestilence",
+      "version": "7",
+      "when": 1774908613425,
+      "tag": "0000_classy_wasp",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1774911728682,
+      "tag": "0001_yellow_captain_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774912102827,
+      "tag": "0002_broad_zodiak",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1774912543303,
+      "tag": "0003_confused_triton",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774913746364,
+      "tag": "0004_serious_rawhide_kid",
       "breakpoints": true
     }
   ]

@@ -12,19 +12,15 @@
     "@hono/zod-validator": "^0.5",
     "@omens/db": "workspace:*",
     "@omens/shared": "workspace:*",
-    "@ai-sdk/openai-compatible": "^0.2",
-    "ai": "^4",
     "@paralleldrive/cuid2": "^2.2",
     "drizzle-orm": "^0.44",
     "dotenv": "^16",
     "envalid": "^8",
     "hono": "^4",
     "jose": "^6",
-    "node-cron": "^4",
     "zod": "^3.25"
   },
   "devDependencies": {
-    "@types/node-cron": "^3",
     "typescript": "^5.8"
   }
 }

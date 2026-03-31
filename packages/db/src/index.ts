@@ -1,3 +1,3 @@
-export * from './schema'
-export { getDb, type Db } from './client'
+export { type Db, getDb } from './client'
 export { runMigrations } from './migrate'
+export * from './schema'

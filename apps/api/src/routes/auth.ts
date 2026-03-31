@@ -1,13 +1,43 @@
-import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
+import { getDb, users } from '@omens/db'
+import { loginSchema, registerSchema } from '@omens/shared'
 import { eq } from 'drizzle-orm'
-import { registerSchema, loginSchema } from '@omens/shared'
-import { getDb, users, llmConfigs, outputs } from '@omens/db'
-import { hashPassword, verifyPassword } from '../helpers/password'
-import { createToken } from '../helpers/jwt'
+import { Hono } from 'hono'
+import { setCookie, deleteCookie } from 'hono/cookie'
 import env from '../env'
+import { createToken } from '../helpers/jwt'
+import { hashPassword, verifyPassword } from '../helpers/password'
+
+import { authMiddleware } from '../middleware/auth'
 
 const auth = new Hono()
+
+const isProd = process.env.NODE_ENV === 'production'
+
+auth.get('/mode', (c) => c.json({ singleUser: env.SINGLE_USER_MODE }))
+
+auth.get('/me', authMiddleware, (c) => {
+  const user = c.get('user')
+  return c.json({ id: user.id, email: user.email })
+})
+
+function clientIp(c: any): string {
+  return (
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
+    c.req.header('x-real-ip') ||
+    'unknown'
+  )
+}
+
+function setAuthCookie(c: any, token: string) {
+  setCookie(c, 'omens_token', token, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60, // 7 days, matches JWT expiry
+  })
+}
 
 auth.post('/register', zValidator('json', registerSchema), async (c) => {
   if (env.SINGLE_USER_MODE) {
@@ -17,43 +47,21 @@ auth.post('/register', zValidator('json', registerSchema), async (c) => {
   const { email, password } = c.req.valid('json')
   const db = getDb(env.DATABASE_URL)
 
-  const existing = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, email))
-    .limit(1)
+  try {
+    const passwordHash = await hashPassword(password)
+    const [user] = await db
+      .insert(users)
+      .values({ email, passwordHash })
+      .returning({ id: users.id, email: users.email })
 
-  if (existing.length > 0) {
-    return c.json({ error: 'Email already registered' }, 409)
+    console.log(`[auth] User registered: ${user.id} from ${clientIp(c)}`)
+    const token = await createToken(user.id)
+    setAuthCookie(c, token)
+    return c.json({ user: { id: user.id, email: user.email } })
+  } catch {
+    console.log(`[auth] Registration failed for email from ${clientIp(c)}`)
+    return c.json({ error: 'Registration failed' }, 400)
   }
-
-  const passwordHash = await hashPassword(password)
-  const [user] = await db
-    .insert(users)
-    .values({
-      email,
-      passwordHash,
-      settings: { interests: '', minScore: 30, language: 'en' },
-    })
-    .returning({ id: users.id, email: users.email })
-
-  // Create default LLM config
-  await db.insert(llmConfigs).values({
-    userId: user.id,
-    provider: env.LLM_PROVIDER,
-    model: env.LLM_MODEL,
-    baseUrl: env.LLM_BASE_URL,
-  })
-
-  // Create default web feed output
-  await db.insert(outputs).values({
-    userId: user.id,
-    type: 'web_feed',
-    config: {},
-  })
-
-  const token = await createToken(user.id)
-  return c.json({ token, user: { id: user.id, email: user.email } })
 })
 
 auth.post('/login', zValidator('json', loginSchema), async (c) => {
@@ -71,16 +79,26 @@ auth.post('/login', zValidator('json', loginSchema), async (c) => {
     .limit(1)
 
   if (!user?.passwordHash) {
+    await hashPassword('dummy-password-timing-safe')
+    console.log(`[auth] Failed login (unknown user) from ${clientIp(c)}`)
     return c.json({ error: 'Invalid credentials' }, 401)
   }
 
   const valid = await verifyPassword(password, user.passwordHash)
   if (!valid) {
+    console.log(`[auth] Failed login for user ${user.id} from ${clientIp(c)}`)
     return c.json({ error: 'Invalid credentials' }, 401)
   }
 
+  console.log(`[auth] Successful login for user ${user.id} from ${clientIp(c)}`)
   const token = await createToken(user.id)
-  return c.json({ token, user: { id: user.id, email: user.email } })
+  setAuthCookie(c, token)
+  return c.json({ user: { id: user.id, email: user.email } })
+})
+
+auth.post('/logout', (c) => {
+  deleteCookie(c, 'omens_token', { path: '/' })
+  return c.json({ ok: true })
 })
 
 export default auth

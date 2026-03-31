@@ -1,31 +1,27 @@
 const BASE = '/api'
 
-function getToken(): string | null {
-  return localStorage.getItem('omens_token')
-}
-
-export function setToken(token: string) {
-  localStorage.setItem('omens_token', token)
-}
-
-export function clearToken() {
-  localStorage.removeItem('omens_token')
-}
+// Paths where 401 is expected and should NOT trigger a redirect
+const SILENT_401 = ['/auth/', '/x/session']
 
 export async function api<T = unknown>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const token = getToken()
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   }
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
 
-  const res = await fetch(`${BASE}${path}`, { ...options, headers })
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers,
+    credentials: 'include',
+  })
+
+  if (res.status === 401 && !SILENT_401.some((p) => path.startsWith(p))) {
+    window.location.href = '/login'
+    throw new Error('Unauthorized')
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))

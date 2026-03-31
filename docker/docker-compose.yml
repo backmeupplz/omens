@@ -1,17 +1,27 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: omens
+      POSTGRES_PASSWORD: omens
+      POSTGRES_DB: omens
+    restart: unless-stopped
+
   omens:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     ports:
       - '3000:3000'
-    volumes:
-      - omens_data:/app/data
     env_file: .env
+    depends_on:
+      - postgres
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=file:/app/data/omens.db
+      - DATABASE_URL=postgres://omens:omens@postgres:5432/omens
 
 volumes:
-  omens_data:
+  postgres_data:

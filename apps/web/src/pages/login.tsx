@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks'
-import { useLocation } from 'wouter-preact'
-import { api, setToken } from '../helpers/api'
+import { Redirect, useLocation } from 'wouter-preact'
+import { api } from '../helpers/api'
+import { useApi } from '../helpers/hooks'
 
 export function Login() {
   const [, navigate] = useLocation()
@@ -9,19 +10,25 @@ export function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
 
+  const { data: mode } = useApi<{ singleUser: boolean }>('/auth/mode')
+
+  // In single-user mode, no login needed
+  if (mode?.singleUser) return <Redirect to="/" />
+
   const submit = async (e: Event) => {
     e.preventDefault()
     setError('')
     try {
       const endpoint = isRegister ? '/auth/register' : '/auth/login'
-      const result = await api<{ token: string }>(endpoint, {
+      await api(endpoint, {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       })
-      setToken(result.token)
       navigate('/')
-    } catch (err: any) {
-      setError(err.message)
+      // Force reload to update auth state
+      window.location.href = '/'
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
     }
   }
 
@@ -46,7 +53,7 @@ export function Login() {
         />
         <input
           type="password"
-          placeholder="Password"
+          placeholder="Password (min 8 chars, upper + lower + number)"
           class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
           value={password}
           onInput={(e) => setPassword((e.target as HTMLInputElement).value)}

@@ -6,9 +6,7 @@ export async function request<T = unknown>(
 ): Promise<T> {
   const config = loadConfig()
   if (!config.apiKey) {
-    console.error(
-      'No API key configured. Run: omens config --api-key <key>',
-    )
+    console.error('No API key configured. Run: omens config --api-key <key>')
     process.exit(1)
   }
 

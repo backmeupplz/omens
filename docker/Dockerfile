@@ -37,7 +37,4 @@ COPY packages/shared/ packages/shared/
 ENV NODE_ENV=production
 EXPOSE 3000
 
-VOLUME /app/data
-ENV DATABASE_URL=file:/app/data/omens.db
-
 CMD ["bun", "api/index.js"]

@@ -1,6 +1,6 @@
 {
-  "id": "45ed0b15-a16f-44d4-9ab8-d5eb6d4cea7b",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "45333828-6ab5-4da4-9b78-ded6f4a0d3da",
+  "prevId": "45ed0b15-a16f-44d4-9ab8-d5eb6d4cea7b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -133,6 +133,34 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "likes": {
+          "name": "likes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "retweets": {
+          "name": "retweets",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "replies": {
+          "name": "replies",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "views": {
+          "name": "views",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "published_at": {
           "name": "published_at",
