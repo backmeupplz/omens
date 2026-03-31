@@ -1022,6 +1022,9 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   const [scoringTotal, setScoringTotal] = useState(0)
   const [scoringDone, setScoringDone] = useState(0)
   const [pendingCount, setPendingCount] = useState(0)
+  const [scoringActive, setScoringActive] = useState(false)
+  const [scoringBatch, setScoringBatch] = useState(0)
+  const [scoringTotalBatches, setScoringTotalBatches] = useState(0)
   const [newReady, setNewReady] = useState(0)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -1030,35 +1033,42 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
   }, [])
 
+  interface ScoringStatus { total: number; scored: number; pending: number; active: boolean; batch: number; totalBatches: number }
+
+  const updateStatus = useCallback((st: ScoringStatus) => {
+    setScoringTotal(st.total)
+    setScoringDone(st.scored)
+    setPendingCount(st.pending)
+    setScoringActive(st.active)
+    setScoringBatch(st.batch)
+    setScoringTotalBatches(st.totalBatches)
+  }, [])
+
   const startPolling = useCallback(() => {
     stopPolling()
     pollRef.current = setInterval(() => {
-      api<{ total: number; scored: number; pending: number }>('/ai/scoring-status')
+      api<ScoringStatus>('/ai/scoring-status')
         .then((st) => {
-          setScoringTotal(st.total)
-          setScoringDone(st.scored)
-          setPendingCount(st.pending)
-          if (st.pending === 0) {
+          updateStatus(st)
+          if (st.pending === 0 && !st.active) {
             stopPolling()
             setNewReady((prev) => prev > 0 ? prev : 1)
           }
         })
         .catch(() => {})
     }, 2000)
-  }, [stopPolling])
+  }, [stopPolling, updateStatus])
 
-  // Check initial scoring status and poll if pending
+  // Check initial scoring status and poll if pending or active
   useEffect(() => {
-    api<{ total: number; scored: number; pending: number }>('/ai/scoring-status')
+    api<ScoringStatus>('/ai/scoring-status')
       .then((s) => {
-        setScoringTotal(s.total)
-        setScoringDone(s.scored)
-        setPendingCount(s.pending)
-        if (s.pending > 0) startPolling()
+        updateStatus(s)
+        if (s.pending > 0 || s.active) startPolling()
       })
       .catch(() => {})
     return stopPolling
-  }, [stopPolling, startPolling])
+  }, [stopPolling, startPolling, updateStatus])
 
   const refresh = useCallback(async () => {
     try {
@@ -1094,16 +1104,20 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
       )}
 
       {/* Scoring progress */}
-      {pendingCount > 0 && (
+      {(pendingCount > 0 || scoringActive) && (
         <div class="mb-3 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-3">
-          <div class="flex items-center justify-between text-sm text-zinc-400 mb-2">
-            <div class="flex items-center gap-2">
-              <svg class="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <div class="flex items-center justify-between text-sm mb-2">
+            <div class="flex items-center gap-2 text-zinc-300">
+              <svg class="w-4 h-4 animate-spin shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              AI is scoring your posts...
+              {scoringActive && scoringTotalBatches > 0
+                ? `Scoring batch ${scoringBatch} of ${scoringTotalBatches}`
+                : pendingCount > 0
+                  ? 'Waiting for scoring to start...'
+                  : 'Finishing up...'}
             </div>
-            <span class="text-xs tabular-nums">{scoringDone} / {scoringTotal}</span>
+            <span class="text-xs text-zinc-400 tabular-nums">{scoringDone} / {scoringTotal} posts</span>
           </div>
           <div class="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
             <div
@@ -1111,6 +1125,9 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
               style={{ width: `${scoringTotal > 0 ? (scoringDone / scoringTotal) * 100 : 0}%` }}
             />
           </div>
+          {scoringActive && scoringTotalBatches > 0 && (
+            <p class="text-xs text-zinc-500 mt-1.5">Processing {Math.min(10, pendingCount)} posts with AI... Each batch takes a few seconds.</p>
+          )}
         </div>
       )}
 

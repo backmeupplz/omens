@@ -360,6 +360,13 @@ aiRouter.post('/regenerate-prompt', async (c) => {
 
 // ==================== FEED FILTERING ====================
 
+// In-memory scoring progress per user
+const scoringProgress = new Map<string, { batch: number; totalBatches: number; batchSize: number }>()
+
+export function getScoringProgress(userId: string) {
+  return scoringProgress.get(userId) || null
+}
+
 export async function scoreUnscoredTweets(userId: string): Promise<number> {
   const ai = await getAiConfig(userId)
   if (!ai) return 0
@@ -375,14 +382,18 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
     ))
     .orderBy(desc(tweets.publishedAt))
 
-  if (allTweets.length === 0) return 0
+  if (allTweets.length === 0) { scoringProgress.delete(userId); return 0 }
 
+  const BATCH_SIZE = 10
+  const totalBatches = Math.ceil(allTweets.length / BATCH_SIZE)
   const userPrefs = ai.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT
   let totalScored = 0
 
-  // Process in batches of 50
-  for (let i = 0; i < allTweets.length; i += 50) {
-    const batch = allTweets.slice(i, i + 50)
+  for (let i = 0; i < allTweets.length; i += BATCH_SIZE) {
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1
+    scoringProgress.set(userId, { batch: batchNum, totalBatches, batchSize: BATCH_SIZE })
+
+    const batch = allTweets.slice(i, i + BATCH_SIZE)
     const tweetText = formatTweetsForAI(batch)
     const prompt = `${FILTER_SYSTEM_PROMPT}\n\nUser preferences:\n${userPrefs}`
 
@@ -402,10 +413,11 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
         }
       }
     } catch (err) {
-      console.error(`[ai] Filter batch error:`, err instanceof Error ? err.message : err)
+      console.error(`[ai] Filter batch ${batchNum}/${totalBatches} error:`, err instanceof Error ? err.message : err)
     }
   }
 
+  scoringProgress.delete(userId)
   if (totalScored > 0) console.log(`[ai] Scored ${totalScored} tweets for user ${userId}`)
   return totalScored
 }
@@ -426,7 +438,16 @@ aiRouter.get('/scoring-status', async (c) => {
   const [{ scored }] = await db.select({ scored: sql<number>`count(*)` })
     .from(tweetScores).where(eq(tweetScores.userId, user.id))
 
-  return c.json({ total: Number(total), scored: Number(scored), pending: Number(total) - Number(scored) })
+  const progress = getScoringProgress(user.id)
+
+  return c.json({
+    total: Number(total),
+    scored: Number(scored),
+    pending: Number(total) - Number(scored),
+    active: !!progress,
+    batch: progress?.batch || 0,
+    totalBatches: progress?.totalBatches || 0,
+  })
 })
 
 aiRouter.get('/filtered-feed', async (c) => {
