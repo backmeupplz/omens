@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks'
+import { useCallback, useEffect, useState } from 'preact/hooks'
 import { useLocation } from 'wouter-preact'
 import { api } from '../helpers/api'
 import { useApi } from '../helpers/hooks'
@@ -124,6 +124,348 @@ function XSection({ onXChange }: { onXChange: () => void }) {
   )
 }
 
+// === AI Provider Section ===
+
+const AI_PROVIDERS = [
+  { id: 'openai', name: 'OpenAI' },
+  { id: 'anthropic', name: 'Anthropic' },
+  { id: 'google', name: 'Google Gemini' },
+  { id: 'groq', name: 'Groq' },
+  { id: 'xai', name: 'xAI (Grok)' },
+  { id: 'fireworks', name: 'Fireworks AI' },
+  { id: 'ollama', name: 'Ollama (local)' },
+  { id: 'openrouter', name: 'OpenRouter' },
+] as const
+
+interface AiSettingsData {
+  configured: boolean
+  provider?: string
+  apiKeyMasked?: string
+  baseUrl?: string
+  model?: string
+  systemPrompt?: string
+  defaultPrompt: string
+}
+
+interface ModelInfo {
+  id: string
+  name: string
+}
+
+export function AiSection({ onSave }: { onSave?: () => void } = {}) {
+  const { data: settings, refetch } = useApi<AiSettingsData>('/ai/settings')
+  const [editing, setEditing] = useState(false)
+  const [provider, setProvider] = useState('')
+  const [apiKey, setApiKey] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
+  const [model, setModel] = useState('')
+  const [models, setModels] = useState<ModelInfo[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // Populate form when settings load or entering edit mode
+  useEffect(() => {
+    if (!settings?.configured) return
+    setProvider(settings.provider || '')
+    setBaseUrl(settings.baseUrl || '')
+    setModel(settings.model || '')
+  }, [settings])
+
+  const fetchModels = useCallback(async (p: string, key: string, base: string) => {
+    if (!p) return
+    setModelsLoading(true)
+    try {
+      const res = await api<{ models: ModelInfo[] }>('/ai/models/preview', {
+        method: 'POST',
+        body: JSON.stringify({ provider: p, apiKey: key || 'placeholder', baseUrl: base }),
+      })
+      setModels(res.models || [])
+    } catch {
+      setModels([])
+    } finally {
+      setModelsLoading(false)
+    }
+  }, [])
+
+  // When configured and has saved key, allow fetching models without re-entering key
+  const fetchSavedModels = useCallback(async () => {
+    if (!settings?.configured) return
+    setModelsLoading(true)
+    try {
+      const res = await api<{ models: ModelInfo[] }>('/ai/models')
+      setModels(res.models || [])
+    } catch {
+      setModels([])
+    } finally {
+      setModelsLoading(false)
+    }
+  }, [settings])
+
+  const save = async () => {
+    if (!provider || !model) {
+      setError('Provider and model are required')
+      return
+    }
+    if (!apiKey && !settings?.configured && provider !== 'ollama') {
+      setError('API key is required')
+      return
+    }
+    setError('')
+    setSaving(true)
+    try {
+      await api('/ai/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          provider,
+          apiKey: apiKey || 'keep-existing',
+          baseUrl,
+          model,
+          systemPrompt: '',
+        }),
+      })
+      refetch()
+      onSave?.()
+      setEditing(false)
+      setApiKey('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const providerName = AI_PROVIDERS.find((p) => p.id === settings?.provider)?.name || settings?.provider
+
+  // Connected state
+  if (settings?.configured && !editing) {
+    return (
+      <div class="space-y-3">
+        <h3 class="font-medium">AI Provider</h3>
+        {error && <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>}
+        <div class="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-4 py-3">
+          <div>
+            <span class="text-sm text-zinc-300">
+              {providerName} &middot;{' '}
+              <span class="font-medium text-zinc-100">{settings.model}</span>
+            </span>
+          </div>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              onClick={() => { setEditing(true); fetchSavedModels() }}
+              class="rounded px-3 py-1.5 text-xs bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+            >
+              Change
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const showBaseUrl = provider === 'ollama' || provider === 'openrouter'
+
+  // Setup / edit form
+  return (
+    <div class="space-y-4">
+      <h3 class="font-medium">AI Provider</h3>
+      <p class="text-sm text-zinc-500">Configure an AI provider to generate feed reports.</p>
+
+      {error && <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>}
+
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs text-zinc-400 mb-1 block">Provider</label>
+          <select
+            class="w-full rounded bg-zinc-800 px-3 py-2 pr-8 text-sm border border-zinc-700 select-styled"
+            value={provider}
+            onChange={(e) => {
+              const v = (e.target as HTMLSelectElement).value
+              setProvider(v)
+              setModels([])
+              setModel('')
+            }}
+          >
+            <option value="">Select provider...</option>
+            {AI_PROVIDERS.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {provider && (
+          <div>
+            <label class="text-xs text-zinc-400 mb-1 block">
+              API Key {settings?.configured && settings.apiKeyMasked && (
+                <span class="text-zinc-600">(current: {settings.apiKeyMasked})</span>
+              )}
+            </label>
+            <div class="flex gap-2">
+              <input
+                type="password"
+                class="flex-1 rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700 min-w-0"
+                placeholder={settings?.configured ? 'Leave blank to keep current key' : 'Enter API key'}
+                value={apiKey}
+                onInput={(e) => setApiKey((e.target as HTMLInputElement).value)}
+              />
+              <button
+                type="button"
+                onClick={() => apiKey ? fetchModels(provider, apiKey, baseUrl) : fetchSavedModels()}
+                disabled={modelsLoading || (!apiKey && !settings?.configured && provider !== 'ollama')}
+                class="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700 disabled:opacity-50 shrink-0"
+              >
+                {modelsLoading ? 'Loading...' : 'Fetch models'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showBaseUrl && (
+          <div>
+            <label class="text-xs text-zinc-400 mb-1 block">Base URL (optional)</label>
+            <input
+              type="text"
+              class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+              placeholder={provider === 'ollama' ? 'http://localhost:11434' : 'https://openrouter.ai/api/v1'}
+              value={baseUrl}
+              onInput={(e) => setBaseUrl((e.target as HTMLInputElement).value)}
+            />
+          </div>
+        )}
+
+        {provider && (
+          <div>
+            <label class="text-xs text-zinc-400 mb-1 block">Model</label>
+            {models.length > 0 ? (
+              <select
+                class="w-full rounded bg-zinc-800 px-3 py-2 pr-8 text-sm border border-zinc-700 select-styled"
+                value={model}
+                onChange={(e) => setModel((e.target as HTMLSelectElement).value)}
+              >
+                <option value="">Select model...</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+                placeholder="e.g. gpt-4o, claude-sonnet-4-20250514"
+                value={model}
+                onInput={(e) => setModel((e.target as HTMLInputElement).value)}
+              />
+            )}
+          </div>
+        )}
+
+        {provider && (
+          <div class="flex gap-2">
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving || !provider || !model || (!apiKey && !settings?.configured && provider !== 'ollama')}
+              class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            {settings?.configured && (
+              <button
+                type="button"
+                onClick={() => { setEditing(false); setError('') }}
+                class="rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// === AI Prompt Section ===
+
+function AiPromptSection() {
+  const { data: settings, refetch } = useApi<{ configured: boolean; systemPrompt?: string; defaultPrompt: string }>('/ai/settings')
+  const [prompt, setPrompt] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
+
+  // Pre-fill with current prompt or default
+  useEffect(() => {
+    if (!settings) return
+    if (prompt !== null) return // already edited
+    setPrompt(settings.systemPrompt || settings.defaultPrompt || '')
+  }, [settings, prompt])
+
+  if (!settings?.configured) return null
+
+  const isDefault = !settings.systemPrompt && prompt === settings.defaultPrompt
+  const hasChanges = prompt !== (settings.systemPrompt || settings.defaultPrompt)
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    setSaved(false)
+    try {
+      await api('/ai/settings/prompt', {
+        method: 'PUT',
+        body: JSON.stringify({ systemPrompt: prompt === settings.defaultPrompt ? '' : prompt }),
+      })
+      setSaved(true)
+      refetch()
+      setTimeout(() => setSaved(false), 3000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save prompt')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const resetToDefault = () => {
+    if (!confirm('Reset prompt to default? Your custom prompt will be lost.')) return
+    setPrompt(settings.defaultPrompt)
+  }
+
+  return (
+    <div class="space-y-3">
+      <h3 class="font-medium">AI Prompt</h3>
+      <p class="text-sm text-zinc-500">Customize the instructions AI uses when analyzing your feed.</p>
+      {error && <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>}
+      {saved && <p class="text-sm text-emerald-400 bg-emerald-900/20 rounded px-3 py-2">Prompt saved</p>}
+      <textarea
+        class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700 resize-y scrollbar-dark"
+        style="min-height: 120px; field-sizing: content; max-height: 60vh;"
+        value={prompt || ''}
+        onInput={(e) => setPrompt((e.target as HTMLTextAreaElement).value)}
+      />
+      <div class="flex gap-2">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving || !hasChanges}
+          class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : 'Save prompt'}
+        </button>
+        {!isDefault && (
+          <button
+            type="button"
+            onClick={resetToDefault}
+            class="rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+          >
+            Reset to default
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // === API Keys Section ===
 
 function ApiKeysSection() {
@@ -195,7 +537,8 @@ function ApiKeysSection() {
         <button
           type="button"
           onClick={createKey}
-          class="rounded bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700"
+          disabled={!name}
+          class="rounded bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700 disabled:opacity-50"
         >
           Create
         </button>
@@ -250,6 +593,9 @@ export function Settings({
         <XSection onXChange={onXChange} />
         {xConnected && (
           <>
+            <hr class="border-zinc-800" />
+            <AiSection />
+            <AiPromptSection />
             <hr class="border-zinc-800" />
             <ApiKeysSection />
           </>

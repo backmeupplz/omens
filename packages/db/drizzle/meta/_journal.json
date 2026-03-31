@@ -50,6 +50,13 @@
       "when": 1774966826428,
       "tag": "0006_organic_baron_strucker",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1774973066788,
+      "tag": "0007_dark_purifiers",
+      "breakpoints": true
     }
   ]
 }

@@ -6,6 +6,7 @@ import { logger } from 'hono/logger'
 import env from './env'
 import { authMiddleware } from './middleware/auth'
 import { rateLimiter } from './middleware/ratelimit'
+import aiRouter from './routes/ai'
 import apiKeysRouter from './routes/apikeys'
 import authRoutes from './routes/auth'
 import feedRouter from './routes/feed'
@@ -61,7 +62,14 @@ export function createApp() {
   app.use('/feed/*', authMiddleware)
   app.use('/x/*', authMiddleware)
   app.use('/api-keys/*', authMiddleware)
+  app.use('/ai/*', authMiddleware)
   app.use('/og/*', authMiddleware)
+
+  // Rate limit AI report generation
+  app.post(
+    '/ai/report',
+    rateLimiter({ windowMs: 60_000, max: 3, keyPrefix: 'ai-report' }),
+  )
 
   // OG metadata proxy (cached)
   app.get('/og', async (c) => {
@@ -101,6 +109,7 @@ export function createApp() {
   app.route('/feed', feedRouter)
   app.route('/x', xRouter)
   app.route('/api-keys', apiKeysRouter)
+  app.route('/ai', aiRouter)
 
   // Serve frontend static files in production
   if (process.env.NODE_ENV === 'production') {

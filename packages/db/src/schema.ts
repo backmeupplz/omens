@@ -75,6 +75,36 @@ export const ogCache = pgTable('og_cache', {
   fetchedAt: timestamp('fetched_at').notNull().defaultNow(),
 })
 
+export const aiSettings = pgTable('ai_settings', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId()),
+  userId: text('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull(),
+  apiKey: text('api_key').notNull(), // encrypted
+  baseUrl: text('base_url'),
+  model: text('model').notNull(),
+  systemPrompt: text('system_prompt'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const aiReports = pgTable('ai_reports', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  content: text('content').notNull(),
+  model: text('model').notNull(),
+  tweetCount: integer('tweet_count').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
 export const apiKeys = pgTable('api_keys', {
   id: text('id')
     .primaryKey()

@@ -181,11 +181,12 @@ function getFullText(tweetResult: any, legacy: any): string {
   const noteText = tweetResult.note_tweet?.note_tweet_results?.result?.text
   let text = noteText || legacy.full_text || ''
 
-  // Strip trailing t.co URLs when media or cards are present (X's web client does this)
+  // Strip trailing t.co URLs when media, cards, or articles are present (X's web client does this)
   const hasMedia = legacy.extended_entities?.media?.length > 0 ||
     legacy.entities?.media?.length > 0
   const hasCard = tweetResult.card?.legacy?.binding_values?.length > 0
-  if (hasMedia || hasCard) {
+  const hasArticle = !!tweetResult.article?.article_results?.result
+  if (hasMedia || hasCard || hasArticle) {
     text = text.replace(/\s*https:\/\/t\.co\/\w+\s*$/, '')
   }
 
@@ -193,6 +194,23 @@ function getFullText(tweetResult: any, legacy: any): string {
 }
 
 function extractCard(tweetResult: any): ParsedTweet['card'] {
+  // Check for X article data
+  const article = tweetResult.article?.article_results?.result
+  if (article) {
+    const title = article.title || article.preview_title
+    if (title) {
+      const coverImg = article.cover_image?.media_info?.original_img_url ||
+        article.cover_image?.media?.media_info?.original_img_url
+      return {
+        title,
+        description: article.preview_body || article.subtitle || null,
+        thumbnail: coverImg || null,
+        domain: 'x.com',
+        url: article.url || '',
+      }
+    }
+  }
+
   const card = tweetResult.card?.legacy
   if (!card?.binding_values) return null
 

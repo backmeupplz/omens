@@ -22,3 +22,24 @@ export const xLoginSchema = z.object({
   password: z.string().min(1),
   totp: z.string().optional(),
 })
+
+export const aiProviders = [
+  'openai',
+  'anthropic',
+  'google',
+  'groq',
+  'xai',
+  'fireworks',
+  'ollama',
+  'openrouter',
+] as const
+
+export type AiProvider = (typeof aiProviders)[number]
+
+export const aiSettingsSchema = z.object({
+  provider: z.enum(aiProviders),
+  apiKey: z.string().min(1),
+  baseUrl: z.string().optional().default(''),
+  model: z.string().min(1),
+  systemPrompt: z.string().max(10000).optional().default(''),
+})

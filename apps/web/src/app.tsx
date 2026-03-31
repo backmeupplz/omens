@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'preact/hooks'
 import { Link, Redirect, Route, Switch, useLocation } from 'wouter-preact'
 import { api } from './helpers/api'
-import { Feed } from './pages/feed'
+import { AiReportPage, Feed } from './pages/feed'
 import { Login } from './pages/login'
 import { Settings } from './pages/settings'
 
@@ -128,7 +128,7 @@ export function App() {
             <Link href="/" class="text-lg font-bold tracking-tight">
               Omens
             </Link>
-            {showFeed && location === '/' && (
+            {showFeed && location === '/feed' && (
               <button
                 type="button"
                 onClick={handleRefresh}
@@ -157,7 +157,22 @@ export function App() {
                     ? 'text-zinc-100 bg-zinc-800'
                     : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
                 }`}
-                title="Feed"
+                title="AI Report"
+              >
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                </svg>
+              </Link>
+            )}
+            {showFeed && (
+              <Link
+                href="/feed"
+                class={`p-1.5 rounded-lg transition-colors ${
+                  location === '/feed'
+                    ? 'text-zinc-100 bg-zinc-800'
+                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
+                }`}
+                title="All Posts"
               >
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                   <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
@@ -192,6 +207,13 @@ export function App() {
         <Switch>
           <Route path="/login" component={Login} />
           <Route path="/">
+            <AuthGuard auth={auth}>
+              <XGuard auth={auth}>
+                <AiReportPage />
+              </XGuard>
+            </AuthGuard>
+          </Route>
+          <Route path="/feed">
             <AuthGuard auth={auth}>
               <XGuard auth={auth}>
                 <Feed onRefreshRef={(fn) => setRefreshFn(() => fn)} />

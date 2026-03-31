@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'preact/hooks'
 import { api } from '../helpers/api'
 import { useApi } from '../helpers/hooks'
+import { AiSection } from './settings'
 
 // === Lightbox ===
 
@@ -644,6 +645,136 @@ function TweetCard({ tweet }: { tweet: Tweet }) {
       </div>
     </div>
   )
+}
+
+// === AI Report ===
+
+interface AiReport {
+  content: string
+  model: string
+  tweetCount: number
+  createdAt: string
+}
+
+function simpleMarkdown(text: string): preact.ComponentChildren[] {
+  return text.split('\n').map((line, i) => {
+    // Bold
+    let processed: preact.ComponentChildren = line.replace(
+      /\*\*(.+?)\*\*/g, '\x01$1\x02',
+    )
+    const parts: preact.ComponentChildren[] = []
+    const str = processed as string
+    let last = 0
+    for (let j = 0; j < str.length; j++) {
+      if (str[j] === '\x01') {
+        if (j > last) parts.push(str.slice(last, j))
+        const end = str.indexOf('\x02', j + 1)
+        if (end !== -1) {
+          parts.push(<strong key={`${i}-${j}`} class="text-zinc-100">{str.slice(j + 1, end)}</strong>)
+          last = end + 1
+          j = end
+        }
+      }
+    }
+    if (last < str.length) parts.push(str.slice(last))
+
+    // Headers
+    if (line.startsWith('### ')) {
+      return <h4 key={i} class="text-sm font-bold text-zinc-100 mt-3 mb-1">{parts.length > 0 ? parts : line.slice(4)}</h4>
+    }
+    if (line.startsWith('## ')) {
+      return <h3 key={i} class="text-base font-bold text-zinc-100 mt-4 mb-1">{parts.length > 0 ? parts : line.slice(3)}</h3>
+    }
+    if (line.startsWith('# ')) {
+      return <h2 key={i} class="text-lg font-bold text-zinc-100 mt-4 mb-2">{parts.length > 0 ? parts : line.slice(2)}</h2>
+    }
+    // List items
+    if (line.match(/^[-*]\s/)) {
+      return <li key={i} class="text-sm text-zinc-300 ml-4 list-disc">{parts.length > 0 ? parts : line.slice(2)}</li>
+    }
+    if (line.match(/^\d+\.\s/)) {
+      return <li key={i} class="text-sm text-zinc-300 ml-4 list-decimal">{parts.length > 0 ? parts : line.replace(/^\d+\.\s/, '')}</li>
+    }
+    // Empty line
+    if (line.trim() === '') return <br key={i} />
+    // Normal paragraph
+    return <p key={i} class="text-sm text-zinc-300 leading-relaxed">{parts.length > 0 ? parts : line}</p>
+  })
+}
+
+function AiReportView() {
+  const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean }>('/ai/settings')
+  const { data, loading, refetch } = useApi<{ report: AiReport | null }>('/ai/report')
+  const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const generate = async () => {
+    setGenerating(true)
+    setError(null)
+    try {
+      await api('/ai/report', { method: 'POST' })
+      refetch()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to generate report')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  if (settingsLoading || loading) return <p class="text-zinc-500 py-8 text-center">Loading...</p>
+
+  // Show AI setup if not configured
+  if (!settings?.configured) {
+    return <AiSection onSave={refetchSettings} />
+  }
+
+  const report = data?.report
+
+  return (
+    <div>
+      {error && <p class="text-red-400 text-sm text-center mb-3">{error}</p>}
+
+      {report ? (
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-xs text-zinc-500">
+            <span>
+              {report.model} — {report.tweetCount} posts analyzed
+            </span>
+            <span>{new Date(report.createdAt).toLocaleString()}</span>
+          </div>
+          <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
+            {simpleMarkdown(report.content)}
+          </div>
+          <button
+            type="button"
+            onClick={generate}
+            disabled={generating}
+            class="rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+          >
+            {generating ? 'Generating...' : 'Regenerate report'}
+          </button>
+        </div>
+      ) : (
+        <div class="text-center py-12">
+          <p class="text-zinc-400 mb-4">No AI report yet. Generate one to surface the most important items from your feed.</p>
+          <button
+            type="button"
+            onClick={generate}
+            disabled={generating}
+            class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {generating ? 'Generating report...' : 'Generate AI report'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// === Exported Pages ===
+
+export function AiReportPage() {
+  return <AiReportView />
 }
 
 export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
