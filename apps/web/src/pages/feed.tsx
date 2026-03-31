@@ -469,11 +469,12 @@ function TweetContent({ text, hideUrls }: { text: string; hideUrls?: boolean }) 
   )
 }
 
-function TweetCard({ tweet, nudge, onNudge, score }: {
+function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
   tweet: Tweet
   nudge?: 'up' | 'down' | null
   onNudge?: (tweetId: string, direction: 'up' | 'down') => void
   score?: number | null
+  minScore?: number
 }) {
   const media: MediaItem[] = tweet.mediaUrls ? JSON.parse(tweet.mediaUrls) : []
   const quoted: QuotedTweet | null = tweet.quotedTweet ? JSON.parse(tweet.quotedTweet) : null
@@ -659,7 +660,7 @@ function TweetCard({ tweet, nudge, onNudge, score }: {
                 </span>
               )}
               {score != null && (
-                <span class={`text-[10px] font-medium px-1 py-0.5 rounded-sm ${score >= 70 ? 'text-emerald-500' : score >= 50 ? 'text-yellow-500' : 'text-zinc-600'}`}>
+                <span class={`text-[10px] font-medium px-1 py-0.5 rounded-sm ${minScore != null && score < minScore ? 'text-red-500' : score >= 70 ? 'text-emerald-500' : score >= 50 ? 'text-yellow-500' : 'text-zinc-600'}`}>
                   {score}
                 </span>
               )}
@@ -1005,11 +1006,16 @@ export function AiReportPage() {
   return <AiReportView />
 }
 
+function useMinScore(): number {
+  const { data } = useApi<{ configured: boolean; minScore?: number }>('/ai/settings')
+  return data?.minScore ?? 50
+}
+
 export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
   const { nudges, onNudge, feedback } = useNudges()
+  const minScore = useMinScore()
   const [page, setPage] = useState(1)
-  const [minScore, setMinScore] = useState(50)
-  const { data, loading, error, refetch } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}&min_score=${minScore}`)
+  const { data, loading, error, refetch } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}`)
   const [filtering, setFiltering] = useState(false)
   const [filterError, setFilterError] = useState<string | null>(null)
   const [refreshCount, setRefreshCount] = useState<number | null>(null)
@@ -1069,28 +1075,13 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
           </div>
         </div>
       )}
-      {/* Relevance slider */}
-      <div class="mb-3 flex items-center gap-3">
-        <span class="text-xs text-zinc-500 shrink-0">Relevance</span>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          step="5"
-          value={minScore}
-          onInput={(e) => { setMinScore(Number((e.target as HTMLInputElement).value)); setPage(1) }}
-          class="flex-1 h-1 accent-emerald-500 bg-zinc-700 rounded-full appearance-none cursor-pointer"
-        />
-        <span class="text-xs text-zinc-400 w-8 text-right">{minScore}</span>
-      </div>
-
       {loading && <p class="text-zinc-500 py-8 text-center">Loading...</p>}
       {filterError && <p class="text-red-400 text-sm text-center mb-2">{filterError}</p>}
       {error && <p class="text-red-400 text-center">{error}</p>}
 
       {data?.data.length === 0 && !loading && !filtering && (
         <div class="text-center py-12">
-          <p class="text-zinc-400 mb-4">{minScore > 0 ? `No posts scored ${minScore}+. Try lowering the slider.` : 'No scored posts yet. Run the AI filter to score your feed.'}</p>
+          <p class="text-zinc-400 mb-4">No scored posts yet. Run the AI filter to score your feed.</p>
           <button type="button" onClick={runFilter} disabled={filtering}
             class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
             Filter my feed
@@ -1100,7 +1091,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 
       <div class="flex flex-col gap-2">
         {data?.data.map((tweet: any) => (
-          <TweetCard key={tweet.id} tweet={tweet} nudge={nudges.get(tweet.id) || null} onNudge={onNudge} score={tweet.score} />
+          <TweetCard key={tweet.id} tweet={tweet} nudge={nudges.get(tweet.id) || null} onNudge={onNudge} score={tweet.score} minScore={minScore} />
         ))}
       </div>
       {data?.pagination && <Pagination page={page} totalPages={data.pagination.totalPages} onPage={setPage} />}
@@ -1110,6 +1101,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 
 export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
   const { nudges, onNudge, feedback } = useNudges()
+  const minScore = useMinScore()
   const [page, setPage] = useState(1)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
@@ -1155,7 +1147,7 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
 
       <div class="flex flex-col gap-2">
         {data?.data.map((tweet) => (
-          <TweetCard key={tweet.id} tweet={tweet} nudge={nudges.get(tweet.id) || null} onNudge={onNudge} />
+          <TweetCard key={tweet.id} tweet={tweet} nudge={nudges.get(tweet.id) || null} onNudge={onNudge} score={(tweet as any).score} minScore={minScore} />
         ))}
       </div>
       {data?.pagination && <Pagination page={page} totalPages={data.pagination.totalPages} onPage={setPage} />}

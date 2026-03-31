@@ -73,6 +73,7 @@ aiRouter.get('/settings', async (c) => {
     configured: true,
     provider: settings.provider,
     apiKeyMasked: maskedKey,
+    minScore: settings.minScore,
     baseUrl: settings.baseUrl || '',
     model: settings.model,
     systemPrompt: settings.systemPrompt || '',
@@ -130,6 +131,15 @@ aiRouter.put('/settings/prompt', async (c) => {
   await db.update(aiSettings)
     .set({ systemPrompt: body.systemPrompt || null, updatedAt: new Date() })
     .where(eq(aiSettings.userId, user.id))
+  return c.json({ ok: true })
+})
+
+aiRouter.put('/settings/min-score', async (c) => {
+  const user = c.get('user')
+  const body = await c.req.json<{ minScore: number }>()
+  const db = getDb(env.DATABASE_URL)
+  const val = Math.max(0, Math.min(100, Math.round(body.minScore || 0)))
+  await db.update(aiSettings).set({ minScore: val }).where(eq(aiSettings.userId, user.id))
   return c.json({ ok: true })
 })
 
@@ -409,9 +419,14 @@ aiRouter.get('/filtered-feed', async (c) => {
   const user = c.get('user')
   const db = getDb(env.DATABASE_URL)
 
+  // Use stored minScore from user settings
+  const [settings] = await db.select({ minScore: aiSettings.minScore })
+    .from(aiSettings).where(eq(aiSettings.userId, user.id)).limit(1)
+  const storedMin = settings?.minScore ?? 50
+
   const page = Math.max(1, Number(c.req.query('page') || '1') || 1)
   const limit = Math.max(1, Math.min(Number(c.req.query('limit') || '50') || 50, 100))
-  const minScore = Math.max(0, Math.min(100, Number(c.req.query('min_score') || '50') || 50))
+  const minScore = storedMin
   const offset = (page - 1) * limit
 
   const result = await db

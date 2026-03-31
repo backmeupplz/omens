@@ -64,6 +64,13 @@
       "when": 1774990156714,
       "tag": "0008_lyrical_iron_fist",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1774992495155,
+      "tag": "0009_fuzzy_mathemanic",
+      "breakpoints": true
     }
   ]
 }

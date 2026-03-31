@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { useLocation } from 'wouter-preact'
 import { api } from '../helpers/api'
 import { useApi } from '../helpers/hooks'
@@ -397,10 +397,31 @@ interface InternalsData {
 }
 
 function AiTuningSection() {
-  const { data: settings } = useApi<{ configured: boolean }>('/ai/settings')
+  const { data: settings } = useApi<{ configured: boolean; minScore?: number }>('/ai/settings')
   const { data: internals, refetch } = useApi<InternalsData>('/ai/internals')
   const [instruction, setInstruction] = useState('')
   const [regenerating, setRegenerating] = useState(false)
+  const [localMinScore, setLocalMinScore] = useState<number | null>(null)
+  const [savingScore, setSavingScore] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (settings?.minScore != null && localMinScore === null) {
+      setLocalMinScore(settings.minScore)
+    }
+  }, [settings, localMinScore])
+
+  const onSliderChange = (val: number) => {
+    setLocalMinScore(val)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(async () => {
+      setSavingScore(true)
+      try {
+        await api('/ai/settings/min-score', { method: 'PUT', body: JSON.stringify({ minScore: val }) })
+      } catch {}
+      setSavingScore(false)
+    }, 500)
+  }
   const [error, setError] = useState('')
   const [showPrompt, setShowPrompt] = useState(false)
 
@@ -448,6 +469,30 @@ function AiTuningSection() {
       <h3 class="font-medium">AI Tuning</h3>
 
       {error && <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>}
+
+      {/* Min relevance slider */}
+      {localMinScore !== null && (
+        <div>
+          <label class="text-xs text-zinc-400 mb-1 block">Min relevance for filtered feed</label>
+          <div class="flex items-center gap-3">
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={localMinScore}
+              onInput={(e) => onSliderChange(Number((e.target as HTMLInputElement).value))}
+              class="flex-1"
+            />
+            <span class="text-sm text-zinc-300 w-8 text-right tabular-nums">{localMinScore}</span>
+            {savingScore && (
+              <svg class="w-3.5 h-3.5 animate-spin text-zinc-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Quick instruction input */}
       <div>

@@ -1,0 +1,1 @@
+ALTER TABLE "ai_settings" ADD COLUMN "min_score" integer DEFAULT 50 NOT NULL;

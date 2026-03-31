@@ -89,6 +89,7 @@ export const aiSettings = pgTable('ai_settings', {
   baseUrl: text('base_url'),
   model: text('model').notNull(),
   systemPrompt: text('system_prompt'),
+  minScore: integer('min_score').notNull().default(50),
   promptLastRegenAt: timestamp('prompt_last_regen_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

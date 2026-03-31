@@ -1,5 +1,5 @@
-import { getDb, tweets } from '@omens/db'
-import { desc, eq, sql } from 'drizzle-orm'
+import { getDb, tweets, tweetScores } from '@omens/db'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import env from '../env'
 import type { AuthUser } from '../middleware/auth'
@@ -14,9 +14,17 @@ feedRouter.get('/', async (c) => {
   const limit = Math.max(1, Math.min(Math.floor(Number(c.req.query('limit') || '50')) || 50, 100))
   const offset = (page - 1) * limit
 
+  // Left join scores so each tweet gets its score if available
   const result = await db
-    .select()
+    .select({
+      tweet: tweets,
+      score: tweetScores.score,
+    })
     .from(tweets)
+    .leftJoin(tweetScores, and(
+      eq(tweetScores.tweetId, tweets.id),
+      eq(tweetScores.userId, user.id),
+    ))
     .where(eq(tweets.userId, user.id))
     .orderBy(desc(tweets.publishedAt))
     .limit(limit)
@@ -28,7 +36,7 @@ feedRouter.get('/', async (c) => {
     .where(eq(tweets.userId, user.id))
 
   return c.json({
-    data: result,
+    data: result.map((r) => ({ ...r.tweet, score: r.score })),
     pagination: {
       page,
       limit,
