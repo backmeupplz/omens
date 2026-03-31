@@ -784,6 +784,25 @@ interface AiReportData {
   createdAt: string
 }
 
+function processBold(text: string, lineKey: number): preact.ComponentChildren[] {
+  const processed = text.replace(/\*\*(.+?)\*\*/g, '\x01$1\x02')
+  const parts: preact.ComponentChildren[] = []
+  let last = 0
+  for (let j = 0; j < processed.length; j++) {
+    if (processed[j] === '\x01') {
+      if (j > last) parts.push(processed.slice(last, j))
+      const end = processed.indexOf('\x02', j + 1)
+      if (end !== -1) {
+        parts.push(<strong key={`${lineKey}-${j}`} class="text-zinc-100">{processed.slice(j + 1, end)}</strong>)
+        last = end + 1
+        j = end
+      }
+    }
+  }
+  if (last < processed.length) parts.push(processed.slice(last))
+  return parts
+}
+
 function renderReportContent(
   text: string,
   refTweets: Map<string, Tweet>,
@@ -795,7 +814,7 @@ function renderReportContent(
     const line = lines[i]
 
     // Inline tweet embed
-    const tweetMatch = line.match(/^\[\[tweet:([^\]]+)\]\]$/)
+    const tweetMatch = line.match(/\[\[tweet:([^\]]+)\]\]/)
     if (tweetMatch) {
       const tweet = refTweets.get(tweetMatch[1])
       if (tweet) {
@@ -804,31 +823,29 @@ function renderReportContent(
       continue
     }
 
-    // Bold processing
-    const processed = line.replace(/\*\*(.+?)\*\*/g, '\x01$1\x02')
-    const parts: preact.ComponentChildren[] = []
-    let last = 0
-    for (let j = 0; j < processed.length; j++) {
-      if (processed[j] === '\x01') {
-        if (j > last) parts.push(processed.slice(last, j))
-        const end = processed.indexOf('\x02', j + 1)
-        if (end !== -1) {
-          parts.push(<strong key={`${i}-${j}`} class="text-zinc-100">{processed.slice(j + 1, end)}</strong>)
-          last = end + 1
-          j = end
-        }
-      }
+    // Determine line type and strip prefix
+    let content: preact.ComponentChildren[]
+    if (line.startsWith('### ')) {
+      content = processBold(line.slice(4), i)
+      result.push(<h4 key={i} class="text-sm font-bold text-zinc-100 mt-3 mb-1">{content}</h4>)
+    } else if (line.startsWith('## ')) {
+      content = processBold(line.slice(3), i)
+      result.push(<h3 key={i} class="text-base font-bold text-zinc-100 mt-4 mb-1">{content}</h3>)
+    } else if (line.startsWith('# ')) {
+      content = processBold(line.slice(2), i)
+      result.push(<h2 key={i} class="text-lg font-bold text-zinc-100 mt-4 mb-2">{content}</h2>)
+    } else if (line.match(/^[-*]\s/)) {
+      content = processBold(line.slice(2), i)
+      result.push(<li key={i} class="text-sm text-zinc-300 ml-4 list-disc">{content}</li>)
+    } else if (line.match(/^\d+\.\s/)) {
+      content = processBold(line.replace(/^\d+\.\s/, ''), i)
+      result.push(<li key={i} class="text-sm text-zinc-300 ml-4 list-decimal">{content}</li>)
+    } else if (line.trim() === '') {
+      result.push(<br key={i} />)
+    } else {
+      content = processBold(line, i)
+      result.push(<p key={i} class="text-sm text-zinc-300 leading-relaxed">{content}</p>)
     }
-    if (last < processed.length) parts.push(processed.slice(last))
-    const content = parts.length > 0 ? parts : [line]
-
-    if (line.startsWith('### ')) result.push(<h4 key={i} class="text-sm font-bold text-zinc-100 mt-3 mb-1">{content}</h4>)
-    else if (line.startsWith('## ')) result.push(<h3 key={i} class="text-base font-bold text-zinc-100 mt-4 mb-1">{content}</h3>)
-    else if (line.startsWith('# ')) result.push(<h2 key={i} class="text-lg font-bold text-zinc-100 mt-4 mb-2">{content}</h2>)
-    else if (line.match(/^[-*]\s/)) result.push(<li key={i} class="text-sm text-zinc-300 ml-4 list-disc">{content}</li>)
-    else if (line.match(/^\d+\.\s/)) result.push(<li key={i} class="text-sm text-zinc-300 ml-4 list-decimal">{content}</li>)
-    else if (line.trim() === '') result.push(<br key={i} />)
-    else result.push(<p key={i} class="text-sm text-zinc-300 leading-relaxed">{content}</p>)
   }
 
   return result
@@ -989,14 +1006,20 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
   const [page, setPage] = useState(1)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
+  const [refreshCount, setRefreshCount] = useState<number | null>(null)
   const { data, loading, error, refetch } = useApi<FeedResponse>(`/feed?limit=50&page=${page}`)
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
     setRefreshError(null)
+    setRefreshCount(null)
     try {
-      await api('/x/refresh', { method: 'POST' })
+      const res = await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
+      setRefreshCount(res.count)
       refetch()
+      // Also trigger AI filtering in background
+      api('/ai/filter', { method: 'POST' }).catch(() => {})
+      setTimeout(() => setRefreshCount(null), 4000)
     } catch (e) {
       setRefreshError(e instanceof Error ? e.message : 'Failed to refresh feed')
     } finally {
@@ -1010,9 +1033,9 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
 
   return (
     <div>
-      {feedback && (
+      {(feedback || refreshCount !== null) && (
         <div class="fixed top-16 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-200 shadow-lg">
-          {feedback}
+          {refreshCount !== null ? `+${refreshCount} posts` : feedback}
         </div>
       )}
       {loading && <p class="text-zinc-500 py-8 text-center">Loading...</p>}

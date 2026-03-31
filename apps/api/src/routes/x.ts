@@ -129,8 +129,8 @@ xRouter.post('/refresh', async (c) => {
   const user = c.get('user')
 
   try {
-    await fetchForUser(user.id)
-    return c.json({ ok: true })
+    const count = await fetchForUser(user.id)
+    return c.json({ ok: true, count })
   } catch (err) {
     console.error(`[x] Refresh failed:`, err instanceof Error ? err.message : err)
     return c.json({ error: 'Refresh failed' }, 500)

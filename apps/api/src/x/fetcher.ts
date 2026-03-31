@@ -10,7 +10,7 @@ import { getHomeTimeline } from './graphql'
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null
 
-async function fetchForUser(userId: string) {
+async function fetchForUser(userId: string): Promise<number> {
   const db = getDb(env.DATABASE_URL)
 
   const [session] = await db
@@ -19,7 +19,7 @@ async function fetchForUser(userId: string) {
     .where(eq(xSessions.userId, userId))
     .limit(1)
 
-  if (!session) return
+  if (!session) return 0
 
   try {
     const authToken = await decrypt(session.authToken)
@@ -80,8 +80,10 @@ async function fetchForUser(userId: string) {
     if (upserted > 0) {
       console.log(`[fetcher] Upserted ${upserted} tweets for user ${userId}`)
     }
+    return upserted
   } catch (err) {
     console.error(`[fetcher] Error fetching for user ${userId}:`, err)
+    return 0
   }
 }
 

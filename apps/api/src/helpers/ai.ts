@@ -5,26 +5,18 @@
 
 import type { AiProvider } from '@omens/shared'
 
-export const DEFAULT_SYSTEM_PROMPT = `You are an AI assistant analyzing a user's X/Twitter feed. Your job is to surface the most important, interesting, and actionable items.
+export const DEFAULT_SYSTEM_PROMPT = `You analyze an X/Twitter feed to find signal in the noise.
 
-Prioritize:
-- Breaking news and important developments
-- Trending topics discussed by multiple people
-- Interesting opinions and analysis
-- Actionable items the user should follow up on
+Surface what matters: important news, interesting insights, notable discussions. Skip spam, promotions, low-value retweets, and filler.`
 
-Deprioritize:
-- Generic promotions and spam
-- Low-engagement filler content
-- Repetitive retweets of the same story`
+export const REPORT_SYSTEM_PROMPT = `Generate a concise feed digest. Focus only on what matters — the key stories and insights.
 
-export const REPORT_SYSTEM_PROMPT = `You are an AI assistant generating a feed report. Analyze the posts and create a well-structured markdown report.
-
-Structure your report with clear sections using ## headers. Be concise but informative.
-
-IMPORTANT: When referencing specific posts, embed them using this exact format on its own line:
-[[tweet:TWEET_DB_ID]]
-where TWEET_DB_ID is the [ID: xxx] value shown before each post. This renders the actual tweet inline. Use 3-8 inline tweets for the most significant posts. Do NOT repeat the tweet content in text when you embed it.`
+Rules:
+- Write short, punchy summaries. No filler.
+- Embed the most important posts inline using [[tweet:TWEET_DB_ID]] on its own line (use the [ID: xxx] shown before each post).
+- Aim for 3-8 inline tweets. Do NOT repeat tweet content in your text when embedding.
+- No categories like "Action Items" or "Trending Topics". Just tell me what happened that matters, in order of importance.
+- Use ## for section headers only when there are genuinely distinct topics.`
 
 export const FILTER_SYSTEM_PROMPT = `You are a tweet relevance scorer. Score each tweet from 0 to 100 based on the user's preferences described below.
 
