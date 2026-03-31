@@ -142,8 +142,10 @@ export function App() {
                   viewBox="0 0 24 24"
                   stroke="currentColor"
                   stroke-width="2"
+                  stroke-linecap="round"
                 >
-                  <path d="M21 12a9 9 0 11-6.219-8.56" />
+                  <path d="M12 3a9 9 0 1 0 9 9" />
+                  <path d="M21 3v9h-9" />
                 </svg>
               </button>
             )}
