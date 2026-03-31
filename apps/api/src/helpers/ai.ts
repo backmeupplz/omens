@@ -79,17 +79,21 @@ async function callOpenAICompatible(
   messages: ChatMessage[],
 ): Promise<string> {
   const base = getBaseUrl(config)
+  const body: Record<string, unknown> = {
+    model: config.model,
+    messages,
+  }
+  // Some providers (Fireworks) don't support max_tokens without streaming
+  if (config.provider !== 'fireworks') {
+    body.max_tokens = 8192
+  }
   const res = await fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.apiKey}`,
     },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      max_tokens: 8192,
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(120_000),
   })
   if (!res.ok) {
