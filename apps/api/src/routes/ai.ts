@@ -360,32 +360,28 @@ aiRouter.post('/regenerate-prompt', async (c) => {
 
 // ==================== FEED FILTERING ====================
 
-aiRouter.post('/filter', async (c) => {
-  const user = c.get('user')
-  const ai = await getAiConfig(user.id)
-  if (!ai) return c.json({ error: 'AI not configured' }, 400)
+export async function scoreUnscoredTweets(userId: string): Promise<number> {
+  const ai = await getAiConfig(userId)
+  if (!ai) return 0
   const db = getDb(env.DATABASE_URL)
 
-  // Get tweets without scores
   const unscored = await db
     .select()
     .from(tweets)
-    .where(eq(tweets.userId, user.id))
+    .where(eq(tweets.userId, userId))
     .orderBy(desc(tweets.publishedAt))
     .limit(200)
 
-  // Filter out already scored
   const existingScores = await db.select({ tweetId: tweetScores.tweetId })
-    .from(tweetScores).where(eq(tweetScores.userId, user.id))
+    .from(tweetScores).where(eq(tweetScores.userId, userId))
   const scoredSet = new Set(existingScores.map((s) => s.tweetId))
   const toScore = unscored.filter((t) => !scoredSet.has(t.id))
 
-  if (toScore.length === 0) return c.json({ ok: true, scored: 0 })
+  if (toScore.length === 0) return 0
 
   const userPrefs = ai.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT
   let totalScored = 0
 
-  // Process in batches of 50
   for (let i = 0; i < toScore.length; i += 50) {
     const batch = toScore.slice(i, i + 50)
     const tweetText = formatTweetsForAI(batch)
@@ -393,14 +389,13 @@ aiRouter.post('/filter', async (c) => {
 
     try {
       let response = await callAI(ai.config, prompt, tweetText)
-      // Strip markdown code blocks if present
       response = response.replace(/^```json?\n?/m, '').replace(/\n?```$/m, '').trim()
       const scores: Array<{ id: string; score: number }> = JSON.parse(response)
 
       for (const s of scores) {
         if (typeof s.id === 'string' && typeof s.score === 'number') {
           await db.insert(tweetScores).values({
-            userId: user.id,
+            userId: userId,
             tweetId: s.id,
             score: Math.max(0, Math.min(100, Math.round(s.score))),
           }).onConflictDoNothing()
@@ -412,7 +407,14 @@ aiRouter.post('/filter', async (c) => {
     }
   }
 
-  return c.json({ ok: true, scored: totalScored })
+  console.log(`[ai] Scored ${totalScored} tweets for user ${userId}`)
+  return totalScored
+}
+
+aiRouter.post('/filter', async (c) => {
+  const user = c.get('user')
+  const scored = await scoreUnscoredTweets(user.id)
+  return c.json({ ok: true, scored })
 })
 
 aiRouter.get('/scoring-status', async (c) => {

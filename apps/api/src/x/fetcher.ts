@@ -6,6 +6,7 @@ import { getDb, tweets, xSessions } from '@omens/db'
 import { and, eq, inArray } from 'drizzle-orm'
 import env from '../env'
 import { decrypt } from '../helpers/crypto'
+import { scoreUnscoredTweets } from '../routes/ai'
 import { getHomeTimeline } from './graphql'
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null
@@ -96,6 +97,10 @@ async function fetchForUser(userId: string): Promise<number> {
 
     if (newCount > 0) {
       console.log(`[fetcher] Inserted ${newCount} new tweets for user ${userId} (${parsedTweets.length - newCount} updated)`)
+      // Score new tweets in background
+      void scoreUnscoredTweets(userId).catch((err) =>
+        console.error(`[fetcher] Scoring error for user ${userId}:`, err instanceof Error ? err.message : err),
+      )
     }
     return newCount
   } catch (err) {
