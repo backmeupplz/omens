@@ -73,10 +73,18 @@ xRouter.post('/login', zValidator('json', xLoginSchema), async (c) => {
 
     return c.json({ connected: true, username: session.username })
   } catch (err) {
-    console.log(
-      `[x] Login failed for user ${user.id}: ${err instanceof Error ? err.message : 'unknown'}`,
-    )
-    const message = err instanceof Error ? err.message : 'Login failed'
+    const internal = err instanceof Error ? err.message : 'unknown'
+    console.log(`[x] Login failed for user ${user.id}: ${internal}`)
+    // Only expose safe error messages to the client
+    const safeMessages = [
+      'X rate limited, try again later',
+      'X session expired, please reconnect',
+      'X login succeeded but session is not working',
+      'Login failed',
+      'Invalid credentials',
+      'TOTP/2FA code required',
+    ]
+    const message = safeMessages.find((m) => internal.includes(m)) || 'Login failed'
     return c.json({ error: message }, 400)
   }
 })
@@ -124,14 +132,17 @@ xRouter.post('/refresh', async (c) => {
     await fetchForUser(user.id)
     return c.json({ ok: true })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Refresh failed'
-    return c.json({ error: message }, 500)
+    console.error(`[x] Refresh failed:`, err instanceof Error ? err.message : err)
+    return c.json({ error: 'Refresh failed' }, 500)
   }
 })
 
 xRouter.get('/replies/:tweetId', async (c) => {
   const user = c.get('user')
   const tweetId = c.req.param('tweetId')
+  if (!/^\d+$/.test(tweetId)) {
+    return c.json({ error: 'Invalid tweet ID' }, 400)
+  }
   const db = getDb(env.DATABASE_URL)
 
   const [session] = await db
@@ -151,8 +162,8 @@ xRouter.get('/replies/:tweetId', async (c) => {
     const result = await getTweetReplies({ authToken, ct0 }, tweetId, cursor || undefined)
     return c.json(result)
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch replies'
-    return c.json({ error: message }, 500)
+    console.error(`[x] Replies fetch failed:`, err instanceof Error ? err.message : err)
+    return c.json({ error: 'Failed to fetch replies' }, 500)
   }
 })
 

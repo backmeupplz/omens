@@ -11,6 +11,12 @@ export type AuthUser = {
   email: string | null
 }
 
+export type AppEnv = {
+  Variables: {
+    user: AuthUser
+  }
+}
+
 const DEFAULT_USER_ID = 'single-user'
 
 async function ensureSingleUser() {
@@ -41,8 +47,8 @@ export async function authMiddleware(c: Context, next: Next) {
     return next()
   }
 
-  // Try API key first (X-API-Key header or query param)
-  const apiKey = c.req.header('X-API-Key') || c.req.query('api_key')
+  // Try API key first (X-API-Key header only — never accept keys in URLs)
+  const apiKey = c.req.header('X-API-Key')
   if (apiKey) {
     const keyHash = await hashApiKey(apiKey)
     const db = getDb(env.DATABASE_URL)

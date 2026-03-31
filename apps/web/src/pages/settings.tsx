@@ -45,15 +45,22 @@ function XSection({ onXChange }: { onXChange: () => void }) {
   }
 
   const disconnect = async () => {
-    await api('/x/session', { method: 'DELETE' })
-    refetch()
-    onXChange()
+    try {
+      await api('/x/session', { method: 'DELETE' })
+      refetch()
+      onXChange()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to disconnect')
+    }
   }
 
   if (session?.connected) {
     return (
       <div class="space-y-3">
         <h3 class="font-medium">X Account</h3>
+        {error && (
+          <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>
+        )}
         <div class="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-4 py-3">
           <div>
             <span class="text-sm text-zinc-300">
@@ -123,26 +130,41 @@ function ApiKeysSection() {
   const { data: keys, refetch } = useApi<any[]>('/api-keys')
   const [name, setName] = useState('')
   const [newKey, setNewKey] = useState('')
+  const [error, setError] = useState('')
 
   const createKey = async () => {
     if (!name) return
-    const result = await api<any>('/api-keys', {
-      method: 'POST',
-      body: JSON.stringify({ name }),
-    })
-    setNewKey(result.key)
-    setName('')
-    refetch()
+    setError('')
+    try {
+      const result = await api<any>('/api-keys', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      })
+      setNewKey(result.key)
+      setName('')
+      refetch()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create API key')
+    }
   }
 
   const deleteKey = async (id: string) => {
-    await api(`/api-keys/${id}`, { method: 'DELETE' })
-    refetch()
+    setError('')
+    try {
+      await api(`/api-keys/${id}`, { method: 'DELETE' })
+      refetch()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete API key')
+    }
   }
 
   return (
     <div class="space-y-4">
       <h3 class="font-medium">API Keys</h3>
+
+      {error && (
+        <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>
+      )}
 
       {newKey && (
         <div class="rounded border border-emerald-800 bg-emerald-900/20 p-3">

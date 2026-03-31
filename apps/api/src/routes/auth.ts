@@ -8,9 +8,9 @@ import env from '../env'
 import { createToken } from '../helpers/jwt'
 import { hashPassword, verifyPassword } from '../helpers/password'
 
-import { authMiddleware } from '../middleware/auth'
+import { authMiddleware, type AppEnv } from '../middleware/auth'
 
-const auth = new Hono()
+const auth = new Hono<AppEnv>()
 
 const isProd = process.env.NODE_ENV === 'production'
 

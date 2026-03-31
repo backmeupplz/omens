@@ -33,7 +33,7 @@ export function createApp() {
   app.use(
     '*',
     cors({
-      origin: env.CORS_ORIGIN || '*',
+      origin: env.CORS_ORIGIN || 'http://localhost:5173',
       credentials: true,
     }),
   )
@@ -58,15 +58,41 @@ export function createApp() {
   app.route('/auth', authRoutes)
 
   // Protected routes
-  app.use('/feed', authMiddleware)
+  app.use('/feed/*', authMiddleware)
   app.use('/x/*', authMiddleware)
   app.use('/api-keys/*', authMiddleware)
-  app.use('/og', authMiddleware)
+  app.use('/og/*', authMiddleware)
 
   // OG metadata proxy (cached)
   app.get('/og', async (c) => {
     const url = c.req.query('url')
     if (!url) return c.json({ error: 'url required' }, 400)
+    // Validate URL scheme to prevent SSRF
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      return c.json({ error: 'invalid url' }, 400)
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return c.json({ error: 'invalid url scheme' }, 400)
+    }
+    // Block private/internal IPs
+    const host = parsed.hostname
+    if (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '::1' ||
+      host === '0.0.0.0' ||
+      host.startsWith('10.') ||
+      host.startsWith('172.') ||
+      host.startsWith('192.168.') ||
+      host.startsWith('169.254.') ||
+      host.endsWith('.local') ||
+      host.endsWith('.internal')
+    ) {
+      return c.json({ error: 'url not allowed' }, 400)
+    }
     const data = await fetchOg(url)
     if (!data) return c.json(null)
     return c.json(data)

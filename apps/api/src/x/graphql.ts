@@ -338,21 +338,7 @@ export interface TimelineResult {
   bottomCursor: string | null
 }
 
-export async function getHomeTimeline(
-  session: Session,
-  cursor?: string,
-): Promise<TimelineResult> {
-  const variables: Record<string, unknown> = {
-    count: 40,
-    includePromotedContent: false,
-    latestControlAvailable: true,
-    requestContext: 'launch',
-  }
-  if (cursor) variables.cursor = cursor
-
-  const data = await graphqlRequest(ENDPOINTS.HomeTimeline, variables, session)
-
-  const instructions = data?.data?.home?.home_timeline_urt?.instructions || []
+function parseTimelineInstructions(instructions: any[]): { tweets: ParsedTweet[]; bottomCursor: string | null } {
   const tweets: ParsedTweet[] = []
   let bottomCursor: string | null = null
 
@@ -394,6 +380,53 @@ export async function getHomeTimeline(
   }
 
   return { tweets, bottomCursor }
+}
+
+async function fetchTimeline(
+  endpoint: string,
+  instructionsPath: (data: any) => any[],
+  session: Session,
+  cursor?: string,
+): Promise<TimelineResult> {
+  const variables: Record<string, unknown> = {
+    count: 40,
+    includePromotedContent: false,
+    latestControlAvailable: true,
+    requestContext: 'launch',
+  }
+  if (cursor) variables.cursor = cursor
+
+  const data = await graphqlRequest(endpoint, variables, session)
+  return parseTimelineInstructions(instructionsPath(data))
+}
+
+export async function getHomeTimeline(
+  session: Session,
+): Promise<TimelineResult> {
+  const [forYou, following] = await Promise.all([
+    fetchTimeline(
+      ENDPOINTS.HomeTimeline,
+      (d) => d?.data?.home?.home_timeline_urt?.instructions || [],
+      session,
+    ),
+    fetchTimeline(
+      ENDPOINTS.HomeLatestTimeline,
+      (d) => d?.data?.home?.home_timeline_urt?.instructions || [],
+      session,
+    ).catch(() => ({ tweets: [], bottomCursor: null } as TimelineResult)),
+  ])
+
+  // Deduplicate by tweetId, preferring For You entries
+  const seen = new Set<string>()
+  const tweets: ParsedTweet[] = []
+  for (const tweet of [...forYou.tweets, ...following.tweets]) {
+    if (!seen.has(tweet.tweetId)) {
+      seen.add(tweet.tweetId)
+      tweets.push(tweet)
+    }
+  }
+
+  return { tweets, bottomCursor: null }
 }
 
 export interface Reply {

@@ -116,6 +116,7 @@ function RepliesModal({
   const [replies, setReplies] = useState<ReplyData[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [cursor, setCursor] = useState<string | null>(null)
 
   const fetchReplies = useCallback(
@@ -132,7 +133,7 @@ function RepliesModal({
         setReplies(r.replies)
         setCursor(r.cursor)
       })
-      .catch(() => {})
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load replies'))
       .finally(() => setLoading(false))
   }, [fetchReplies])
 
@@ -143,8 +144,8 @@ function RepliesModal({
       const r = await fetchReplies(cursor)
       setReplies((prev) => [...prev, ...r.replies])
       setCursor(r.cursor)
-    } catch {
-      // ignore
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load more replies')
     } finally {
       setLoadingMore(false)
     }
@@ -179,7 +180,8 @@ function RepliesModal({
         </div>
         <div class="overflow-y-auto flex-1 p-4 scrollbar-dark">
           {loading && <p class="text-zinc-500 text-sm py-8 text-center">Loading replies...</p>}
-          {!loading && replies.length === 0 && (
+          {error && <p class="text-red-400 text-sm py-8 text-center">{error}</p>}
+          {!loading && !error && replies.length === 0 && (
             <p class="text-zinc-500 text-sm py-8 text-center">No replies yet.</p>
           )}
           <div class="space-y-4">
@@ -338,30 +340,102 @@ function OgEmbed({
   return <LinkCard data={card} />
 }
 
+// === Shared Media Grid ===
+
+function MediaGrid({
+  media,
+  linkUrl,
+  onPhotoClick,
+}: {
+  media: MediaItem[]
+  linkUrl: string
+  onPhotoClick?: (index: number) => void
+}) {
+  if (media.length === 0) return null
+  const single = media.length === 1
+  const sizeClass = single ? 'max-h-72 w-full' : 'h-28 w-28'
+  const fit = single ? 'object-contain' : 'object-cover'
+  return (
+    <div class={`mt-2 flex gap-1.5 flex-wrap ${single ? '' : ''}`}>
+      {media.slice(0, 4).map((item, i) =>
+        item.type === 'video' ? (
+          <a
+            key={item.thumbnail}
+            href={linkUrl}
+            target="_blank"
+            rel="noopener"
+            class="relative overflow-hidden rounded-lg border border-zinc-700 hover:border-zinc-500 transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={`${item.thumbnail}?name=medium`}
+              alt=""
+              class={`${fit} ${sizeClass}`}
+              loading="lazy"
+            />
+            <div class="absolute inset-0 flex items-center justify-center bg-black/30">
+              <svg class="w-8 h-8 text-white/90" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+          </a>
+        ) : (
+          <button
+            key={item.thumbnail}
+            type="button"
+            class="relative overflow-hidden rounded-lg border border-zinc-700 hover:border-zinc-500 transition-colors"
+            onClick={(e) => { e.stopPropagation(); onPhotoClick?.(i) }}
+          >
+            <img
+              src={`${item.thumbnail}?name=medium`}
+              alt=""
+              class={`${fit} ${sizeClass}`}
+              loading="lazy"
+            />
+          </button>
+        ),
+      )}
+    </div>
+  )
+}
+
 const MAX_CHARS = 400
 
 function linkify(text: string): preact.ComponentChildren[] {
   const parts: preact.ComponentChildren[] = []
-  const urlRegex = /(https?:\/\/[^\s]+)/g
+  const regex = /(https?:\/\/[^\s]+)|(@[\w]{1,15})/g
   let lastIndex = 0
   let match: RegExpExecArray | null
-  while ((match = urlRegex.exec(text)) !== null) {
+  while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index))
     }
-    const url = match[0]
-    parts.push(
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener"
-        class="text-blue-400 hover:underline"
-        onClick={(e: Event) => e.stopPropagation()}
-      >
-        {url.replace(/^https?:\/\//, '')}
-      </a>,
-    )
-    lastIndex = match.index + url.length
+    if (match[1]) {
+      parts.push(
+        <a
+          href={match[1]}
+          target="_blank"
+          rel="noopener"
+          class="text-blue-400 hover:underline"
+          onClick={(e: Event) => e.stopPropagation()}
+        >
+          {match[1].replace(/^https?:\/\//, '')}
+        </a>,
+      )
+    } else {
+      parts.push(
+        <a
+          href={`https://x.com/${match[2].slice(1)}`}
+          target="_blank"
+          rel="noopener"
+          class="text-blue-400 hover:underline"
+          onClick={(e: Event) => e.stopPropagation()}
+        >
+          {match[2]}
+        </a>,
+      )
+    }
+    lastIndex = match.index + match[0].length
   }
   if (lastIndex < text.length) parts.push(text.slice(lastIndex))
   return parts
@@ -399,7 +473,9 @@ function TweetCard({ tweet }: { tweet: Tweet }) {
   const quoted: QuotedTweet | null = tweet.quotedTweet ? JSON.parse(tweet.quotedTweet) : null
   const cardRaw = tweet.card ? JSON.parse(tweet.card) : null
   const card = cardRaw?.title ? cardRaw : null
+  const quotedMedia: MediaItem[] = quoted?.media || []
   const [lightbox, setLightbox] = useState<number | null>(null)
+  const [quotedLightbox, setQuotedLightbox] = useState<number | null>(null)
   const [showReplies, setShowReplies] = useState(false)
   const [ogLoaded, setOgLoaded] = useState(false)
   const onOgLoaded = useCallback(() => setOgLoaded(true), [])
@@ -411,6 +487,13 @@ function TweetCard({ tweet }: { tweet: Tweet }) {
           items={media.filter((m) => m.type === 'photo')}
           index={lightbox}
           onClose={() => setLightbox(null)}
+        />
+      )}
+      {quotedLightbox !== null && (
+        <Lightbox
+          items={quotedMedia.filter((m) => m.type === 'photo')}
+          index={quotedLightbox}
+          onClose={() => setQuotedLightbox(null)}
         />
       )}
       {showReplies && (
@@ -478,91 +561,25 @@ function TweetCard({ tweet }: { tweet: Tweet }) {
       <TweetContent text={tweet.content} hideUrls={ogLoaded || !!card} />
 
       {/* Media thumbnails */}
-      {media.length > 0 && (
-            <div class="mt-2 flex gap-1.5 flex-wrap">
-              {media.slice(0, 4).map((item, i) =>
-                item.type === 'video' ? (
-                  <a
-                    key={item.thumbnail}
-                    href={tweet.url}
-                    target="_blank"
-                    rel="noopener"
-                    class="relative overflow-hidden rounded-lg border border-zinc-700 hover:border-zinc-500 transition-colors"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <img
-                      src={`${item.thumbnail}?name=small`}
-                      alt=""
-                      class={`object-cover ${media.length === 1 ? 'h-40 w-72' : 'h-28 w-28'}`}
-                      loading="lazy"
-                    />
-                    <div class="absolute inset-0 flex items-center justify-center bg-black/30">
-                      <svg class="w-8 h-8 text-white/90" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
-                    </div>
-                  </a>
-                ) : (
-                  <button
-                    key={item.thumbnail}
-                    type="button"
-                    class="relative overflow-hidden rounded-lg border border-zinc-700 hover:border-zinc-500 transition-colors"
-                    onClick={(e) => { e.stopPropagation(); setLightbox(i) }}
-                  >
-                    <img
-                      src={`${item.thumbnail}?name=small`}
-                      alt=""
-                      class={`object-cover ${media.length === 1 ? 'h-40 w-72' : 'h-28 w-28'}`}
-                      loading="lazy"
-                    />
-                  </button>
-                ),
-              )}
-            </div>
-          )}
+      <MediaGrid media={media} linkUrl={tweet.url} onPhotoClick={setLightbox} />
 
       {/* Quoted tweet */}
       {quoted && (
-        <a
-          href={quoted.url}
-          target="_blank"
-          rel="noopener"
-          class="mt-2 block rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors"
+        <div
+          class="mt-2 rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors p-3"
           onClick={(e) => e.stopPropagation()}
         >
-          {quoted.media && quoted.media.length > 0 && (
-            <img
-              src={`${quoted.media[0].thumbnail}?name=small`}
-              alt=""
-              class="w-full max-h-48 object-cover"
-              loading="lazy"
-            />
-          )}
-          {!quoted.media?.length && quoted.card?.thumbnail && (
-            <img
-              src={quoted.card.thumbnail}
-              alt=""
-              class="w-full max-h-48 object-cover"
-              loading="lazy"
-            />
-          )}
-          <div class="p-3">
-            <div class="flex items-center gap-2 mb-1">
-              {quoted.authorAvatar && (
-                <img src={quoted.authorAvatar} alt="" class="w-5 h-5 rounded-full" />
-              )}
-              <span class="text-sm font-semibold text-zinc-200">{quoted.authorName}</span>
-              <span class="text-xs text-zinc-500">@{quoted.authorHandle}</span>
-            </div>
-            <p class="text-sm text-zinc-400 line-clamp-3">{quoted.content}</p>
-            {quoted.card && (
-              <div class="mt-1.5 text-xs text-zinc-500">
-                {quoted.card.title && <p class="text-zinc-400 font-medium line-clamp-1">{quoted.card.title}</p>}
-                {quoted.card.domain && <p>{quoted.card.domain}</p>}
-              </div>
+          <div class="flex items-center gap-2 mb-1">
+            {quoted.authorAvatar && (
+              <img src={quoted.authorAvatar} alt="" class="w-5 h-5 rounded-full" />
             )}
+            <span class="text-sm font-semibold text-zinc-200">{quoted.authorName}</span>
+            <span class="text-xs text-zinc-500">@{quoted.authorHandle}</span>
           </div>
-        </a>
+          <p class="text-sm text-zinc-400 line-clamp-3">{quoted.content}</p>
+          <MediaGrid media={quoted.media || []} linkUrl={quoted.url} onPhotoClick={setQuotedLightbox} />
+          {quoted.card && <LinkCard data={quoted.card} />}
+        </div>
       )}
 
       {/* Link card — from API card data or OG fetch */}
@@ -632,16 +649,18 @@ function TweetCard({ tweet }: { tweet: Tweet }) {
 export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
   const [page, setPage] = useState(1)
   const [refreshing, setRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
   const path = `/feed?limit=50&page=${page}`
   const { data, loading, error, refetch } = useApi<FeedResponse>(path)
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
+    setRefreshError(null)
     try {
       await api('/x/refresh', { method: 'POST' })
       refetch()
-    } catch {
-      // ignore
+    } catch (e) {
+      setRefreshError(e instanceof Error ? e.message : 'Failed to refresh feed')
     } finally {
       setRefreshing(false)
     }
@@ -654,7 +673,8 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
   return (
     <div>
       {loading && <p class="text-zinc-500 py-8 text-center">Loading...</p>}
-      {error && <p class="text-red-400">{error}</p>}
+      {refreshError && <p class="text-red-400 text-sm text-center mb-2">{refreshError}</p>}
+      {error && <p class="text-red-400 text-center">{error}</p>}
 
       {data?.data.length === 0 && !loading && (
         <p class="text-zinc-500 py-8 text-center">No posts yet.</p>
