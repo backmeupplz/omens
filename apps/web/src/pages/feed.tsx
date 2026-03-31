@@ -1018,10 +1018,11 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   const [page, setPage] = useState(1)
   const [feedKey, setFeedKey] = useState(0) // bump to re-fetch feed
   const { data, loading, error } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}&_=${feedKey}`)
-  const [filtering, setFiltering] = useState(false)
   const [filterError, setFilterError] = useState<string | null>(null)
+  const [scoringTotal, setScoringTotal] = useState(0)
+  const [scoringDone, setScoringDone] = useState(0)
   const [pendingCount, setPendingCount] = useState(0)
-  const [newReady, setNewReady] = useState(0) // scored posts ready but not yet shown
+  const [newReady, setNewReady] = useState(0)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Stop polling helper
@@ -1029,61 +1030,49 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
   }, [])
 
+  const startPolling = useCallback(() => {
+    stopPolling()
+    pollRef.current = setInterval(() => {
+      api<{ total: number; scored: number; pending: number }>('/ai/scoring-status')
+        .then((st) => {
+          setScoringTotal(st.total)
+          setScoringDone(st.scored)
+          setPendingCount(st.pending)
+          if (st.pending === 0) {
+            stopPolling()
+            setNewReady((prev) => prev > 0 ? prev : 1)
+          }
+        })
+        .catch(() => {})
+    }, 2000)
+  }, [stopPolling])
+
   // Check initial scoring status and poll if pending
   useEffect(() => {
-    api<{ pending: number }>('/ai/scoring-status')
+    api<{ total: number; scored: number; pending: number }>('/ai/scoring-status')
       .then((s) => {
-        if (s.pending > 0) {
-          setPendingCount(s.pending)
-          // Start polling since scoring is happening in background
-          stopPolling()
-          pollRef.current = setInterval(() => {
-            api<{ pending: number }>('/ai/scoring-status')
-              .then((st) => {
-                setPendingCount(st.pending)
-                if (st.pending === 0) {
-                  stopPolling()
-                  setNewReady((prev) => prev > 0 ? prev : 1) // signal new posts available
-                }
-              })
-              .catch(() => {})
-          }, 3000)
-        }
+        setScoringTotal(s.total)
+        setScoringDone(s.scored)
+        setPendingCount(s.pending)
+        if (s.pending > 0) startPolling()
       })
       .catch(() => {})
     return stopPolling
-  }, [stopPolling])
+  }, [stopPolling, startPolling])
 
   const refresh = useCallback(async () => {
     try {
       const res = await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
       if (res.count === 0) return
 
-      // Start scoring in background
-      setFiltering(true)
+      // Scoring will start automatically server-side; poll for progress
       setPendingCount(res.count)
-
-      // Fire scoring (don't await — poll instead)
-      api('/ai/filter', { method: 'POST' })
-        .then((r: any) => {
-          setFiltering(false)
-          setPendingCount(0)
-          stopPolling()
-          if (r.scored > 0) setNewReady((prev) => prev + r.scored)
-        })
-        .catch(() => { setFiltering(false); setPendingCount(0); stopPolling() })
-
-      // Poll scoring progress every 3s
-      stopPolling()
-      pollRef.current = setInterval(() => {
-        api<{ pending: number }>('/ai/scoring-status')
-          .then((s) => setPendingCount(s.pending))
-          .catch(() => {})
-      }, 3000)
+      setScoringTotal((prev) => prev + res.count)
+      startPolling()
     } catch (e) {
       setFilterError(e instanceof Error ? e.message : 'Failed to refresh')
     }
-  }, [stopPolling])
+  }, [startPolling])
 
   useEffect(() => {
     onRefreshRef?.(refresh)
@@ -1096,20 +1085,6 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
     setFeedKey((k) => k + 1)
   }
 
-  const runFilter = async () => {
-    setFiltering(true)
-    setFilterError(null)
-    try {
-      const r = await api<{ ok: boolean; scored: number }>('/ai/filter', { method: 'POST' })
-      if (r.scored > 0) setNewReady(r.scored)
-    } catch (e) {
-      setFilterError(e instanceof Error ? e.message : 'Failed to filter feed')
-    } finally {
-      setFiltering(false)
-      setPendingCount(0)
-    }
-  }
-
   return (
     <div>
       {feedback && (
@@ -1120,12 +1095,21 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 
       {/* Scoring progress */}
       {pendingCount > 0 && (
-        <div class="mb-3 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-sm text-zinc-400">
-          <div class="flex items-center gap-2">
-            <svg class="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Scoring {pendingCount} posts...
+        <div class="mb-3 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-3">
+          <div class="flex items-center justify-between text-sm text-zinc-400 mb-2">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              AI is scoring your posts...
+            </div>
+            <span class="text-xs tabular-nums">{scoringDone} / {scoringTotal}</span>
+          </div>
+          <div class="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div
+              class="h-full bg-emerald-500 rounded-full transition-all duration-500"
+              style={{ width: `${scoringTotal > 0 ? (scoringDone / scoringTotal) * 100 : 0}%` }}
+            />
           </div>
         </div>
       )}
@@ -1145,7 +1129,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
       {filterError && <p class="text-red-400 text-sm text-center mb-2">{filterError}</p>}
       {error && <p class="text-red-400 text-center">{error}</p>}
 
-      {data?.data.length === 0 && !loading && !filtering && pendingCount === 0 && (
+      {data?.data.length === 0 && !loading && pendingCount === 0 && (
         <div class="flex flex-col items-center justify-center py-20">
           <svg class="w-10 h-10 text-zinc-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
             <path d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
