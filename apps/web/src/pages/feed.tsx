@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { api } from '../helpers/api'
 import { useApi } from '../helpers/hooks'
 import { AiSection } from './settings'
@@ -1015,66 +1015,113 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   const { nudges, onNudge, feedback } = useNudges()
   const minScore = useMinScore()
   const [page, setPage] = useState(1)
-  const { data, loading, error, refetch } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}`)
+  const [feedKey, setFeedKey] = useState(0) // bump to re-fetch feed
+  const { data, loading, error } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}&_=${feedKey}`)
   const [filtering, setFiltering] = useState(false)
   const [filterError, setFilterError] = useState<string | null>(null)
-  const [refreshCount, setRefreshCount] = useState<number | null>(null)
-  const [scoringPending, setScoringPending] = useState<number | null>(null)
+  const [pendingCount, setPendingCount] = useState(0)
+  const [newReady, setNewReady] = useState(0) // scored posts ready but not yet shown
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Stop polling helper
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+  }, [])
+
+  // Check initial scoring status
+  useEffect(() => {
+    api<{ pending: number }>('/ai/scoring-status')
+      .then((s) => { if (s.pending > 0) setPendingCount(s.pending) })
+      .catch(() => {})
+  }, [])
 
   const refresh = useCallback(async () => {
-    setRefreshCount(null)
     try {
       const res = await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
-      setRefreshCount(res.count)
-      setTimeout(() => setRefreshCount(null), 4000)
-      // Score new posts
+      if (res.count === 0) return
+
+      // Start scoring in background
       setFiltering(true)
-      setScoringPending(res.count > 0 ? res.count : null)
-      try {
-        await api('/ai/filter', { method: 'POST' })
-      } catch {}
-      setScoringPending(null)
-      setFiltering(false)
-      refetch()
+      setPendingCount(res.count)
+
+      // Fire scoring (don't await — poll instead)
+      api('/ai/filter', { method: 'POST' })
+        .then((r: any) => {
+          setFiltering(false)
+          setPendingCount(0)
+          stopPolling()
+          if (r.scored > 0) setNewReady((prev) => prev + r.scored)
+        })
+        .catch(() => { setFiltering(false); setPendingCount(0); stopPolling() })
+
+      // Poll scoring progress every 3s
+      stopPolling()
+      pollRef.current = setInterval(() => {
+        api<{ pending: number }>('/ai/scoring-status')
+          .then((s) => setPendingCount(s.pending))
+          .catch(() => {})
+      }, 3000)
     } catch (e) {
       setFilterError(e instanceof Error ? e.message : 'Failed to refresh')
     }
-  }, [refetch])
+  }, [stopPolling])
 
   useEffect(() => {
     onRefreshRef?.(refresh)
-  }, [refresh, onRefreshRef])
+    return stopPolling
+  }, [refresh, onRefreshRef, stopPolling])
+
+  const showNewPosts = () => {
+    setNewReady(0)
+    setPage(1)
+    setFeedKey((k) => k + 1)
+  }
 
   const runFilter = async () => {
     setFiltering(true)
     setFilterError(null)
     try {
-      await api('/ai/filter', { method: 'POST' })
-      refetch()
+      const r = await api<{ ok: boolean; scored: number }>('/ai/filter', { method: 'POST' })
+      if (r.scored > 0) setNewReady(r.scored)
     } catch (e) {
       setFilterError(e instanceof Error ? e.message : 'Failed to filter feed')
     } finally {
       setFiltering(false)
+      setPendingCount(0)
     }
   }
 
   return (
     <div>
-      {(feedback || refreshCount !== null) && (
+      {feedback && (
         <div class="fixed top-16 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-200 shadow-lg">
-          {refreshCount !== null ? (refreshCount > 0 ? `+${refreshCount} posts` : 'Nothing new') : feedback}
+          {feedback}
         </div>
       )}
-      {filtering && (
-        <div class="mb-3 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-2 text-sm text-zinc-400">
+
+      {/* Scoring progress */}
+      {filtering && pendingCount > 0 && (
+        <div class="mb-3 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-sm text-zinc-400">
           <div class="flex items-center gap-2">
-            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <svg class="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            {scoringPending ? `Scoring ${scoringPending} new posts...` : 'Scoring posts...'}
+            Scoring {pendingCount} posts...
           </div>
         </div>
       )}
+
+      {/* New posts banner */}
+      {newReady > 0 && (
+        <button
+          type="button"
+          onClick={showNewPosts}
+          class="mb-3 w-full rounded-lg bg-emerald-900/30 border border-emerald-800/50 px-4 py-2.5 text-sm text-emerald-400 hover:bg-emerald-900/50 transition-colors text-center"
+        >
+          {newReady} new post{newReady !== 1 ? 's' : ''} scored — click to show
+        </button>
+      )}
+
       {loading && <p class="text-zinc-500 py-8 text-center">Loading...</p>}
       {filterError && <p class="text-red-400 text-sm text-center mb-2">{filterError}</p>}
       {error && <p class="text-red-400 text-center">{error}</p>}

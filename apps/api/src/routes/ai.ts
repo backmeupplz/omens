@@ -415,6 +415,19 @@ aiRouter.post('/filter', async (c) => {
   return c.json({ ok: true, scored: totalScored })
 })
 
+aiRouter.get('/scoring-status', async (c) => {
+  const user = c.get('user')
+  const db = getDb(env.DATABASE_URL)
+
+  const [{ total }] = await db.select({ total: sql<number>`count(*)` })
+    .from(tweets).where(eq(tweets.userId, user.id))
+
+  const [{ scored }] = await db.select({ scored: sql<number>`count(*)` })
+    .from(tweetScores).where(eq(tweetScores.userId, user.id))
+
+  return c.json({ total: Number(total), scored: Number(scored), pending: Number(total) - Number(scored) })
+})
+
 aiRouter.get('/filtered-feed', async (c) => {
   const user = c.get('user')
   const db = getDb(env.DATABASE_URL)
