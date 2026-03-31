@@ -857,10 +857,37 @@ function AiReportView() {
   const { data, loading, refetch } = useApi<{ report: AiReportData | null }>('/ai/report')
   const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>('/ai/reports')
   const [generating, setGenerating] = useState(false)
+  const [genTweetCount, setGenTweetCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [viewingReportId, setViewingReportId] = useState<string | null>(null)
   const [viewingReport, setViewingReport] = useState<AiReportData | null>(null)
   const [showPastReports, setShowPastReports] = useState(false)
+  const reportPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Check if report generation is in progress on load
+  useEffect(() => {
+    api<{ generating: boolean; tweetCount: number }>('/ai/report-status')
+      .then((s) => {
+        if (s.generating) {
+          setGenerating(true)
+          setGenTweetCount(s.tweetCount)
+          // Poll for completion
+          reportPollRef.current = setInterval(() => {
+            api<{ generating: boolean }>('/ai/report-status')
+              .then((st) => {
+                if (!st.generating) {
+                  if (reportPollRef.current) clearInterval(reportPollRef.current)
+                  setGenerating(false)
+                  refetch()
+                }
+              })
+              .catch(() => {})
+          }, 3000)
+        }
+      })
+      .catch(() => {})
+    return () => { if (reportPollRef.current) clearInterval(reportPollRef.current) }
+  }, [refetch])
 
   const generate = async () => {
     setGenerating(true)
@@ -903,13 +930,14 @@ function AiReportView() {
       {error && <p class="text-red-400 text-sm text-center mb-3">{error}</p>}
 
       {generating && (
-        <div class="mb-4 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-3 text-sm text-zinc-400">
-          <div class="flex items-center gap-2">
-            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <div class="mb-4 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-3">
+          <div class="flex items-center gap-2 text-sm text-zinc-300">
+            <svg class="w-4 h-4 animate-spin shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Generating report... This may take a minute.
+            Generating report{genTweetCount > 0 ? ` from ${genTweetCount} posts` : ''}...
           </div>
+          <p class="text-xs text-zinc-500 mt-1">AI is analyzing your feed. This usually takes 30-60 seconds.</p>
         </div>
       )}
 
@@ -1033,7 +1061,8 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
   }, [])
 
-  interface ScoringStatus { total: number; scored: number; pending: number; active: boolean; batch: number; totalBatches: number }
+  interface ScoringStatus { total: number; scored: number; pending: number; aboveThreshold: number; active: boolean; batch: number; totalBatches: number }
+  const baselineRef = useRef<number | null>(null) // above-threshold count when scoring started
 
   const updateStatus = useCallback((st: ScoringStatus) => {
     setScoringTotal(st.total)
@@ -1042,6 +1071,14 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
     setScoringActive(st.active)
     setScoringBatch(st.batch)
     setScoringTotalBatches(st.totalBatches)
+    // Track new above-threshold posts since scoring started
+    if (baselineRef.current === null && (st.active || st.pending > 0)) {
+      baselineRef.current = st.aboveThreshold
+    }
+    if (baselineRef.current !== null) {
+      const newAbove = st.aboveThreshold - baselineRef.current
+      if (newAbove > 0) setNewReady(newAbove)
+    }
   }, [])
 
   const startPolling = useCallback(() => {
@@ -1052,7 +1089,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
           updateStatus(st)
           if (st.pending === 0 && !st.active) {
             stopPolling()
-            setNewReady((prev) => prev > 0 ? prev : 1)
+            baselineRef.current = null
           }
         })
         .catch(() => {})
@@ -1135,14 +1172,14 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
         </div>
       )}
 
-      {/* New posts banner */}
+      {/* New posts floating banner — like X's "Show N new posts" */}
       {newReady > 0 && (
         <button
           type="button"
           onClick={showNewPosts}
-          class="mb-3 w-full rounded-lg bg-emerald-900/30 border border-emerald-800/50 px-4 py-2.5 text-sm text-emerald-400 hover:bg-emerald-900/50 transition-colors text-center"
+          class="sticky top-14 z-40 mb-3 w-full rounded-lg bg-emerald-600/90 backdrop-blur px-4 py-2.5 text-sm text-white font-medium hover:bg-emerald-600 transition-colors text-center shadow-lg"
         >
-          {newReady} new post{newReady !== 1 ? 's' : ''} scored — click to show
+          Show {newReady} new post{newReady !== 1 ? 's' : ''}
         </button>
       )}
 

@@ -432,11 +432,20 @@ aiRouter.get('/scoring-status', async (c) => {
   const user = c.get('user')
   const db = getDb(env.DATABASE_URL)
 
+  // Get stored min score threshold
+  const [settings] = await db.select({ minScore: aiSettings.minScore })
+    .from(aiSettings).where(eq(aiSettings.userId, user.id)).limit(1)
+  const minScore = settings?.minScore ?? 50
+
   const [{ total }] = await db.select({ total: sql<number>`count(*)` })
     .from(tweets).where(eq(tweets.userId, user.id))
 
   const [{ scored }] = await db.select({ scored: sql<number>`count(*)` })
     .from(tweetScores).where(eq(tweetScores.userId, user.id))
+
+  // Count how many scored tweets are above threshold (for "N new posts" banner)
+  const [{ aboveThreshold }] = await db.select({ aboveThreshold: sql<number>`count(*)` })
+    .from(tweetScores).where(and(eq(tweetScores.userId, user.id), gte(tweetScores.score, minScore)))
 
   const progress = getScoringProgress(user.id)
 
@@ -444,6 +453,7 @@ aiRouter.get('/scoring-status', async (c) => {
     total: Number(total),
     scored: Number(scored),
     pending: Number(total) - Number(scored),
+    aboveThreshold: Number(aboveThreshold),
     active: !!progress,
     batch: progress?.batch || 0,
     totalBatches: progress?.totalBatches || 0,
@@ -499,8 +509,27 @@ aiRouter.get('/filtered-feed', async (c) => {
 
 // ==================== REPORTS ====================
 
+// In-memory report generation tracking
+const reportGenerating = new Map<string, { startedAt: Date; tweetCount: number }>()
+
+aiRouter.get('/report-status', async (c) => {
+  const user = c.get('user')
+  const progress = reportGenerating.get(user.id)
+  return c.json({
+    generating: !!progress,
+    startedAt: progress?.startedAt || null,
+    tweetCount: progress?.tweetCount || 0,
+  })
+})
+
 aiRouter.post('/report', async (c) => {
   const user = c.get('user')
+
+  // Prevent concurrent generation
+  if (reportGenerating.has(user.id)) {
+    return c.json({ error: 'Report is already being generated. Please wait.' }, 409)
+  }
+
   const ai = await getAiConfig(user.id)
   if (!ai) return c.json({ error: 'AI not configured. Go to Settings to set up your AI provider.' }, 400)
   const db = getDb(env.DATABASE_URL)
@@ -515,6 +544,8 @@ aiRouter.post('/report', async (c) => {
   if (recentTweets.length === 0) {
     return c.json({ error: 'No posts from the last 24 hours to analyze.' }, 400)
   }
+
+  reportGenerating.set(user.id, { startedAt: new Date(), tweetCount: recentTweets.length })
 
   try {
     const systemPrompt = `${ai.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT}\n\n${REPORT_SYSTEM_PROMPT}`
@@ -535,6 +566,8 @@ aiRouter.post('/report', async (c) => {
       tweetRefs: tweetRefIds.length > 0 ? JSON.stringify(tweetRefIds) : null,
     }).returning()
 
+    reportGenerating.delete(user.id)
+
     return c.json({
       content: report.content,
       model: report.model,
@@ -543,6 +576,7 @@ aiRouter.post('/report', async (c) => {
       createdAt: report.createdAt,
     })
   } catch (err) {
+    reportGenerating.delete(user.id)
     const msg = err instanceof Error ? err.message : 'Report generation failed'
     console.error(`[ai] Report error for user ${user.id}:`, msg)
     return c.json({ error: msg }, 500)
