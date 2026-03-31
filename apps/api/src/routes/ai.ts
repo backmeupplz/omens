@@ -488,7 +488,7 @@ aiRouter.get('/filtered-feed', async (c) => {
       eq(tweets.userId, user.id),
       gte(tweetScores.score, minScore),
     ))
-    .orderBy(desc(tweetScores.score), desc(tweets.publishedAt))
+    .orderBy(desc(tweets.publishedAt))
     .limit(limit)
     .offset(offset)
 

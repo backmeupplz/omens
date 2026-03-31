@@ -442,9 +442,13 @@ function linkify(text: string): preact.ComponentChildren[] {
   return parts
 }
 
+function decodeEntities(s: string): string {
+  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+}
+
 function TweetContent({ text, hideUrls }: { text: string; hideUrls?: boolean }) {
   const [expanded, setExpanded] = useState(false)
-  let cleaned = text
+  let cleaned = decodeEntities(text)
   if (hideUrls) {
     cleaned = cleaned.replace(/\s*https?:\/\/\S+/g, '').trim()
   }
@@ -808,18 +812,20 @@ function renderReportContent(
   text: string,
   refTweets: Map<string, Tweet>,
 ): preact.ComponentChildren[] {
-  const lines = text.split('\n')
+  // Strip escape backslashes (AI sometimes outputs \$ etc)
+  const cleaned = text.replace(/\\([^\\])/g, '$1')
+  const lines = cleaned.split('\n')
   const result: preact.ComponentChildren[] = []
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
 
-    // Inline tweet embed
+    // Inline tweet embed — tight spacing
     const tweetMatch = line.match(/\[\[tweet:([^\]]+)\]\]/)
     if (tweetMatch) {
       const tweet = refTweets.get(tweetMatch[1])
       if (tweet) {
-        result.push(<div key={`t-${i}`} class="my-2"><TweetCard tweet={tweet} /></div>)
+        result.push(<div key={`t-${i}`} class="my-1.5"><TweetCard tweet={tweet} /></div>)
       }
       continue
     }
@@ -828,13 +834,13 @@ function renderReportContent(
     let content: preact.ComponentChildren[]
     if (line.startsWith('### ')) {
       content = processBold(line.slice(4), i)
-      result.push(<h4 key={i} class="text-sm font-bold text-zinc-100 mt-3 mb-1">{content}</h4>)
+      result.push(<h4 key={i} class="text-sm font-bold text-zinc-100 mt-3 mb-0.5">{content}</h4>)
     } else if (line.startsWith('## ')) {
       content = processBold(line.slice(3), i)
-      result.push(<h3 key={i} class="text-base font-bold text-zinc-100 mt-4 mb-1">{content}</h3>)
+      result.push(<h3 key={i} class="text-base font-bold text-zinc-100 mt-4 mb-0.5">{content}</h3>)
     } else if (line.startsWith('# ')) {
       content = processBold(line.slice(2), i)
-      result.push(<h2 key={i} class="text-lg font-bold text-zinc-100 mt-4 mb-2">{content}</h2>)
+      result.push(<h2 key={i} class="text-lg font-bold text-zinc-100 mt-4 mb-1">{content}</h2>)
     } else if (line.match(/^[-*]\s/)) {
       content = processBold(line.slice(2), i)
       result.push(<li key={i} class="text-sm text-zinc-300 ml-4 list-disc">{content}</li>)
@@ -842,7 +848,7 @@ function renderReportContent(
       content = processBold(line.replace(/^\d+\.\s/, ''), i)
       result.push(<li key={i} class="text-sm text-zinc-300 ml-4 list-decimal">{content}</li>)
     } else if (line.trim() === '') {
-      result.push(<br key={i} />)
+      result.push(<div key={`br-${i}`} class="h-2" />)
     } else {
       content = processBold(line, i)
       result.push(<p key={i} class="text-sm text-zinc-300 leading-relaxed">{content}</p>)
@@ -970,7 +976,7 @@ function AiReportView() {
                 disabled={generating}
                 class="rounded bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
               >
-                {generating ? 'Generating...' : 'Regenerate'}
+                {generating ? 'Generating...' : 'Generate new report'}
               </button>
               {viewingReportId && (
                 <button type="button" onClick={backToLatest}
@@ -1131,6 +1137,10 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   }, [refresh, onRefreshRef, stopPolling])
 
   const showNewPosts = () => {
+    // Snapshot current above-threshold as new baseline so polling doesn't re-trigger immediately
+    api<ScoringStatus>('/ai/scoring-status')
+      .then((st) => { baselineRef.current = st.aboveThreshold })
+      .catch(() => { baselineRef.current = null })
     setNewReady(0)
     setPage(1)
     setFeedKey((k) => k + 1)
