@@ -231,7 +231,7 @@ export function App() {
           <Route path="/filtered">
             <AuthGuard auth={auth}>
               <XGuard auth={auth}>
-                <FilteredFeed />
+                <FilteredFeed onRefreshRef={(fn) => setRefreshFn(() => fn)} />
               </XGuard>
             </AuthGuard>
           </Route>

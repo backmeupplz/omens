@@ -635,15 +635,15 @@ function TweetCard({ tweet, nudge, onNudge, score }: {
             )}
             <span class="ml-auto flex items-center gap-3">
               {onNudge && (
-                <span class="flex items-center gap-1">
+                <span class="flex items-center gap-0.5">
                   <button
                     type="button"
                     class={`p-0.5 rounded transition-colors ${nudge === 'up' ? 'text-emerald-400' : 'hover:text-emerald-400'}`}
                     onClick={(e) => { e.stopPropagation(); onNudge(tweet.id, 'up') }}
                     title="Show more like this"
                   >
-                    <svg class="w-3.5 h-3.5" fill={nudge === 'up' ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                      <path d="M7.5 15h2.25m8.024-9.75c.011.05.028.1.037.15.091.529.02 1.076-.207 1.559L12.75 15.5H9.236a2 2 0 01-1.897-1.368l-1.029-3.09A1 1 0 017.262 10H10.5l-1.27-4.574A1 1 0 0110.192 4h.358a1 1 0 01.948.684l1.128 3.316h3.349a2 2 0 011.5.674z" />
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={nudge === 'up' ? '2.5' : '1.5'}>
+                      <path d="M12 19V5m0 0l-6 6m6-6l6 6" />
                     </svg>
                   </button>
                   <button
@@ -652,14 +652,14 @@ function TweetCard({ tweet, nudge, onNudge, score }: {
                     onClick={(e) => { e.stopPropagation(); onNudge(tweet.id, 'down') }}
                     title="Show less like this"
                   >
-                    <svg class="w-3.5 h-3.5" fill={nudge === 'down' ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                      <path d="M16.5 9h-2.25M8.476 18.75c-.011-.05-.028-.1-.037-.15-.091-.529-.02-1.076.207-1.559L13.25 8.5h3.514a2 2 0 011.897 1.368l1.029 3.09A1 1 0 0118.738 14H15.5l1.27 4.574A1 1 0 0115.808 20h-.358a1 1 0 01-.948-.684l-1.128-3.316h-3.349a2 2 0 01-1.5-.674z" />
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={nudge === 'down' ? '2.5' : '1.5'}>
+                      <path d="M12 5v14m0 0l6-6m-6 6l-6-6" />
                     </svg>
                   </button>
                 </span>
               )}
               {score != null && (
-                <span class={`text-[10px] font-medium px-1.5 py-0.5 rounded ${score >= 70 ? 'bg-emerald-900/40 text-emerald-400' : score >= 50 ? 'bg-yellow-900/40 text-yellow-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                <span class={`text-[10px] font-medium px-1 py-0.5 rounded-sm ${score >= 70 ? 'text-emerald-500' : score >= 50 ? 'text-yellow-500' : 'text-zinc-600'}`}>
                   {score}
                 </span>
               )}
@@ -854,8 +854,12 @@ function renderReportContent(
 function AiReportView() {
   const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean }>('/ai/settings')
   const { data, loading, refetch } = useApi<{ report: AiReportData | null }>('/ai/report')
+  const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>('/ai/reports')
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [viewingReportId, setViewingReportId] = useState<string | null>(null)
+  const [viewingReport, setViewingReport] = useState<AiReportData | null>(null)
+  const [showPastReports, setShowPastReports] = useState(false)
 
   const generate = async () => {
     setGenerating(true)
@@ -870,49 +874,104 @@ function AiReportView() {
     }
   }
 
+  const viewPastReport = async (id: string) => {
+    try {
+      const res = await api<{ report: AiReportData }>(`/ai/report/${id}`)
+      setViewingReport(res.report)
+      setViewingReportId(id)
+      setShowPastReports(false)
+    } catch {}
+  }
+
+  const backToLatest = () => {
+    setViewingReportId(null)
+    setViewingReport(null)
+  }
+
   if (settingsLoading || loading) return <p class="text-zinc-500 py-8 text-center">Loading...</p>
   if (!settings?.configured) return <AiSection onSave={refetchSettings} />
 
-  const report = data?.report
+  const activeReport = viewingReportId ? viewingReport : data?.report
   const refTweetMap = new Map<string, Tweet>()
-  if (report?.refTweets) {
-    for (const t of report.refTweets) refTweetMap.set(t.id, t)
+  if (activeReport?.refTweets) {
+    for (const t of activeReport.refTweets) refTweetMap.set(t.id, t)
   }
 
   return (
     <div>
-      {error && <p class="text-red-400 text-sm text-center mb-3">{error}</p>}
-      {report ? (
-        <div class="space-y-2">
-          <div class="flex items-center justify-between text-xs text-zinc-500">
-            <span>{report.model} — {report.tweetCount} posts (last 24h)</span>
-            <span>{new Date(report.createdAt).toLocaleString()}</span>
-          </div>
-          <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
-            {renderReportContent(report.content, refTweetMap)}
-          </div>
+      {/* Top controls */}
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
           <button
             type="button"
             onClick={generate}
             disabled={generating}
-            class="rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+            class="rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
           >
-            {generating ? 'Generating...' : 'Regenerate report'}
+            {generating ? 'Generating...' : 'Generate report'}
           </button>
+          {viewingReportId && (
+            <button type="button" onClick={backToLatest}
+              class="rounded bg-zinc-800 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200">
+              Back to latest
+            </button>
+          )}
         </div>
-      ) : (
-        <div class="text-center py-12">
-          <p class="text-zinc-400 mb-4">Generate an AI report to surface the most important items from your last 24 hours.</p>
-          <button
-            type="button"
-            onClick={generate}
-            disabled={generating}
-            class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
-          >
-            {generating ? 'Generating report...' : 'Generate AI report'}
+        {pastData && pastData.reports.length > 1 && (
+          <button type="button" onClick={() => setShowPastReports(!showPastReports)}
+            class="text-xs text-zinc-500 hover:text-zinc-300">
+            {showPastReports ? 'Hide' : 'Past reports'}
           </button>
+        )}
+      </div>
+
+      {generating && (
+        <div class="mb-4 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-3 text-sm text-zinc-400">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Generating report... This may take a minute.
+          </div>
         </div>
       )}
+
+      {error && <p class="text-red-400 text-sm text-center mb-3">{error}</p>}
+
+      {/* Past reports dropdown */}
+      {showPastReports && pastData && (
+        <div class="mb-4 rounded-lg border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
+          {pastData.reports.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => viewPastReport(r.id)}
+              class={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-800 transition-colors ${viewingReportId === r.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400'}`}
+            >
+              <div class="flex items-center justify-between">
+                <span>{new Date(r.createdAt).toLocaleString()}</span>
+                <span class="text-xs text-zinc-600">{r.tweetCount} posts &middot; {r.model}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeReport ? (
+        <div>
+          <div class="flex items-center justify-between text-xs text-zinc-500 mb-2">
+            <span>{activeReport.model} — {activeReport.tweetCount} posts (last 24h)</span>
+            <span>{new Date(activeReport.createdAt).toLocaleString()}</span>
+          </div>
+          <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-4 pb-5">
+            {renderReportContent(activeReport.content, refTweetMap)}
+          </div>
+        </div>
+      ) : !generating ? (
+        <div class="text-center py-12">
+          <p class="text-zinc-500">No report yet. Click "Generate report" to create one.</p>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -938,12 +997,38 @@ export function AiReportPage() {
   return <AiReportView />
 }
 
-export function FilteredFeed() {
+export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
   const { nudges, onNudge, feedback } = useNudges()
   const [page, setPage] = useState(1)
   const { data, loading, error, refetch } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}`)
   const [filtering, setFiltering] = useState(false)
   const [filterError, setFilterError] = useState<string | null>(null)
+  const [refreshCount, setRefreshCount] = useState<number | null>(null)
+  const [scoringPending, setScoringPending] = useState<number | null>(null)
+
+  const refresh = useCallback(async () => {
+    setRefreshCount(null)
+    try {
+      const res = await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
+      setRefreshCount(res.count)
+      setTimeout(() => setRefreshCount(null), 4000)
+      // Score new posts
+      setFiltering(true)
+      setScoringPending(res.count > 0 ? res.count : null)
+      try {
+        await api('/ai/filter', { method: 'POST' })
+      } catch {}
+      setScoringPending(null)
+      setFiltering(false)
+      refetch()
+    } catch (e) {
+      setFilterError(e instanceof Error ? e.message : 'Failed to refresh')
+    }
+  }, [refetch])
+
+  useEffect(() => {
+    onRefreshRef?.(refresh)
+  }, [refresh, onRefreshRef])
 
   const runFilter = async () => {
     setFiltering(true)
@@ -960,33 +1045,31 @@ export function FilteredFeed() {
 
   return (
     <div>
-      {feedback && (
+      {(feedback || refreshCount !== null) && (
         <div class="fixed top-16 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-200 shadow-lg">
-          {feedback}
+          {refreshCount !== null ? (refreshCount > 0 ? `+${refreshCount} posts` : 'Nothing new') : feedback}
+        </div>
+      )}
+      {filtering && (
+        <div class="mb-3 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-2 text-sm text-zinc-400">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {scoringPending ? `Scoring ${scoringPending} new posts...` : 'Scoring posts...'}
+          </div>
         </div>
       )}
       {loading && <p class="text-zinc-500 py-8 text-center">Loading...</p>}
       {filterError && <p class="text-red-400 text-sm text-center mb-2">{filterError}</p>}
       {error && <p class="text-red-400 text-center">{error}</p>}
 
-      <div class="flex items-center justify-between mb-3">
-        <span class="text-xs text-zinc-500">Showing posts scored 50+ by AI</span>
-        <button
-          type="button"
-          onClick={runFilter}
-          disabled={filtering}
-          class="rounded bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
-        >
-          {filtering ? 'Filtering...' : 'Re-filter feed'}
-        </button>
-      </div>
-
-      {data?.data.length === 0 && !loading && (
+      {data?.data.length === 0 && !loading && !filtering && (
         <div class="text-center py-12">
           <p class="text-zinc-400 mb-4">No scored posts yet. Run the AI filter to score your feed.</p>
           <button type="button" onClick={runFilter} disabled={filtering}
             class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
-            {filtering ? 'Filtering...' : 'Filter my feed'}
+            Filter my feed
           </button>
         </div>
       )}
@@ -1035,7 +1118,7 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
     <div>
       {(feedback || refreshCount !== null) && (
         <div class="fixed top-16 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-200 shadow-lg">
-          {refreshCount !== null ? `+${refreshCount} posts` : feedback}
+          {refreshCount !== null ? (refreshCount > 0 ? `+${refreshCount} posts` : 'Nothing new') : feedback}
         </div>
       )}
       {loading && <p class="text-zinc-500 py-8 text-center">Loading...</p>}

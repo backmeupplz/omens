@@ -3,7 +3,7 @@
  */
 
 import { getDb, tweets, xSessions } from '@omens/db'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import env from '../env'
 import { decrypt } from '../helpers/crypto'
 import { getHomeTimeline } from './graphql'
@@ -27,7 +27,22 @@ async function fetchForUser(userId: string): Promise<number> {
 
     const { tweets: parsedTweets } = await getHomeTimeline({ authToken, ct0 })
 
-    let upserted = 0
+    if (parsedTweets.length === 0) return 0
+
+    // Find which tweetIds already exist for this user so we can count only genuinely new inserts
+    const incomingTweetIds = parsedTweets.map((t) => t.tweetId)
+    const existingRows = await db
+      .select({ tweetId: tweets.tweetId })
+      .from(tweets)
+      .where(
+        and(
+          eq(tweets.userId, userId),
+          inArray(tweets.tweetId, incomingTweetIds),
+        ),
+      )
+    const existingSet = new Set(existingRows.map((r) => r.tweetId))
+
+    let newCount = 0
     for (const tweet of parsedTweets) {
       try {
         await db
@@ -71,16 +86,18 @@ async function fetchForUser(userId: string): Promise<number> {
               views: tweet.views,
             },
           })
-        upserted++
+        if (!existingSet.has(tweet.tweetId)) {
+          newCount++
+        }
       } catch (err) {
         console.error(`[fetcher] Error upserting tweet:`, err)
       }
     }
 
-    if (upserted > 0) {
-      console.log(`[fetcher] Upserted ${upserted} tweets for user ${userId}`)
+    if (newCount > 0) {
+      console.log(`[fetcher] Inserted ${newCount} new tweets for user ${userId} (${parsedTweets.length - newCount} updated)`)
     }
-    return upserted
+    return newCount
   } catch (err) {
     console.error(`[fetcher] Error fetching for user ${userId}:`, err)
     return 0

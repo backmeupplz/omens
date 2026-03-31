@@ -529,4 +529,57 @@ aiRouter.get('/report', async (c) => {
   })
 })
 
+// --- Past reports list ---
+aiRouter.get('/reports', async (c) => {
+  const user = c.get('user')
+  const db = getDb(env.DATABASE_URL)
+  const page = Math.max(1, Number(c.req.query('page') || '1') || 1)
+  const limit = 10
+  const offset = (page - 1) * limit
+
+  const reports = await db.select({
+    id: aiReports.id,
+    model: aiReports.model,
+    tweetCount: aiReports.tweetCount,
+    createdAt: aiReports.createdAt,
+  }).from(aiReports)
+    .where(eq(aiReports.userId, user.id))
+    .orderBy(desc(aiReports.createdAt))
+    .limit(limit)
+    .offset(offset)
+
+  return c.json({ reports })
+})
+
+// --- Get specific report by ID ---
+aiRouter.get('/report/:id', async (c) => {
+  const user = c.get('user')
+  const id = c.req.param('id')
+  const db = getDb(env.DATABASE_URL)
+
+  const [report] = await db.select().from(aiReports)
+    .where(and(eq(aiReports.id, id), eq(aiReports.userId, user.id)))
+    .limit(1)
+
+  if (!report) return c.json({ error: 'Report not found' }, 404)
+
+  const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
+  let refTweets: any[] = []
+  if (tweetRefIds.length > 0) {
+    refTweets = await db.select().from(tweets).where(inArray(tweets.id, tweetRefIds))
+  }
+
+  return c.json({
+    report: {
+      id: report.id,
+      content: report.content,
+      model: report.model,
+      tweetCount: report.tweetCount,
+      tweetRefs: tweetRefIds,
+      refTweets,
+      createdAt: report.createdAt,
+    },
+  })
+})
+
 export default aiRouter

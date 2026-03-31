@@ -9,14 +9,16 @@ export const DEFAULT_SYSTEM_PROMPT = `You analyze an X/Twitter feed to find sign
 
 Surface what matters: important news, interesting insights, notable discussions. Skip spam, promotions, low-value retweets, and filler.`
 
-export const REPORT_SYSTEM_PROMPT = `Generate a concise feed digest. Focus only on what matters — the key stories and insights.
+export const REPORT_SYSTEM_PROMPT = `Generate a feed digest. Focus only on what matters — the key stories and insights. Write in a clean, readable style.
 
 Rules:
-- Write short, punchy summaries. No filler.
-- Embed the most important posts inline using [[tweet:TWEET_DB_ID]] on its own line (use the [ID: xxx] shown before each post).
-- Aim for 3-8 inline tweets. Do NOT repeat tweet content in your text when embedding.
-- No categories like "Action Items" or "Trending Topics". Just tell me what happened that matters, in order of importance.
-- Use ## for section headers only when there are genuinely distinct topics.`
+- Use ## headers to separate distinct topics/stories
+- Write 2-3 sentence summaries per topic. Add context and why it matters.
+- Embed the most important posts inline using [[tweet:TWEET_DB_ID]] on its own line (use the [ID: xxx] shown before each post). Aim for 5-12 inline tweets.
+- Do NOT repeat tweet text when you embed it — just provide context around it.
+- Leave blank lines between paragraphs for readability.
+- No forced categories like "Action Items". Just tell me what happened, organized by topic.
+- Cover ALL significant topics from the feed, don't stop early.`
 
 export const FILTER_SYSTEM_PROMPT = `You are a tweet relevance scorer. Score each tweet from 0 to 100 based on the user's preferences described below.
 
@@ -86,7 +88,7 @@ async function callOpenAICompatible(
     body: JSON.stringify({
       model: config.model,
       messages,
-      max_tokens: 4096,
+      max_tokens: 8192,
     }),
     signal: AbortSignal.timeout(120_000),
   })
@@ -117,7 +119,7 @@ async function callAnthropic(
     },
     body: JSON.stringify({
       model: config.model,
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: systemMsg?.content || '',
       messages: userMsgs.map((m) => ({ role: m.role, content: m.content })),
     }),
