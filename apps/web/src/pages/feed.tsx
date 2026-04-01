@@ -821,6 +821,7 @@ function AiReportView() {
   const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>('/ai/reports')
   const [generating, setGenerating] = useState(false)
   const [streamContent, setStreamContent] = useState('')
+  const [streamTweets, setStreamTweets] = useState<Map<string, Tweet>>(new Map())
   const [genStatus, setGenStatus] = useState('Generating...')
   const [genStartedAt, setGenStartedAt] = useState(0)
   const [genTweetCount, setGenTweetCount] = useState(0)
@@ -870,6 +871,11 @@ function AiReportView() {
             }
             try {
               const json = JSON.parse(data)
+              if (json.tweets) {
+                const map = new Map<string, Tweet>()
+                for (const t of json.tweets) map.set(t.id, t)
+                setStreamTweets(map)
+              }
               if (json.status) setGenStatus(json.status)
               if (json.content) setStreamContent(json.content)
               else if (json.chunk) setStreamContent((prev) => prev + json.chunk)
@@ -911,6 +917,7 @@ function AiReportView() {
   const generate = async () => {
     setGenerating(true)
     setStreamContent('')
+    setStreamTweets(new Map())
     setGenStatus('Starting...')
     setGenStartedAt(Date.now())
     setError(null)
@@ -963,7 +970,7 @@ function AiReportView() {
           </div>
           {streamContent && (
             <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-5">
-              {renderReportContent(streamContent, new Map())}
+              {renderReportContent(streamContent, streamTweets)}
             </div>
           )}
         </div>

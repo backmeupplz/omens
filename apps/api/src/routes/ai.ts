@@ -604,6 +604,7 @@ interface ReportProgress {
   content: string
   done: boolean
   error?: string
+  tweets: Array<{ id: string; [key: string]: any }>
   subscribers: Set<(event: string) => void>
 }
 const reportGenerating = new Map<string, ReportProgress>()
@@ -656,7 +657,7 @@ export async function generateReportForUser(userId: string): Promise<any> {
 
   const progress: ReportProgress = {
     startedAt: new Date(), tweetCount: tweetList.length, status: 'Preparing...',
-    content: '', done: false, subscribers: new Set(),
+    content: '', done: false, tweets: tweetList, subscribers: new Set(),
   }
   reportGenerating.set(userId, progress)
 
@@ -736,32 +737,38 @@ aiRouter.get('/report-stream', async (c) => {
     new ReadableStream({
       start(controller) {
         const encoder = new TextEncoder()
+        let closed = false
         const send = (data: string) => {
-          try { controller.enqueue(encoder.encode(`data: ${data}\n\n`)) } catch {}
+          if (closed) return
+          try { controller.enqueue(encoder.encode(`data: ${data}\n\n`)) } catch { closed = true }
+        }
+        const close = () => {
+          if (closed) return
+          closed = true
+          try { controller.close() } catch {}
         }
 
         if (!progress) {
           send('[DONE]')
-          controller.close()
+          close()
           return
         }
 
-        // Send current status and accumulated content so far
+        if (progress.tweets.length > 0) send(JSON.stringify({ tweets: progress.tweets }))
         if (progress.status) send(JSON.stringify({ status: progress.status }))
         if (progress.content) send(JSON.stringify({ content: progress.content }))
 
         if (progress.done || progress.error) {
           if (progress.error) send(`[ERROR] ${progress.error}`)
           else send('[DONE]')
-          controller.close()
+          close()
           return
         }
 
-        // Subscribe to new chunks
         const onChunk = (event: string) => {
           if (event === '[DONE]' || event.startsWith('[ERROR]')) {
             send(event)
-            controller.close()
+            close()
             progress.subscribers.delete(onChunk)
           } else {
             send(event)
