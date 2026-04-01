@@ -116,8 +116,8 @@ export function createApp() {
 
   // Serve frontend static files in production
   if (process.env.NODE_ENV === 'production') {
-    app.use('/*', serveStatic({ root: './web' }))
-    app.get('*', serveStatic({ root: './web', path: '/index.html' }))
+    app.use('/*', serveStatic({ root: '/app/web' }))
+    app.get('*', serveStatic({ root: '/app/web', path: '/index.html' }))
   }
 
   return app
