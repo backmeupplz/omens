@@ -1123,21 +1123,24 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
     }
   }, [])
 
+  const pollOnce = useCallback(() => {
+    api<ScoringStatus>('/ai/scoring-status')
+      .then((st) => {
+        updateStatus(st)
+        if (st.pending === 0 && !st.active) {
+          stopPolling()
+          baselineRef.current = null
+          jobSizeRef.current = 0
+        }
+      })
+      .catch(() => {})
+  }, [stopPolling, updateStatus])
+
   const startPolling = useCallback(() => {
     stopPolling()
-    pollRef.current = setInterval(() => {
-      api<ScoringStatus>('/ai/scoring-status')
-        .then((st) => {
-          updateStatus(st)
-          if (st.pending === 0 && !st.active) {
-            stopPolling()
-            baselineRef.current = null
-            jobSizeRef.current = 0
-          }
-        })
-        .catch(() => {})
-    }, 5000)
-  }, [stopPolling, updateStatus])
+    pollOnce() // immediate first check
+    pollRef.current = setInterval(pollOnce, 5000)
+  }, [stopPolling, pollOnce])
 
   // Check initial scoring status — if pending but not active, kick off scoring
   useEffect(() => {
@@ -1207,11 +1210,9 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
                 <svg class="w-4 h-4 animate-spin shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path d="M21 12a9 9 0 11-6.219-8.56" />
                 </svg>
-                {scoringActive && scoringTotalBatches > 0
+                {scoringTotalBatches > 0
                   ? `Scoring batch ${scoringBatch} of ${scoringTotalBatches}`
-                  : pendingCount > 0
-                    ? 'Waiting for scoring to start...'
-                    : 'Finishing up...'}
+                  : 'Scoring posts...'}
               </div>
               <span class="text-xs text-zinc-400 tabular-nums">{done} / {jobSize} new posts</span>
             </div>
