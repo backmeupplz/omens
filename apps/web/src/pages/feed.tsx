@@ -1144,76 +1144,56 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   interface ScoringStatus { total: number; scored: number; pending: number; aboveThreshold: number; active: boolean; batch: number; totalBatches: number; log: string[] }
   const baselineRef = useRef<number | null>(null) // above-threshold count when scoring started
 
-  const updateStatus = useCallback((st: ScoringStatus) => {
-    setPendingCount(st.pending)
-    setScoringActive(st.active)
-    setScoringBatch(st.batch)
-    setScoringTotalBatches(st.totalBatches)
-    setScoringDetails({ total: st.total, scored: st.scored, pending: st.pending, aboveThreshold: st.aboveThreshold })
-    if (st.log.length > 0) setScoringLog(st.log)
-    // Capture job size on first poll when scoring starts
-    if (jobSizeRef.current === 0 && st.pending > 0) {
-      jobSizeRef.current = st.pending
-    }
-    // Track new above-threshold posts since scoring started
-    if (baselineRef.current === null && (st.active || st.pending > 0)) {
-      baselineRef.current = st.aboveThreshold
-    }
-    if (baselineRef.current !== null) {
-      const newAbove = st.aboveThreshold - baselineRef.current
-      if (newAbove > 0) setNewReady(newAbove)
-    }
-  }, [])
-
-  const wasActiveRef = useRef(false)
-
   const pollOnce = useCallback(() => {
     api<ScoringStatus>('/ai/scoring-status')
       .then((st) => {
-        updateStatus(st)
+        // Update display state
+        setScoringActive(st.active)
+        setScoringBatch(st.batch)
+        setScoringTotalBatches(st.totalBatches)
+        setScoringDetails({ total: st.total, scored: st.scored, pending: st.pending, aboveThreshold: st.aboveThreshold })
+        if (st.log.length > 0) setScoringLog(st.log)
+
         if (st.active) {
-          wasActiveRef.current = true
-        } else if (wasActiveRef.current || st.pending === 0) {
-          // Scoring was active and now finished, OR nothing to score
-          stopPolling()
-          setPendingCount(0)
+          // Scoring is running — capture baseline on first active poll
+          if (jobSizeRef.current === 0) jobSizeRef.current = st.pending
+          if (baselineRef.current === null) baselineRef.current = st.aboveThreshold
+        } else if (jobSizeRef.current > 0) {
+          // Was scoring, now done — compute new posts and stop
+          const newAbove = baselineRef.current !== null ? st.aboveThreshold - baselineRef.current : 0
+          if (newAbove > 0) setNewReady(newAbove)
           setScoringActive(false)
-          setScoringBatch(0)
-          setScoringTotalBatches(0)
-          if (baselineRef.current !== null) {
-            const newAbove = st.aboveThreshold - baselineRef.current
-            if (newAbove > 0) setNewReady(newAbove)
-          }
-          baselineRef.current = null
+          stopPolling()
           jobSizeRef.current = 0
-          wasActiveRef.current = false
+          baselineRef.current = null
         }
-        // else: not active yet but pending > 0 — keep polling, scoring will start soon
+        // If not active and never was (jobSize === 0), keep polling — scoring hasn't started yet
       })
       .catch(() => {})
-  }, [stopPolling, updateStatus])
+  }, [stopPolling])
 
   const startPolling = useCallback(() => {
     stopPolling()
-    pollOnce() // immediate first check
-    pollRef.current = setInterval(pollOnce, 5000)
+    pollRef.current = setInterval(pollOnce, 2000) // poll every 2s to catch fast scoring
   }, [stopPolling, pollOnce])
 
-  // Check initial scoring status — if pending but not active, kick off scoring
+  // Check initial scoring status
   useEffect(() => {
     if (!aiConfigured) return
     api<ScoringStatus>('/ai/scoring-status')
       .then((s) => {
-        updateStatus(s)
-        if (s.pending > 0 && !s.active) {
-          // Scoring isn't running — trigger it
+        if (s.active) {
+          setScoringActive(true)
+          startPolling()
+        } else if (s.pending > 0) {
+          setScoringActive(true)
           api('/ai/filter', { method: 'POST' }).catch(() => {})
+          startPolling()
         }
-        if (s.pending > 0 || s.active) startPolling()
       })
       .catch(() => {})
     return stopPolling
-  }, [stopPolling, startPolling, updateStatus, aiConfigured])
+  }, [stopPolling, startPolling, aiConfigured])
 
   const refresh = useCallback(async () => {
     setFetchingPosts(true)
