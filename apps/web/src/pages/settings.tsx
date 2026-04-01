@@ -397,19 +397,23 @@ interface InternalsData {
 }
 
 function AiTuningSection() {
-  const { data: settings } = useApi<{ configured: boolean; minScore?: number }>('/ai/settings')
+  const { data: settings } = useApi<{ configured: boolean; minScore?: number; fetchIntervalMinutes?: number; reportIntervalHours?: number }>('/ai/settings')
   const { data: internals, refetch } = useApi<InternalsData>('/ai/internals')
   const [instruction, setInstruction] = useState('')
   const [regenerating, setRegenerating] = useState(false)
   const [localMinScore, setLocalMinScore] = useState<number | null>(null)
+  const [fetchInterval, setFetchInterval] = useState<number | null>(null)
+  const [reportInterval, setReportInterval] = useState<number | null>(null)
   const [savingScore, setSavingScore] = useState(false)
+  const [savingIntervals, setSavingIntervals] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const intervalDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (settings?.minScore != null && localMinScore === null) {
-      setLocalMinScore(settings.minScore)
-    }
-  }, [settings, localMinScore])
+    if (settings?.minScore != null && localMinScore === null) setLocalMinScore(settings.minScore)
+    if (settings?.fetchIntervalMinutes != null && fetchInterval === null) setFetchInterval(settings.fetchIntervalMinutes)
+    if (settings?.reportIntervalHours != null && reportInterval === null) setReportInterval(settings.reportIntervalHours)
+  }, [settings, localMinScore, fetchInterval, reportInterval])
 
   const onSliderChange = (val: number) => {
     setLocalMinScore(val)
@@ -491,6 +495,50 @@ function AiTuningSection() {
               </svg>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Auto-fetch and report intervals */}
+      {fetchInterval !== null && reportInterval !== null && (
+        <div class="space-y-3">
+          <label class="text-xs text-zinc-400 block">Auto-fetch posts every</label>
+          <select
+            class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700 select-styled"
+            value={fetchInterval}
+            onChange={(e) => {
+              const v = Number((e.target as HTMLSelectElement).value)
+              setFetchInterval(v)
+              setSavingIntervals(true)
+              api('/ai/settings/intervals', { method: 'PUT', body: JSON.stringify({ fetchIntervalMinutes: v }) })
+                .finally(() => setSavingIntervals(false))
+            }}
+          >
+            <option value="0">Manual only</option>
+            <option value="5">5 minutes</option>
+            <option value="15">15 minutes</option>
+            <option value="30">30 minutes</option>
+            <option value="60">1 hour</option>
+          </select>
+
+          <label class="text-xs text-zinc-400 block">Auto-generate reports every</label>
+          <select
+            class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700 select-styled"
+            value={reportInterval}
+            onChange={(e) => {
+              const v = Number((e.target as HTMLSelectElement).value)
+              setReportInterval(v)
+              setSavingIntervals(true)
+              api('/ai/settings/intervals', { method: 'PUT', body: JSON.stringify({ reportIntervalHours: v }) })
+                .finally(() => setSavingIntervals(false))
+            }}
+          >
+            <option value="0">Manual only</option>
+            <option value="6">6 hours</option>
+            <option value="12">12 hours</option>
+            <option value="24">24 hours</option>
+            <option value="48">2 days</option>
+          </select>
+          {savingIntervals && <span class="text-xs text-zinc-500">Saving...</span>}
         </div>
       )}
 

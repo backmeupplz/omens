@@ -2,12 +2,16 @@
  * Periodic tweet fetcher — polls HomeLatestTimeline for all users with sessions
  */
 
-import { getDb, tweets, xSessions } from '@omens/db'
+import { aiSettings, getDb, tweets, xSessions } from '@omens/db'
 import { and, eq, inArray } from 'drizzle-orm'
 import env from '../env'
 import { decrypt } from '../helpers/crypto'
 import { scoreUnscoredTweets } from '../routes/ai'
 import { getHomeTimeline } from './graphql'
+
+// Per-user state tracking
+const lastFetchTime = new Map<string, number>()
+const activeFetches = new Set<string>()
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null
 
@@ -113,22 +117,79 @@ async function pollAll() {
   const db = getDb(env.DATABASE_URL)
   const sessions = await db.select({ userId: xSessions.userId }).from(xSessions)
 
+  const tasks: Promise<void>[] = []
+
   for (const { userId } of sessions) {
-    await fetchForUser(userId)
+    // Skip if already fetching for this user
+    if (activeFetches.has(userId)) continue
+
+    // Check user's fetch interval
+    const [settings] = await db.select({ fetchIntervalMinutes: aiSettings.fetchIntervalMinutes })
+      .from(aiSettings).where(eq(aiSettings.userId, userId)).limit(1)
+
+    const interval = settings?.fetchIntervalMinutes ?? 15
+    if (interval === 0) continue // manual only
+
+    const lastFetch = lastFetchTime.get(userId) || 0
+    const elapsed = (Date.now() - lastFetch) / 60_000
+    if (elapsed < interval) continue
+
+    // Run fetch in parallel
+    activeFetches.add(userId)
+    lastFetchTime.set(userId, Date.now())
+    tasks.push(
+      fetchForUser(userId)
+        .then(() => {})
+        .catch((err) => console.error(`[fetcher] Error for user ${userId}:`, err))
+        .finally(() => activeFetches.delete(userId)),
+    )
   }
+
+  if (tasks.length > 0) await Promise.all(tasks)
+}
+
+// Auto-report scheduling
+const activeReports = new Set<string>()
+
+async function checkAutoReports() {
+  const db = getDb(env.DATABASE_URL)
+  const allSettings = await db.select({
+    userId: aiSettings.userId,
+    reportIntervalHours: aiSettings.reportIntervalHours,
+    lastAutoReportAt: aiSettings.lastAutoReportAt,
+  }).from(aiSettings)
+
+  const { generateReportForUser } = await import('../routes/ai')
+
+  const tasks: Promise<void>[] = []
+  for (const s of allSettings) {
+    if (s.reportIntervalHours === 0) continue // manual only
+    if (activeReports.has(s.userId)) continue
+
+    const lastReport = s.lastAutoReportAt?.getTime() || 0
+    const elapsed = (Date.now() - lastReport) / 3_600_000
+    if (elapsed < s.reportIntervalHours) continue
+
+    activeReports.add(s.userId)
+    tasks.push(
+      generateReportForUser(s.userId)
+        .catch((err: any) => console.error(`[auto-report] Error for ${s.userId}:`, err))
+        .finally(() => activeReports.delete(s.userId)),
+    )
+  }
+
+  if (tasks.length > 0) await Promise.all(tasks)
 }
 
 export function initFetcher() {
-  const intervalMs = env.POLL_INTERVAL_MINUTES * 60 * 1000
-  console.log(`[fetcher] Starting poll every ${env.POLL_INTERVAL_MINUTES}m`)
+  console.log('[fetcher] Starting poll loop (every 15s, per-user intervals)')
 
-  setTimeout(() => {
-    void pollAll()
-  }, 5000)
+  setTimeout(() => void pollAll(), 5000)
+  intervalHandle = setInterval(() => void pollAll(), 15_000)
 
-  intervalHandle = setInterval(() => {
-    void pollAll()
-  }, intervalMs)
+  // Check auto-reports every 5 minutes
+  setTimeout(() => void checkAutoReports(), 60_000)
+  setInterval(() => void checkAutoReports(), 5 * 60_000)
 }
 
 export function stopFetcher() {

@@ -90,7 +90,10 @@ export const aiSettings = pgTable('ai_settings', {
   model: text('model').notNull(),
   systemPrompt: text('system_prompt'),
   minScore: integer('min_score').notNull().default(50),
+  fetchIntervalMinutes: integer('fetch_interval_minutes').notNull().default(15), // 0 = manual only
+  reportIntervalHours: integer('report_interval_hours').notNull().default(24), // 0 = manual only
   promptLastRegenAt: timestamp('prompt_last_regen_at'),
+  lastAutoReportAt: timestamp('last_auto_report_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
