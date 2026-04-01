@@ -500,7 +500,22 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
   const onOgLoaded = useCallback(() => setOgLoaded(true), [])
 
   return (
-    <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 hover:border-zinc-700 transition-colors">
+    <div>
+    {tweet.parentTweet && (
+      <div class="rounded-t-xl border border-b-0 border-zinc-800 bg-zinc-950 px-4 py-2.5 flex items-start gap-2.5">
+        {tweet.parentTweet.authorAvatar && (
+          <img src={tweet.parentTweet.authorAvatar} alt="" class="w-5 h-5 rounded-full mt-0.5 shrink-0" />
+        )}
+        <div class="min-w-0">
+          <span class="text-xs text-zinc-500">
+            <span class="font-medium text-zinc-400">{tweet.parentTweet.authorName}</span>
+            {' '}@{tweet.parentTweet.authorHandle}
+          </span>
+          <p class="text-xs text-zinc-500 line-clamp-2 mt-0.5">{tweet.parentTweet.content}</p>
+        </div>
+      </div>
+    )}
+    <div class={`${tweet.parentTweet ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} border border-zinc-800 bg-zinc-900 px-4 py-3 hover:border-zinc-700 transition-colors`}>
       {lightbox !== null && (
         <Lightbox
           items={media.filter((m) => m.type === 'photo')}
@@ -576,22 +591,9 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
         )}
       </div>
 
-      {/* Reply context — show parent tweet if available */}
-      {tweet.replyToHandle && (
-        tweet.parentTweet ? (
-          <div class="mb-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
-            <div class="flex items-center gap-1.5 mb-0.5">
-              {tweet.parentTweet.authorAvatar && (
-                <img src={tweet.parentTweet.authorAvatar} alt="" class="w-4 h-4 rounded-full" />
-              )}
-              <span class="text-xs font-medium text-zinc-400">{tweet.parentTweet.authorName}</span>
-              <span class="text-xs text-zinc-600">@{tweet.parentTweet.authorHandle}</span>
-            </div>
-            <p class="text-xs text-zinc-500 line-clamp-2">{tweet.parentTweet.content}</p>
-          </div>
-        ) : (
-          <p class="text-xs text-zinc-500 mb-1">Replying to <span class="text-emerald-500">@{tweet.replyToHandle}</span></p>
-        )
+      {/* Reply context */}
+      {tweet.replyToHandle && !tweet.parentTweet && (
+        <p class="text-xs text-zinc-500 mb-1">Replying to <span class="text-emerald-500">@{tweet.replyToHandle}</span></p>
       )}
 
       {/* Content — full width, no indent */}
@@ -711,6 +713,7 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
               </a>
             </span>
       </div>
+    </div>
     </div>
   )
 }
@@ -1003,6 +1006,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   const [feedKey, setFeedKey] = useState(0) // bump to re-fetch feed
   const { data, loading, error } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}&_=${feedKey}`)
   const [filterError, setFilterError] = useState<string | null>(null)
+  const [fetchingPosts, setFetchingPosts] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
   const [scoringActive, setScoringActive] = useState(false)
   const [scoringBatch, setScoringBatch] = useState(0)
@@ -1071,6 +1075,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   }, [stopPolling, startPolling, updateStatus, aiConfigured])
 
   const refresh = useCallback(async () => {
+    setFetchingPosts(true)
     try {
       const res = await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
       if (res.count === 0) return
@@ -1081,6 +1086,8 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
       startPolling()
     } catch (e) {
       setFilterError(e instanceof Error ? e.message : 'Failed to refresh')
+    } finally {
+      setFetchingPosts(false)
     }
   }, [startPolling])
 
@@ -1167,9 +1174,9 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
           ) : (
             <>
               <p class="text-zinc-400 mb-4">No posts to show yet. Fetch your feed first.</p>
-              <button type="button" onClick={refresh}
-                class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500">
-                Fetch posts
+              <button type="button" onClick={refresh} disabled={fetchingPosts}
+                class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
+                {fetchingPosts ? 'Fetching...' : 'Fetch posts'}
               </button>
             </>
           )}
