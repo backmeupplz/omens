@@ -12,7 +12,7 @@ function Countdown({ targetMs, prefix }: { targetMs: number; prefix?: string }) 
     return () => clearInterval(id)
   }, [])
   const diff = Math.max(0, Math.floor((targetMs - now) / 1000))
-  if (diff <= 0) return <span>{prefix}soon</span>
+  if (diff <= 0) return null
   const m = Math.floor(diff / 60)
   const s = diff % 60
   return <span>{prefix}{m}:{s.toString().padStart(2, '0')}</span>
@@ -414,6 +414,12 @@ interface InternalsData {
 function AiTuningSection() {
   const { data: settings } = useApi<{ configured: boolean; minScore?: number; fetchIntervalMinutes?: number; reportIntervalHours?: number }>('/ai/settings')
   const { data: internals, refetch } = useApi<InternalsData>('/ai/internals')
+
+  // Poll internals every 30s to catch background prompt regeneration
+  useEffect(() => {
+    const id = setInterval(refetch, 30_000)
+    return () => clearInterval(id)
+  }, [refetch])
   const [instruction, setInstruction] = useState('')
   const [regenerating, setRegenerating] = useState(false)
   const [localMinScore, setLocalMinScore] = useState<number | null>(null)

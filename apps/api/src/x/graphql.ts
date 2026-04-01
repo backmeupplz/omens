@@ -181,12 +181,13 @@ function getFullText(tweetResult: any, legacy: any): string {
   const noteText = tweetResult.note_tweet?.note_tweet_results?.result?.text
   let text = noteText || legacy.full_text || ''
 
-  // Strip trailing t.co URLs when media, cards, or articles are present (X's web client does this)
+  // Strip trailing t.co URLs when media, cards, articles, or quoted tweets are present (X's web client does this)
   const hasMedia = legacy.extended_entities?.media?.length > 0 ||
     legacy.entities?.media?.length > 0
   const hasCard = tweetResult.card?.legacy?.binding_values?.length > 0
   const hasArticle = !!tweetResult.article?.article_results?.result
-  if (hasMedia || hasCard || hasArticle) {
+  const hasQuote = !!tweetResult.quoted_status_result?.result
+  if (hasMedia || hasCard || hasArticle || hasQuote) {
     text = text.replace(/\s*https:\/\/t\.co\/\w+\s*$/, '')
   }
 
