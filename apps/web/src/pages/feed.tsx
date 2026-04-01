@@ -858,8 +858,21 @@ function renderReportContent(
   return result
 }
 
+function ReportCountdown({ reportAt }: { reportAt: number }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  const diff = Math.max(0, Math.floor((reportAt - now) / 1000))
+  if (diff <= 0) return <span class="text-xs text-zinc-500">Auto-report due soon</span>
+  const h = Math.floor(diff / 3600)
+  const m = Math.floor((diff % 3600) / 60)
+  return <span class="text-xs text-zinc-500">Next auto-report in {h > 0 ? `${h}h ` : ''}{m}m</span>
+}
+
 function AiReportView() {
-  const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean }>('/ai/settings')
+  const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number }>('/ai/settings')
   const { data, loading, refetch } = useApi<{ report: AiReportData | null }>('/ai/report')
   const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>('/ai/reports')
   const [generating, setGenerating] = useState(false)
@@ -969,7 +982,7 @@ function AiReportView() {
       {activeReport ? (
         <div>
           <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-3">
               <button
                 type="button"
                 onClick={generate}
@@ -983,6 +996,9 @@ function AiReportView() {
                   class="rounded bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200">
                   Back to latest
                 </button>
+              )}
+              {!viewingReportId && settings?.reportIntervalHours && settings.reportIntervalHours > 0 && activeReport?.createdAt && (
+                <ReportCountdown reportAt={new Date(activeReport.createdAt).getTime() + settings.reportIntervalHours * 3_600_000} />
               )}
             </div>
             <div class="flex items-center gap-3">

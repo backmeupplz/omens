@@ -3,6 +3,21 @@ import { useLocation } from 'wouter-preact'
 import { api } from '../helpers/api'
 import { useApi } from '../helpers/hooks'
 
+// === Countdown ===
+
+function Countdown({ targetMs, prefix }: { targetMs: number; prefix?: string }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  const diff = Math.max(0, Math.floor((targetMs - now) / 1000))
+  if (diff <= 0) return <span>{prefix}soon</span>
+  const m = Math.floor(diff / 60)
+  const s = diff % 60
+  return <span>{prefix}{m}:{s.toString().padStart(2, '0')}</span>
+}
+
 // === X Section ===
 
 function XSection({ onXChange }: { onXChange: () => void }) {
@@ -563,7 +578,12 @@ function AiTuningSection() {
       {hasPending && (
         <div class="space-y-2">
           <div class="flex items-center justify-between">
-            <span class="text-xs text-zinc-400">Pending changes ({internals.pendingNudges.length + internals.pendingInstructions.length})</span>
+            <span class="text-xs text-zinc-400">
+              Pending changes ({internals.pendingNudges.length + internals.pendingInstructions.length})
+              {internals.lastRegenAt && (
+                <Countdown targetMs={new Date(internals.lastRegenAt).getTime() + 5 * 60_000} prefix=" · auto-applies in " />
+              )}
+            </span>
             <button type="button" onClick={regenerate} disabled={regenerating}
               class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium hover:bg-emerald-500 disabled:opacity-50">
               {regenerating ? 'Regenerating...' : 'Apply now'}
@@ -581,12 +601,12 @@ function AiTuningSection() {
           {internals.pendingNudges.map((n) => (
             <div key={n.id} class="flex items-start justify-between rounded border border-zinc-800 bg-zinc-900 px-3 py-2 gap-2">
               <div class="min-w-0">
-                <div class="flex items-center gap-1 mb-0.5">
-                  <span class={`text-xs font-medium ${n.direction === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
+                <p class="text-xs mb-0.5">
+                  <span class={`font-medium ${n.direction === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
                     {n.direction === 'up' ? 'More like' : 'Less like'}
-                  </span>
-                  <span class="text-xs text-zinc-500">@{n.authorHandle}</span>
-                </div>
+                  </span>{' '}
+                  <span class="text-zinc-500">@{n.authorHandle}</span>
+                </p>
                 <p class="text-sm text-zinc-300 line-clamp-2">{n.tweetContent}</p>
               </div>
               <button type="button" onClick={() => removeNudge(n.tweetId)}
