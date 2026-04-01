@@ -4,6 +4,7 @@ import { Countdown } from '../helpers/components'
 import { fmt, safeParse, timeAgo } from '../helpers/format'
 import { useApi } from '../helpers/hooks'
 import { renderMarkdownLine } from '../helpers/markdown'
+import { usePolling } from '../helpers/usePolling'
 import { AiSection } from './settings'
 
 // === Lightbox ===
@@ -1125,104 +1126,75 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   const { data, loading, error } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}&_=${feedKey}`)
   const [filterError, setFilterError] = useState<string | null>(null)
   const [fetchingPosts, setFetchingPosts] = useState(false)
-  const [pendingCount, setPendingCount] = useState(0)
-  const [scoringActive, setScoringActive] = useState(false)
-  const [scoringBatch, setScoringBatch] = useState(0)
-  const [scoringTotalBatches, setScoringTotalBatches] = useState(0)
-  const [scoringDetails, setScoringDetails] = useState<{ total: number; scored: number; pending: number; aboveThreshold: number } | null>(null)
-  const [scoringLog, setScoringLog] = useState<string[]>([])
   const [showScoringDetails, setShowScoringDetails] = useState(false)
-  const jobSizeRef = useRef<number>(0) // pending count when scoring started
   const [newReady, setNewReady] = useState(0)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  // Stop polling helper
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
-  }, [])
+  const baselineRef = useRef<number | null>(null)
+  const jobSizeRef = useRef<number>(0)
 
   interface ScoringStatus { total: number; scored: number; pending: number; aboveThreshold: number; active: boolean; batch: number; totalBatches: number; log: string[] }
-  const baselineRef = useRef<number | null>(null) // above-threshold count when scoring started
 
-  const pollOnce = useCallback(() => {
-    api<ScoringStatus>('/ai/scoring-status')
-      .then((st) => {
-        setScoringActive(st.active)
-        setPendingCount(st.pending)
-        setScoringBatch(st.batch)
-        setScoringTotalBatches(st.totalBatches)
-        setScoringDetails({ total: st.total, scored: st.scored, pending: st.pending, aboveThreshold: st.aboveThreshold })
-        if (st.log.length > 0) setScoringLog(st.log)
+  const scoring = usePolling<ScoringStatus>(
+    () => api<ScoringStatus>('/ai/scoring-status'),
+    {
+      intervalMs: 2000,
+      shouldStop: (st) => {
+        // Stop when scoring was active (jobSize captured) and is now done
+        if (st.active && jobSizeRef.current === 0) jobSizeRef.current = st.pending
+        if (st.active && baselineRef.current === null) baselineRef.current = st.aboveThreshold
+        return !st.active && jobSizeRef.current > 0
+      },
+      onStop: (st) => {
+        const newAbove = baselineRef.current !== null ? st.aboveThreshold - baselineRef.current : 0
+        if (newAbove > 0) setNewReady(newAbove)
+        jobSizeRef.current = 0
+        baselineRef.current = null
+      },
+    },
+  )
 
-        if (st.active) {
-          if (jobSizeRef.current === 0) jobSizeRef.current = st.pending
-          if (baselineRef.current === null) baselineRef.current = st.aboveThreshold
-        } else if (jobSizeRef.current > 0) {
-          // Was scoring, now done
-          const newAbove = baselineRef.current !== null ? st.aboveThreshold - baselineRef.current : 0
-          if (newAbove > 0) setNewReady(newAbove)
-          setScoringActive(false)
-          stopPolling()
-          jobSizeRef.current = 0
-          baselineRef.current = null
-        }
-      })
-      .catch(() => {})
-  }, [stopPolling])
+  const st = scoring.data
+  const scoringActive = scoring.polling
+  const pendingCount = st?.pending ?? 0
+  const scoringBatch = st?.batch ?? 0
+  const scoringTotalBatches = st?.totalBatches ?? 0
+  const scoringDetails = st ? { total: st.total, scored: st.scored, pending: st.pending, aboveThreshold: st.aboveThreshold } : null
+  const scoringLog = st?.log ?? []
 
-  const startPolling = useCallback(() => {
-    stopPolling()
-    pollOnce() // immediate first check
-    pollRef.current = setInterval(pollOnce, 2000)
-  }, [stopPolling, pollOnce])
-
-  // Check initial scoring status
+  // Check initial scoring status on mount
   useEffect(() => {
     if (!aiConfigured) return
     api<ScoringStatus>('/ai/scoring-status')
       .then((s) => {
-        if (s.active) {
-          setScoringActive(true)
-          startPolling()
-        } else if (s.pending > 0) {
-          setScoringActive(true)
-          api('/ai/filter', { method: 'POST' }).catch(() => {})
-          startPolling()
+        if (s.active || s.pending > 0) {
+          if (s.pending > 0 && !s.active) api('/ai/filter', { method: 'POST' }).catch(() => {})
+          scoring.start()
         }
       })
       .catch(() => {})
-    return stopPolling
-  }, [stopPolling, startPolling, aiConfigured])
+    return scoring.stop
+  }, [aiConfigured])
 
   const refresh = useCallback(async () => {
     setFetchingPosts(true)
     try {
       const res = await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
       if (res.count === 0) return
-
-      // Scoring will start automatically server-side; poll for progress
-      setPendingCount(res.count)
-      setScoringActive(true)
-      jobSizeRef.current = res.count
-      startPolling()
+      scoring.start()
     } catch (e) {
       setFilterError(e instanceof Error ? e.message : 'Failed to refresh')
     } finally {
       setFetchingPosts(false)
     }
-  }, [startPolling])
+  }, [])
 
   useEffect(() => {
     onRefreshRef?.(refresh)
-    return stopPolling
-  }, [refresh, onRefreshRef, stopPolling])
+    return scoring.stop
+  }, [refresh, onRefreshRef])
 
   const showNewPosts = () => {
-    // Snapshot current above-threshold as new baseline so polling doesn't re-trigger immediately
-    api<ScoringStatus>('/ai/scoring-status')
-      .then((st) => { baselineRef.current = st.aboveThreshold })
-      .catch(() => { baselineRef.current = null })
     setNewReady(0)
+    baselineRef.current = null
     setPage(1)
     setFeedKey((k) => k + 1)
   }
@@ -1299,13 +1271,13 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
         )
       })()}
 
-      {/* New posts pill — fixed at top, below navbar */}
+      {/* New posts pill — fixed below navbar */}
       {newReady > 0 && (
-        <div class="sticky top-14 z-40 flex justify-center pt-2 pb-1">
+        <div class="fixed top-14 left-0 right-0 z-40 flex justify-center pt-2 pointer-events-none">
           <button
             type="button"
             onClick={showNewPosts}
-            class="rounded-full bg-emerald-600 px-4 py-1.5 text-xs text-white font-medium hover:bg-emerald-500 transition-colors shadow-lg"
+            class="rounded-full bg-emerald-600 px-4 py-1.5 text-xs text-white font-medium hover:bg-emerald-500 transition-colors shadow-lg pointer-events-auto"
           >
             Show {newReady} new post{newReady !== 1 ? 's' : ''}
           </button>
