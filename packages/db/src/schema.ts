@@ -52,6 +52,7 @@ export const tweets = pgTable(
     quotedTweet: text('quoted_tweet'), // JSON: {authorName, authorHandle, authorAvatar, content, url}
     card: text('card'), // JSON: {title, description, thumbnail, domain, url}
     replyToHandle: text('reply_to_handle'), // handle of user being replied to
+    replyToTweetId: text('reply_to_tweet_id'), // X snowflake ID of parent tweet
     url: text('url').notNull(),
     likes: integer('likes').notNull().default(0),
     retweets: integer('retweets').notNull().default(0),

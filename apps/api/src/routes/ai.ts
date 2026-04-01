@@ -571,8 +571,19 @@ aiRouter.get('/filtered-feed', async (c) => {
     ))
     .where(and(eq(userTweets.userId, user.id), gte(tweetScores.score, minScore)))
 
+  // Resolve parent tweets for replies
+  const replyIds = result.map((r) => r.tweet.replyToTweetId).filter((id): id is string => !!id)
+  const parentMap = new Map<string, typeof tweets.$inferSelect>()
+  if (replyIds.length > 0) {
+    const parents = await db.select().from(tweets).where(inArray(tweets.tweetId, replyIds))
+    for (const p of parents) parentMap.set(p.tweetId, p)
+  }
+
   return c.json({
-    data: result.map((r) => ({ ...r.tweet, score: r.score })),
+    data: result.map((r) => ({
+      ...r.tweet, score: r.score,
+      parentTweet: r.tweet.replyToTweetId ? parentMap.get(r.tweet.replyToTweetId) ?? null : null,
+    })),
     pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
   })
 })
@@ -613,11 +624,12 @@ export async function generateReportForUser(userId: string): Promise<any> {
 
   // Fallback to all tweets from last 24h if nothing scored yet
   if (tweetList.length === 0) {
-    tweetList = await db.select({ id: tweets.id, tweetId: tweets.tweetId, authorId: tweets.authorId, authorName: tweets.authorName, authorHandle: tweets.authorHandle, authorAvatar: tweets.authorAvatar, authorFollowers: tweets.authorFollowers, authorBio: tweets.authorBio, content: tweets.content, mediaUrls: tweets.mediaUrls, isRetweet: tweets.isRetweet, quotedTweet: tweets.quotedTweet, card: tweets.card, replyToHandle: tweets.replyToHandle, url: tweets.url, likes: tweets.likes, retweets: tweets.retweets, replies: tweets.replies, views: tweets.views, publishedAt: tweets.publishedAt, fetchedAt: tweets.fetchedAt })
+    tweetList = await db.select({ tweet: tweets })
       .from(tweets)
       .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
       .where(and(eq(userTweets.userId, userId), gte(tweets.publishedAt, since)))
       .orderBy(desc(tweets.publishedAt))
+      .then((rows) => rows.map((r) => r.tweet))
   }
 
   if (tweetList.length === 0) return null

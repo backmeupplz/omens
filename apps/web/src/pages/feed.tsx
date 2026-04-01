@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { api } from '../helpers/api'
 import { Countdown } from '../helpers/components'
-import { decodeEntities, fmt, safeParse, timeAgo } from '../helpers/format'
+import { fmt, safeParse, timeAgo } from '../helpers/format'
 import { useApi } from '../helpers/hooks'
 import { renderMarkdownLine } from '../helpers/markdown'
 import { AiSection } from './settings'
@@ -256,6 +256,8 @@ interface Tweet {
   card: string | null // JSON: {title, description, thumbnail, domain, url}
   quotedTweet: string | null
   replyToHandle: string | null
+  replyToTweetId: string | null
+  parentTweet: Tweet | null
   url: string
   likes: number
   retweets: number
@@ -432,7 +434,7 @@ function linkify(text: string): preact.ComponentChildren[] {
 
 function TweetContent({ text, hideUrls }: { text: string; hideUrls?: boolean }) {
   const [expanded, setExpanded] = useState(false)
-  let cleaned = decodeEntities(text)
+  let cleaned = text
   if (hideUrls) {
     cleaned = cleaned.replace(/\s*https?:\/\/\S+/g, '').trim()
   }
@@ -574,9 +576,22 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
         )}
       </div>
 
-      {/* Reply context */}
+      {/* Reply context — show parent tweet if available */}
       {tweet.replyToHandle && (
-        <p class="text-xs text-zinc-500 mb-1">Replying to <span class="text-emerald-500">@{tweet.replyToHandle}</span></p>
+        tweet.parentTweet ? (
+          <div class="mb-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+            <div class="flex items-center gap-1.5 mb-0.5">
+              {tweet.parentTweet.authorAvatar && (
+                <img src={tweet.parentTweet.authorAvatar} alt="" class="w-4 h-4 rounded-full" />
+              )}
+              <span class="text-xs font-medium text-zinc-400">{tweet.parentTweet.authorName}</span>
+              <span class="text-xs text-zinc-600">@{tweet.parentTweet.authorHandle}</span>
+            </div>
+            <p class="text-xs text-zinc-500 line-clamp-2">{tweet.parentTweet.content}</p>
+          </div>
+        ) : (
+          <p class="text-xs text-zinc-500 mb-1">Replying to <span class="text-emerald-500">@{tweet.replyToHandle}</span></p>
+        )
       )}
 
       {/* Content — full width, no indent */}

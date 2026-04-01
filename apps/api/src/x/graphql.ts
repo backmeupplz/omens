@@ -82,6 +82,7 @@ export interface ParsedTweet {
   replies: number
   views: number
   replyToHandle: string | null
+  replyToTweetId: string | null
   publishedAt: Date
 }
 
@@ -192,7 +193,10 @@ function getFullText(tweetResult: any, legacy: any): string {
     text = text.replace(/\s*https:\/\/t\.co\/\w+\s*$/, '')
   }
 
+  // Decode HTML entities — X's API returns &amp; &lt; &gt; etc.
   return text.trim()
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
 }
 
 function extractCard(tweetResult: any, tweetUrl?: string): ParsedTweet['card'] {
@@ -327,6 +331,7 @@ function parseTweetData(tweetResult: any): ParsedTweet | null {
     replies: legacy.reply_count || 0,
     views: Number(tweetResult.views?.count) || 0,
     replyToHandle: legacy.in_reply_to_screen_name || null,
+    replyToTweetId: legacy.in_reply_to_status_id_str || null,
     publishedAt: new Date(legacy.created_at),
   }
 }

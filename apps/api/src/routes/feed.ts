@@ -1,5 +1,5 @@
 import { getDb, tweets, tweetScores, userTweets } from '@omens/db'
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import env from '../env'
 import { parsePagination } from '../helpers/http'
@@ -35,8 +35,23 @@ feedRouter.get('/', async (c) => {
     .from(userTweets)
     .where(eq(userTweets.userId, user.id))
 
+  // Resolve parent tweets for replies
+  const replyTweetIds = result
+    .map((r) => r.tweet.replyToTweetId)
+    .filter((id): id is string => !!id)
+  const parentMap = new Map<string, typeof tweets.$inferSelect>()
+  if (replyTweetIds.length > 0) {
+    const parents = await db.select().from(tweets)
+      .where(inArray(tweets.tweetId, replyTweetIds))
+    for (const p of parents) parentMap.set(p.tweetId, p)
+  }
+
   return c.json({
-    data: result.map((r) => ({ ...r.tweet, score: r.score })),
+    data: result.map((r) => ({
+      ...r.tweet,
+      score: r.score,
+      parentTweet: r.tweet.replyToTweetId ? parentMap.get(r.tweet.replyToTweetId) ?? null : null,
+    })),
     pagination: {
       page,
       limit,
