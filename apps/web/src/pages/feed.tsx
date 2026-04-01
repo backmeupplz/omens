@@ -793,64 +793,82 @@ function AiReportView() {
   const { data, loading, refetch } = useApi<{ report: AiReportData | null }>('/ai/report')
   const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>('/ai/reports')
   const [generating, setGenerating] = useState(false)
+  const [streamContent, setStreamContent] = useState('')
   const [genTweetCount, setGenTweetCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [viewingReportId, setViewingReportId] = useState<string | null>(null)
   const [viewingReport, setViewingReport] = useState<AiReportData | null>(null)
   const [showPastReports, setShowPastReports] = useState(false)
-  const reportPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const reportPollFirstRef = useRef(true)
+  const abortRef = useRef<AbortController | null>(null)
 
-  // Check if report generation is in progress on load
-  const startReportPoll = useCallback((interval: number) => {
-    if (reportPollRef.current) clearInterval(reportPollRef.current)
-    reportPollRef.current = setInterval(() => {
-      api<{ generating: boolean; error: string | null }>('/ai/report-status')
-        .then((st) => {
-          if (st.error) {
-            if (reportPollRef.current) clearInterval(reportPollRef.current)
-            reportPollRef.current = null
-            setGenerating(false)
-            setError(st.error)
-            return
+  /** Connect to SSE stream and accumulate content */
+  const connectStream = useCallback(() => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    fetch('/api/ai/report-stream', { credentials: 'include', signal: controller.signal })
+      .then(async (res) => {
+        const reader = res.body?.getReader()
+        if (!reader) return
+        const decoder = new TextDecoder()
+        let buf = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buf += decoder.decode(value, { stream: true })
+          const lines = buf.split('\n\n')
+          buf = lines.pop() || ''
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const data = line.slice(6)
+            if (data === '[DONE]') {
+              setGenerating(false)
+              setStreamContent('')
+              refetch()
+              return
+            }
+            if (data.startsWith('[ERROR]')) {
+              setGenerating(false)
+              setStreamContent('')
+              setError(data.slice(8))
+              return
+            }
+            try {
+              const json = JSON.parse(data)
+              if (json.content) setStreamContent(json.content)
+              else if (json.chunk) setStreamContent((prev) => prev + json.chunk)
+            } catch {}
           }
-          if (!st.generating) {
-            if (reportPollRef.current) clearInterval(reportPollRef.current)
-            reportPollRef.current = null
-            setGenerating(false)
-            refetch()
-          } else if (reportPollFirstRef.current) {
-            // After first poll response, slow down to 10s
-            reportPollFirstRef.current = false
-            startReportPoll(10000)
-          }
-        })
-        .catch(() => {})
-    }, interval)
+        }
+      })
+      .catch((e) => {
+        if (e instanceof Error && e.name === 'AbortError') return
+      })
   }, [refetch])
 
+  // Check if report is already generating on mount
   useEffect(() => {
-    api<{ generating: boolean; tweetCount: number }>('/ai/report-status')
+    api<{ generating: boolean; tweetCount: number; error: string | null }>('/ai/report-status')
       .then((s) => {
+        if (s.error) { setError(s.error); return }
         if (s.generating) {
           setGenerating(true)
           setGenTweetCount(s.tweetCount)
-          reportPollFirstRef.current = true
-          startReportPoll(3000)
+          connectStream()
         }
       })
       .catch(() => {})
-    return () => { if (reportPollRef.current) clearInterval(reportPollRef.current) }
-  }, [startReportPoll])
+    return () => abortRef.current?.abort()
+  }, [connectStream])
 
   const generate = async () => {
     setGenerating(true)
+    setStreamContent('')
     setError(null)
     try {
       await api('/ai/report', { method: 'POST' })
-      // Report generates in background — start polling for completion
-      reportPollFirstRef.current = true
-      startReportPoll(3000)
+      connectStream()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate report')
       setGenerating(false)
@@ -885,14 +903,18 @@ function AiReportView() {
       {error && <p class="text-red-400 text-sm text-center mb-3">{error}</p>}
 
       {generating && (
-        <div class="mb-4 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-3">
-          <div class="flex items-center gap-2 text-sm text-zinc-300">
+        <div class="mb-4">
+          <div class="flex items-center gap-2 text-sm text-zinc-400 mb-2">
             <svg class="w-4 h-4 animate-spin shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Generating report{genTweetCount > 0 ? ` from ${genTweetCount} posts` : ''}...
+            Generating{genTweetCount > 0 ? ` from ${genTweetCount} posts` : ''}...
           </div>
-          <p class="text-xs text-zinc-500 mt-1">AI is analyzing your feed. This usually takes 30-60 seconds.</p>
+          {streamContent && (
+            <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-5">
+              {renderReportContent(streamContent, new Map())}
+            </div>
+          )}
         </div>
       )}
 

@@ -20,6 +20,7 @@ import {
   META_PROMPT,
   REPORT_SYSTEM_PROMPT,
   callAI,
+  callAIStream,
   formatTweetsForAI,
   listModels,
 } from '../helpers/ai'
@@ -591,13 +592,21 @@ aiRouter.get('/filtered-feed', async (c) => {
 // ==================== REPORTS ====================
 
 // In-memory report generation tracking
-const reportGenerating = new Map<string, { startedAt: Date; tweetCount: number; error?: string }>()
+interface ReportProgress {
+  startedAt: Date
+  tweetCount: number
+  content: string
+  done: boolean
+  error?: string
+  subscribers: Set<(chunk: string) => void>
+}
+const reportGenerating = new Map<string, ReportProgress>()
 
 aiRouter.get('/report-status', async (c) => {
   const user = c.get('user')
   const progress = reportGenerating.get(user.id)
   return c.json({
-    generating: !!progress && !progress.error,
+    generating: !!progress && !progress.done && !progress.error,
     startedAt: progress?.startedAt || null,
     tweetCount: progress?.tweetCount || 0,
     error: progress?.error || null,
@@ -635,15 +644,24 @@ export async function generateReportForUser(userId: string): Promise<any> {
 
   if (tweetList.length === 0) return null
 
-  reportGenerating.set(userId, { startedAt: new Date(), tweetCount: tweetList.length })
+  const progress: ReportProgress = {
+    startedAt: new Date(), tweetCount: tweetList.length,
+    content: '', done: false, subscribers: new Set(),
+  }
+  reportGenerating.set(userId, progress)
 
   try {
     const systemPrompt = `${ai.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT}\n\n${REPORT_SYSTEM_PROMPT}`
     const tweetText = formatTweetsForAI(tweetList)
     const userContent = `Here are ${tweetList.length} posts from the last 24 hours (pre-filtered by relevance). Analyze and create a report:\n\n${tweetText}`
 
-    const content = await callAI(ai.config, systemPrompt, userContent, { timeoutMs: 300_000 })
+    // Stream content from AI provider
+    for await (const chunk of callAIStream(ai.config, systemPrompt, userContent)) {
+      progress.content += chunk
+      for (const sub of progress.subscribers) sub(chunk)
+    }
 
+    const content = progress.content
     const refMatches = [...content.matchAll(/\[\[tweet:([^\]]+)\]\]/g)]
     const tweetRefIds = refMatches.map((m) => m[1])
 
@@ -655,9 +673,10 @@ export async function generateReportForUser(userId: string): Promise<any> {
       tweetRefs: tweetRefIds.length > 0 ? JSON.stringify(tweetRefIds) : null,
     }).returning()
 
-    // Update last auto report time
     await db.update(aiSettings).set({ lastAutoReportAt: new Date() }).where(eq(aiSettings.userId, userId))
 
+    progress.done = true
+    for (const sub of progress.subscribers) sub('[DONE]')
     reportGenerating.delete(userId)
     console.log(`[ai] Generated report for user ${userId} (${tweetList.length} tweets)`)
     return report
@@ -668,6 +687,8 @@ export async function generateReportForUser(userId: string): Promise<any> {
     const entry = reportGenerating.get(userId)
     if (entry) {
       entry.error = errMsg
+      entry.done = true
+      for (const sub of entry.subscribers) sub(`[ERROR] ${errMsg}`)
       setTimeout(() => reportGenerating.delete(userId), 30_000)
     }
     throw err
@@ -681,12 +702,64 @@ aiRouter.post('/report', async (c) => {
     return c.json({ error: 'Report is already being generated. Please wait.' }, 409)
   }
 
-  // Fire and forget — frontend polls /report-status for progress
+  // Fire and forget — frontend connects to /report-stream for live content
   void generateReportForUser(user.id).catch((err) =>
     console.error(`[ai] Report generation error for ${user.id}:`, err instanceof Error ? err.message : err),
   )
 
   return c.json({ ok: true })
+})
+
+// SSE stream of report content as it's generated
+aiRouter.get('/report-stream', async (c) => {
+  const user = c.get('user')
+  const progress = reportGenerating.get(user.id)
+
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder()
+        const send = (data: string) => {
+          try { controller.enqueue(encoder.encode(`data: ${data}\n\n`)) } catch {}
+        }
+
+        if (!progress) {
+          send('[DONE]')
+          controller.close()
+          return
+        }
+
+        // Send accumulated content so far
+        if (progress.content) send(JSON.stringify({ content: progress.content }))
+
+        if (progress.done || progress.error) {
+          if (progress.error) send(`[ERROR] ${progress.error}`)
+          else send('[DONE]')
+          controller.close()
+          return
+        }
+
+        // Subscribe to new chunks
+        const onChunk = (chunk: string) => {
+          if (chunk === '[DONE]' || chunk.startsWith('[ERROR]')) {
+            send(chunk)
+            controller.close()
+            progress.subscribers.delete(onChunk)
+          } else {
+            send(JSON.stringify({ chunk }))
+          }
+        }
+        progress.subscribers.add(onChunk)
+      },
+    }),
+    {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    },
+  )
 })
 
 aiRouter.get('/report', async (c) => {

@@ -227,6 +227,151 @@ export async function callAI(
   }
 }
 
+// --- Streaming entry point ---
+
+async function* streamOpenAICompatible(config: AiConfig, messages: ChatMessage[]): AsyncGenerator<string> {
+  const base = getBaseUrl(config)
+  const body: Record<string, unknown> = { model: config.model, messages, stream: true }
+  if (config.provider !== 'fireworks') body.max_tokens = 8192
+  const res = await fetch(`${base}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`AI provider error (${res.status}): ${text.slice(0, 200)}`)
+  }
+  yield* parseSSEStream(res, (json) => json.choices?.[0]?.delta?.content || '')
+}
+
+async function* streamAnthropic(config: AiConfig, messages: ChatMessage[]): AsyncGenerator<string> {
+  const base = getBaseUrl(config)
+  const systemMsg = messages.find((m) => m.role === 'system')
+  const userMsgs = messages.filter((m) => m.role !== 'system')
+  const res = await fetch(`${base}/v1/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': config.apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: config.model, max_tokens: 8192, stream: true,
+      system: systemMsg?.content || '',
+      messages: userMsgs.map((m) => ({ role: m.role, content: m.content })),
+    }),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Anthropic error (${res.status}): ${text.slice(0, 200)}`)
+  }
+  yield* parseSSEStream(res, (json) => {
+    if (json.type === 'content_block_delta') return json.delta?.text || ''
+    return ''
+  })
+}
+
+async function* streamGoogle(config: AiConfig, messages: ChatMessage[]): AsyncGenerator<string> {
+  const base = getBaseUrl(config)
+  const systemMsg = messages.find((m) => m.role === 'system')
+  const userMsgs = messages.filter((m) => m.role !== 'system')
+  const res = await fetch(
+    `${base}/v1beta/models/${config.model}:streamGenerateContent?alt=sse&key=${config.apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: systemMsg ? { parts: [{ text: systemMsg.content }] } : undefined,
+        contents: userMsgs.map((m) => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.content }] })),
+        generationConfig: { maxOutputTokens: 4096 },
+      }),
+    },
+  )
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Google AI error (${res.status}): ${text.slice(0, 200)}`)
+  }
+  yield* parseSSEStream(res, (json) => json.candidates?.[0]?.content?.parts?.[0]?.text || '')
+}
+
+async function* streamOllama(config: AiConfig, messages: ChatMessage[]): AsyncGenerator<string> {
+  const base = getBaseUrl(config)
+  const res = await fetch(`${base}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: config.model, messages, stream: true }),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Ollama error (${res.status}): ${text.slice(0, 200)}`)
+  }
+  // Ollama streams newline-delimited JSON (not SSE)
+  const reader = res.body?.getReader()
+  if (!reader) return
+  const decoder = new TextDecoder()
+  let buf = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    const lines = buf.split('\n')
+    buf = lines.pop() || ''
+    for (const line of lines) {
+      if (!line.trim()) continue
+      try {
+        const json = JSON.parse(line)
+        if (json.message?.content) yield json.message.content
+      } catch {}
+    }
+  }
+}
+
+/** Parse an SSE stream from an AI provider response */
+async function* parseSSEStream(
+  res: Response,
+  extractContent: (json: any) => string,
+): AsyncGenerator<string> {
+  const reader = res.body?.getReader()
+  if (!reader) return
+  const decoder = new TextDecoder()
+  let buf = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    const lines = buf.split('\n')
+    buf = lines.pop() || ''
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') return
+      try {
+        const json = JSON.parse(data)
+        const content = extractContent(json)
+        if (content) yield content
+      } catch {}
+    }
+  }
+}
+
+export async function* callAIStream(
+  config: AiConfig,
+  systemPrompt: string,
+  userContent: string,
+): AsyncGenerator<string> {
+  const messages: ChatMessage[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userContent },
+  ]
+  switch (config.provider) {
+    case 'anthropic': yield* streamAnthropic(config, messages); break
+    case 'google': yield* streamGoogle(config, messages); break
+    case 'ollama': yield* streamOllama(config, messages); break
+    default: yield* streamOpenAICompatible(config, messages); break
+  }
+}
+
 // --- Model listing ---
 
 export interface ModelInfo {
