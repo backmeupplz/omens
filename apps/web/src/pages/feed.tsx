@@ -1147,19 +1147,18 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   const pollOnce = useCallback(() => {
     api<ScoringStatus>('/ai/scoring-status')
       .then((st) => {
-        // Update display state
         setScoringActive(st.active)
+        setPendingCount(st.pending)
         setScoringBatch(st.batch)
         setScoringTotalBatches(st.totalBatches)
         setScoringDetails({ total: st.total, scored: st.scored, pending: st.pending, aboveThreshold: st.aboveThreshold })
         if (st.log.length > 0) setScoringLog(st.log)
 
         if (st.active) {
-          // Scoring is running — capture baseline on first active poll
           if (jobSizeRef.current === 0) jobSizeRef.current = st.pending
           if (baselineRef.current === null) baselineRef.current = st.aboveThreshold
         } else if (jobSizeRef.current > 0) {
-          // Was scoring, now done — compute new posts and stop
+          // Was scoring, now done
           const newAbove = baselineRef.current !== null ? st.aboveThreshold - baselineRef.current : 0
           if (newAbove > 0) setNewReady(newAbove)
           setScoringActive(false)
@@ -1167,14 +1166,14 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
           jobSizeRef.current = 0
           baselineRef.current = null
         }
-        // If not active and never was (jobSize === 0), keep polling — scoring hasn't started yet
       })
       .catch(() => {})
   }, [stopPolling])
 
   const startPolling = useCallback(() => {
     stopPolling()
-    pollRef.current = setInterval(pollOnce, 2000) // poll every 2s to catch fast scoring
+    pollOnce() // immediate first check
+    pollRef.current = setInterval(pollOnce, 2000)
   }, [stopPolling, pollOnce])
 
   // Check initial scoring status
