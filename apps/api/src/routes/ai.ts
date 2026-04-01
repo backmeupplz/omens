@@ -591,15 +591,16 @@ aiRouter.get('/filtered-feed', async (c) => {
 // ==================== REPORTS ====================
 
 // In-memory report generation tracking
-const reportGenerating = new Map<string, { startedAt: Date; tweetCount: number }>()
+const reportGenerating = new Map<string, { startedAt: Date; tweetCount: number; error?: string }>()
 
 aiRouter.get('/report-status', async (c) => {
   const user = c.get('user')
   const progress = reportGenerating.get(user.id)
   return c.json({
-    generating: !!progress,
+    generating: !!progress && !progress.error,
     startedAt: progress?.startedAt || null,
     tweetCount: progress?.tweetCount || 0,
+    error: progress?.error || null,
   })
 })
 
@@ -641,7 +642,7 @@ export async function generateReportForUser(userId: string): Promise<any> {
     const tweetText = formatTweetsForAI(tweetList)
     const userContent = `Here are ${tweetList.length} posts from the last 24 hours (pre-filtered by relevance). Analyze and create a report:\n\n${tweetText}`
 
-    const content = await callAI(ai.config, systemPrompt, userContent)
+    const content = await callAI(ai.config, systemPrompt, userContent, { timeoutMs: 300_000 })
 
     const refMatches = [...content.matchAll(/\[\[tweet:([^\]]+)\]\]/g)]
     const tweetRefIds = refMatches.map((m) => m[1])
@@ -661,8 +662,14 @@ export async function generateReportForUser(userId: string): Promise<any> {
     console.log(`[ai] Generated report for user ${userId} (${tweetList.length} tweets)`)
     return report
   } catch (err) {
-    reportGenerating.delete(userId)
-    console.error(`[ai] Report error for user ${userId}:`, err instanceof Error ? err.message : err)
+    const errMsg = err instanceof Error ? err.message : String(err)
+    console.error(`[ai] Report error for user ${userId}:`, errMsg)
+    // Store error for frontend to display, auto-clear after 30s
+    const entry = reportGenerating.get(userId)
+    if (entry) {
+      entry.error = errMsg
+      setTimeout(() => reportGenerating.delete(userId), 30_000)
+    }
     throw err
   }
 }

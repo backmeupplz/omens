@@ -805,8 +805,15 @@ function AiReportView() {
   const startReportPoll = useCallback((interval: number) => {
     if (reportPollRef.current) clearInterval(reportPollRef.current)
     reportPollRef.current = setInterval(() => {
-      api<{ generating: boolean }>('/ai/report-status')
+      api<{ generating: boolean; error: string | null }>('/ai/report-status')
         .then((st) => {
+          if (st.error) {
+            if (reportPollRef.current) clearInterval(reportPollRef.current)
+            reportPollRef.current = null
+            setGenerating(false)
+            setError(st.error)
+            return
+          }
           if (!st.generating) {
             if (reportPollRef.current) clearInterval(reportPollRef.current)
             reportPollRef.current = null

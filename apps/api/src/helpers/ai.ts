@@ -77,6 +77,7 @@ function getBaseUrl(config: AiConfig): string {
 async function callOpenAICompatible(
   config: AiConfig,
   messages: ChatMessage[],
+  timeoutMs = 120_000,
 ): Promise<string> {
   const base = getBaseUrl(config)
   const body: Record<string, unknown> = {
@@ -94,7 +95,7 @@ async function callOpenAICompatible(
       Authorization: `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(timeoutMs),
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
@@ -109,6 +110,7 @@ async function callOpenAICompatible(
 async function callAnthropic(
   config: AiConfig,
   messages: ChatMessage[],
+  timeoutMs = 120_000,
 ): Promise<string> {
   const base = getBaseUrl(config)
   const systemMsg = messages.find((m) => m.role === 'system')
@@ -127,7 +129,7 @@ async function callAnthropic(
       system: systemMsg?.content || '',
       messages: userMsgs.map((m) => ({ role: m.role, content: m.content })),
     }),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(timeoutMs),
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
@@ -142,6 +144,7 @@ async function callAnthropic(
 async function callGoogle(
   config: AiConfig,
   messages: ChatMessage[],
+  timeoutMs = 120_000,
 ): Promise<string> {
   const base = getBaseUrl(config)
   const systemMsg = messages.find((m) => m.role === 'system')
@@ -162,7 +165,7 @@ async function callGoogle(
         })),
         generationConfig: { maxOutputTokens: 4096 },
       }),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(timeoutMs),
     },
   )
   if (!res.ok) {
@@ -204,22 +207,23 @@ export async function callAI(
   config: AiConfig,
   systemPrompt: string,
   userContent: string,
+  options?: { timeoutMs?: number },
 ): Promise<string> {
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userContent },
   ]
+  const timeout = options?.timeoutMs
 
   switch (config.provider) {
     case 'anthropic':
-      return callAnthropic(config, messages)
+      return callAnthropic(config, messages, timeout)
     case 'google':
-      return callGoogle(config, messages)
+      return callGoogle(config, messages, timeout)
     case 'ollama':
       return callOllama(config, messages)
     default:
-      // openai, groq, xai, openrouter — all OpenAI-compatible
-      return callOpenAICompatible(config, messages)
+      return callOpenAICompatible(config, messages, timeout)
   }
 }
 
