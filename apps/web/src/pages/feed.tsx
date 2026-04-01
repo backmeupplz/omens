@@ -1129,25 +1129,29 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   const [showScoringDetails, setShowScoringDetails] = useState(false)
   const [newReady, setNewReady] = useState(0)
   const baselineRef = useRef<number | null>(null)
-  const jobSizeRef = useRef<number>(0)
 
   interface ScoringStatus { total: number; scored: number; pending: number; aboveThreshold: number; active: boolean; batch: number; totalBatches: number; log: string[] }
+
+  const wasActiveRef = useRef(false)
 
   const scoring = usePolling<ScoringStatus>(
     () => api<ScoringStatus>('/ai/scoring-status'),
     {
       intervalMs: 2000,
       shouldStop: (st) => {
-        // Stop when scoring was active (jobSize captured) and is now done
-        if (st.active && jobSizeRef.current === 0) jobSizeRef.current = st.pending
-        if (st.active && baselineRef.current === null) baselineRef.current = st.aboveThreshold
-        return !st.active && jobSizeRef.current > 0
+        if (st.active) {
+          wasActiveRef.current = true
+          if (baselineRef.current === null) baselineRef.current = st.aboveThreshold
+          return false
+        }
+        // Not active — only stop if scoring actually ran
+        return wasActiveRef.current
       },
       onStop: (st) => {
         const newAbove = baselineRef.current !== null ? st.aboveThreshold - baselineRef.current : 0
         if (newAbove > 0) setNewReady(newAbove)
-        jobSizeRef.current = 0
         baselineRef.current = null
+        wasActiveRef.current = false
       },
     },
   )
@@ -1209,9 +1213,9 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 
       {/* Scoring progress */}
       {scoringActive && (() => {
-        const jobSize = jobSizeRef.current || pendingCount
-        const done = Math.max(0, jobSize - pendingCount)
-        const pct = jobSize > 0 ? (done / jobSize) * 100 : 0
+        const total = scoringDetails?.total ?? 0
+        const scored = scoringDetails?.scored ?? 0
+        const pct = total > 0 ? (scored / total) * 100 : 0
         return (
           <div class="mb-3 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-3">
             <div class="flex items-center justify-between text-sm mb-2">
@@ -1224,7 +1228,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
                   : 'Scoring posts...'}
               </div>
               <div class="flex items-center gap-2">
-                <span class="text-xs text-zinc-400 tabular-nums">{done} / {jobSize} new posts</span>
+                <span class="text-xs text-zinc-400 tabular-nums">{pendingCount} pending</span>
                 <button
                   type="button"
                   class="text-xs text-zinc-500 hover:text-zinc-300"
