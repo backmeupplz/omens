@@ -283,7 +283,7 @@ aiRouter.get('/internals', async (c) => {
     pendingNudges: pendingNudgeRows.map((n) => ({
       id: n.id,
       tweetId: n.tweetId,
-      tweetContent: n.tweetContent?.slice(0, 100) || '',
+      tweetContent: n.tweetContent?.slice(0, 200) || '',
       authorHandle: n.authorHandle,
       direction: n.direction,
       createdAt: n.createdAt,

@@ -579,15 +579,18 @@ function AiTuningSection() {
           ))}
 
           {internals.pendingNudges.map((n) => (
-            <div key={n.id} class="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-3 py-2">
-              <span class="text-sm text-zinc-300">
-                <span class={n.direction === 'up' ? 'text-emerald-400' : 'text-red-400'}>
-                  {n.direction === 'up' ? '+' : '-'}
-                </span>
-                {' '}@{n.authorHandle}: {n.tweetContent}
-              </span>
+            <div key={n.id} class="flex items-start justify-between rounded border border-zinc-800 bg-zinc-900 px-3 py-2 gap-2">
+              <div class="min-w-0">
+                <div class="flex items-center gap-1 mb-0.5">
+                  <span class={`text-xs font-medium ${n.direction === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {n.direction === 'up' ? 'More like' : 'Less like'}
+                  </span>
+                  <span class="text-xs text-zinc-500">@{n.authorHandle}</span>
+                </div>
+                <p class="text-sm text-zinc-300 line-clamp-2">{n.tweetContent}</p>
+              </div>
               <button type="button" onClick={() => removeNudge(n.tweetId)}
-                class="text-zinc-500 hover:text-zinc-300 text-xs ml-2 shrink-0">&times;</button>
+                class="text-zinc-500 hover:text-zinc-300 text-sm mt-0.5 shrink-0">&times;</button>
             </div>
           ))}
         </div>
