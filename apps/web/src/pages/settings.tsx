@@ -615,9 +615,14 @@ function AiTuningSection() {
           <div class="flex items-center justify-between">
             <span class="text-xs text-zinc-400">
               Pending changes ({internals.pendingNudges.length + internals.pendingInstructions.length})
-              {internals.lastRegenAt && (
-                <Countdown targetMs={new Date(internals.lastRegenAt).getTime() + 5 * 60_000} prefix=" · auto-applies in " />
-              )}
+              {(() => {
+                const allDates = [
+                  ...internals.pendingNudges.map((n) => new Date(n.createdAt).getTime()),
+                  ...internals.pendingInstructions.map((p) => new Date(p.createdAt).getTime()),
+                ]
+                const earliest = allDates.length > 0 ? Math.min(...allDates) : 0
+                return earliest > 0 ? <Countdown targetMs={earliest + 5 * 60_000} prefix=" · auto-applies in " /> : null
+              })()}
             </span>
             <button type="button" onClick={regenerate} disabled={regenerating}
               class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium hover:bg-emerald-500 disabled:opacity-50">
