@@ -1022,7 +1022,6 @@ function AiReportView() {
                   <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
                 </svg>
               </button>
-              <span class="ml-auto text-xs text-zinc-600">{new Date(activeReport.createdAt).toLocaleString()}</span>
           </div>
 
           {/* Row 2: Info line */}
@@ -1073,6 +1072,7 @@ function AiReportView() {
         )
       })()}
           <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5">
+            <p class="text-xs text-zinc-500 mb-3">{new Date(activeReport.createdAt).toLocaleString()} &middot; {activeReport.tweetCount} posts analyzed</p>
             {renderReportContent(activeReport.content, refTweetMap)}
           </div>
         </div>
