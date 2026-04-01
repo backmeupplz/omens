@@ -1092,6 +1092,9 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   const [scoringActive, setScoringActive] = useState(false)
   const [scoringBatch, setScoringBatch] = useState(0)
   const [scoringTotalBatches, setScoringTotalBatches] = useState(0)
+  const [scoringDetails, setScoringDetails] = useState<{ total: number; scored: number; pending: number; aboveThreshold: number } | null>(null)
+  const [scoringLog, setScoringLog] = useState<string[]>([])
+  const [showScoringDetails, setShowScoringDetails] = useState(false)
   const jobSizeRef = useRef<number>(0) // pending count when scoring started
   const [newReady, setNewReady] = useState(0)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -1101,7 +1104,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
   }, [])
 
-  interface ScoringStatus { total: number; scored: number; pending: number; aboveThreshold: number; active: boolean; batch: number; totalBatches: number }
+  interface ScoringStatus { total: number; scored: number; pending: number; aboveThreshold: number; active: boolean; batch: number; totalBatches: number; log: string[] }
   const baselineRef = useRef<number | null>(null) // above-threshold count when scoring started
 
   const updateStatus = useCallback((st: ScoringStatus) => {
@@ -1109,6 +1112,8 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
     setScoringActive(st.active)
     setScoringBatch(st.batch)
     setScoringTotalBatches(st.totalBatches)
+    setScoringDetails({ total: st.total, scored: st.scored, pending: st.pending, aboveThreshold: st.aboveThreshold })
+    if (st.log.length > 0) setScoringLog(st.log)
     // Capture job size on first poll when scoring starts
     if (jobSizeRef.current === 0 && st.pending > 0) {
       jobSizeRef.current = st.pending
@@ -1214,7 +1219,16 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
                   ? `Scoring batch ${scoringBatch} of ${scoringTotalBatches}`
                   : 'Scoring posts...'}
               </div>
-              <span class="text-xs text-zinc-400 tabular-nums">{done} / {jobSize} new posts</span>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-zinc-400 tabular-nums">{done} / {jobSize} new posts</span>
+                <button
+                  type="button"
+                  class="text-xs text-zinc-500 hover:text-zinc-300"
+                  onClick={() => setShowScoringDetails((v) => !v)}
+                >
+                  {showScoringDetails ? 'Hide' : 'Details'}
+                </button>
+              </div>
             </div>
             <div class="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
               <div
@@ -1222,6 +1236,33 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
                 style={{ width: `${pct}%` }}
               />
             </div>
+            {showScoringDetails && scoringDetails && (
+              <>
+                <div class="mt-2 pt-2 border-t border-zinc-800 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <span class="text-zinc-500">Total posts</span>
+                  <span class="text-zinc-300 text-right tabular-nums">{scoringDetails.total}</span>
+                  <span class="text-zinc-500">Scored</span>
+                  <span class="text-zinc-300 text-right tabular-nums">{scoringDetails.scored}</span>
+                  <span class="text-zinc-500">Pending</span>
+                  <span class="text-zinc-300 text-right tabular-nums">{scoringDetails.pending}</span>
+                  <span class="text-zinc-500">Above threshold</span>
+                  <span class="text-emerald-400 text-right tabular-nums">{scoringDetails.aboveThreshold}</span>
+                  {scoringTotalBatches > 0 && (
+                    <>
+                      <span class="text-zinc-500">Current batch</span>
+                      <span class="text-zinc-300 text-right tabular-nums">{scoringBatch} / {scoringTotalBatches}</span>
+                    </>
+                  )}
+                </div>
+                {scoringLog.length > 0 && (
+                  <div class="mt-2 pt-2 border-t border-zinc-800 space-y-0.5 max-h-32 overflow-y-auto scrollbar-dark">
+                    {scoringLog.map((entry, i) => (
+                      <p key={i} class="text-[11px] text-zinc-500 font-mono">{entry}</p>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )
       })()}

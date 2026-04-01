@@ -418,7 +418,7 @@ aiRouter.post('/regenerate-prompt', async (c) => {
 // ==================== FEED FILTERING ====================
 
 // In-memory scoring progress per user
-const scoringProgress = new Map<string, { batch: number; totalBatches: number; batchSize: number }>()
+const scoringProgress = new Map<string, { batch: number; totalBatches: number; batchSize: number; log: string[] }>()
 const scoringActive = new Set<string>()
 
 export function getScoringProgress(userId: string) {
@@ -452,19 +452,20 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
 
   const BATCH_SIZE = 10
   const totalBatches = Math.ceil(allTweets.length / BATCH_SIZE)
-  scoringProgress.set(userId, { batch: 0, totalBatches, batchSize: BATCH_SIZE })
+  const log: string[] = [`Found ${allTweets.length} unscored posts`]
+  scoringProgress.set(userId, { batch: 0, totalBatches, batchSize: BATCH_SIZE, log })
   const userPrefs = ai.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT
   let totalScored = 0
 
   for (let i = 0; i < allTweets.length; i += BATCH_SIZE) {
     const batchNum = Math.floor(i / BATCH_SIZE) + 1
-    scoringProgress.set(userId, { batch: batchNum, totalBatches, batchSize: BATCH_SIZE })
+    log.push(`Sending batch ${batchNum}/${totalBatches} to ${ai.config.provider}...`)
+    scoringProgress.set(userId, { batch: batchNum, totalBatches, batchSize: BATCH_SIZE, log })
 
     const batch = allTweets.slice(i, i + BATCH_SIZE)
     const tweetText = formatTweetsForAI(batch)
     const prompt = `${FILTER_SYSTEM_PROMPT}\n\nUser preferences:\n${userPrefs}`
 
-    // Build valid ID set from this batch to filter out hallucinated IDs
     const validIds = new Set(batch.map((t) => t.id))
 
     try {
@@ -484,17 +485,20 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
         }).onConflictDoNothing(),
       ))
       totalScored += validScores.length
+      log.push(`Batch ${batchNum}: scored ${validScores.length} posts`)
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
+      log.push(`Batch ${batchNum} error: ${errMsg}`)
       console.error(`[ai] Filter batch ${batchNum}/${totalBatches} error:`, errMsg)
       const authPatterns = ['401', '403', 'Unauthorized', 'Invalid', 'API key']
       if (authPatterns.some((p) => errMsg.includes(p))) {
-        console.error(`[ai] Aborting scoring for user ${userId}: auth error detected — ${errMsg}`)
+        log.push(`Aborting: authentication error`)
         break
       }
     }
   }
 
+  log.push(`Done — scored ${totalScored} posts total`)
   scoringProgress.delete(userId)
   scoringActive.delete(userId)
   if (totalScored > 0) console.log(`[ai] Scored ${totalScored} tweets for user ${userId}`)
@@ -533,6 +537,7 @@ aiRouter.get('/scoring-status', async (c) => {
     active: isScoringActive(user.id),
     batch: progress?.batch || 0,
     totalBatches: progress?.totalBatches || 0,
+    log: progress?.log || [],
   })
 })
 
