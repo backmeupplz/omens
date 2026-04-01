@@ -1315,12 +1315,12 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
         )
       })()}
 
-      {/* New posts floating banner — like X's "Show N new posts" */}
+      {/* New posts pill */}
       {newReady > 0 && (
         <button
           type="button"
           onClick={showNewPosts}
-          class="sticky top-14 z-40 mb-3 w-full rounded-lg bg-emerald-600/90 backdrop-blur px-4 py-2.5 text-sm text-white font-medium hover:bg-emerald-600 transition-colors text-center shadow-lg"
+          class="sticky top-14 z-40 mx-auto mb-3 block rounded-full bg-emerald-600 px-4 py-1.5 text-xs text-white font-medium hover:bg-emerald-500 transition-colors shadow-lg"
         >
           Show {newReady} new post{newReady !== 1 ? 's' : ''}
         </button>
