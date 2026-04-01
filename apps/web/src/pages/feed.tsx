@@ -1023,11 +1023,8 @@ function AiReportView() {
         )
       })()}
           <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden">
-            <div class="flex flex-wrap items-center justify-between gap-y-1 mb-3 text-xs text-zinc-500">
-              <span class="flex flex-wrap items-center gap-x-1">
-                <span>{new Date(activeReport.createdAt).toLocaleString()}</span>
-                <span>&middot; {activeReport.tweetCount} posts</span>
-                {!viewingReportId && settings?.reportIntervalHours && settings.reportIntervalHours > 0 && (() => {
+            <div class="flex items-center justify-between gap-2 mb-3 text-xs text-zinc-500">
+              <span>{new Date(activeReport.createdAt).toLocaleString()} &middot; {activeReport.tweetCount} posts{!viewingReportId && settings?.reportIntervalHours && settings.reportIntervalHours > 0 ? (() => {
                   let nextMs: number
                   if (settings.reportIntervalHours >= 24 && settings.reportAtHour != null) {
                     const now = new Date()
@@ -1036,10 +1033,9 @@ function AiReportView() {
                   } else {
                     nextMs = new Date(activeReport.createdAt).getTime() + settings.reportIntervalHours * 3_600_000
                   }
-                  return <Countdown targetMs={nextMs} format="hm" prefix="&middot; next in " />
-                })()}
-              </span>
-              <span class="flex items-center gap-1.5">
+                  return <Countdown targetMs={nextMs} format="hm" prefix=" &middot; next in " />
+                })() : null}</span>
+              <span class="flex items-center gap-1.5 shrink-0">
                 <CopyShareButton url={`${window.location.origin}/report/${viewingReportId || activeReport.id}`} />
                 {pastData && pastData.reports.length > 1 && (
                   <button type="button" onClick={() => setShowPastReports(!showPastReports)}
