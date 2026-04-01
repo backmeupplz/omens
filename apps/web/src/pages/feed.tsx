@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { api } from '../helpers/api'
-import { decodeEntities, fmt, timeAgo } from '../helpers/format'
-import { renderMarkdownLine } from '../helpers/markdown'
+import { Countdown } from '../helpers/components'
+import { decodeEntities, fmt, safeParse, timeAgo } from '../helpers/format'
 import { useApi } from '../helpers/hooks'
+import { renderMarkdownLine } from '../helpers/markdown'
 import { AiSection } from './settings'
 
 // === Lightbox ===
@@ -485,12 +486,9 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
   score?: number | null
   minScore?: number
 }) {
-  let media: MediaItem[] = []
-  let quoted: QuotedTweet | null = null
-  let cardRaw: any = null
-  try { if (tweet.mediaUrls) media = JSON.parse(tweet.mediaUrls) } catch {}
-  try { if (tweet.quotedTweet) quoted = JSON.parse(tweet.quotedTweet) } catch {}
-  try { if (tweet.card) cardRaw = JSON.parse(tweet.card) } catch {}
+  const media: MediaItem[] = safeParse<MediaItem[]>(tweet.mediaUrls) ?? []
+  const quoted = safeParse<QuotedTweet>(tweet.quotedTweet)
+  const cardRaw = safeParse<CardData>(tweet.card)
   const card = cardRaw?.title ? cardRaw : null
   const quotedMedia: MediaItem[] = quoted?.media || []
   const [lightbox, setLightbox] = useState<number | null>(null)
@@ -702,15 +700,6 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
   )
 }
 
-// === AI Report ===
-
-interface AiReport {
-  content: string
-  model: string
-  tweetCount: number
-  createdAt: string
-}
-
 // === Nudge Hook ===
 
 function useNudges() {
@@ -779,19 +768,6 @@ function renderReportContent(
   }
 
   return result
-}
-
-function ReportCountdown({ reportAt }: { reportAt: number }) {
-  const [now, setNow] = useState(Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [])
-  const diff = Math.max(0, Math.floor((reportAt - now) / 1000))
-  if (diff <= 0) return <span class="text-xs text-zinc-500">Auto-report due soon</span>
-  const h = Math.floor(diff / 3600)
-  const m = Math.floor((diff % 3600) / 60)
-  return <span class="text-xs text-zinc-500">Next auto-report in {h > 0 ? `${h}h ` : ''}{m}m</span>
 }
 
 function AiReportView() {
@@ -902,7 +878,7 @@ function AiReportView() {
         </div>
       )}
 
-      {activeReport ? (
+      {activeReport && (
         <div>
           <div class="flex items-center justify-between mb-2">
             <div class="flex items-center gap-3">
@@ -921,7 +897,14 @@ function AiReportView() {
                 </button>
               )}
               {!viewingReportId && settings?.reportIntervalHours && settings.reportIntervalHours > 0 && activeReport?.createdAt && (
-                <ReportCountdown reportAt={new Date(activeReport.createdAt).getTime() + settings.reportIntervalHours * 3_600_000} />
+                <span class="text-xs text-zinc-500">
+                  <Countdown
+                    targetMs={new Date(activeReport.createdAt).getTime() + settings.reportIntervalHours * 3_600_000}
+                    format="hm"
+                    prefix="Next auto-report in "
+                    expiredLabel="Auto-report due soon"
+                  />
+                </span>
               )}
             </div>
             <div class="flex items-center gap-3">
@@ -939,7 +922,9 @@ function AiReportView() {
             {renderReportContent(activeReport.content, refTweetMap)}
           </div>
         </div>
-      ) : !generating ? (
+      )}
+
+      {!activeReport && !generating && (
         <div class="flex flex-col items-center justify-center py-24">
           <svg class="w-12 h-12 text-zinc-700 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
             <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
@@ -954,7 +939,7 @@ function AiReportView() {
             Generate report
           </button>
         </div>
-      ) : null}
+      )}
     </div>
   )
 }

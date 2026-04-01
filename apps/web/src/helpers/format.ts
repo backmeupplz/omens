@@ -18,3 +18,12 @@ export function timeAgo(dateStr: string): string {
 export function decodeEntities(s: string): string {
   return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
 }
+
+export function safeParse<T>(json: string | null | undefined): T | null {
+  if (!json) return null
+  try {
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}

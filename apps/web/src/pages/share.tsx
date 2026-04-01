@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { api } from '../helpers/api'
-import { fmt } from '../helpers/format'
+import { fmt, safeParse } from '../helpers/format'
 import { renderMarkdown } from '../helpers/markdown'
 
 interface SharedTweet {
@@ -53,12 +53,9 @@ export function SharePage({ handle, tweetId }: { handle: string; tweetId: string
     )
   }
 
-  let media: MediaItem[] = []
-  let quoted: QuotedTweet | null = null
-  let cardRaw: any = null
-  try { if (tweet.mediaUrls) media = JSON.parse(tweet.mediaUrls) } catch {}
-  try { if (tweet.quotedTweet) quoted = JSON.parse(tweet.quotedTweet) } catch {}
-  try { if (tweet.card) cardRaw = JSON.parse(tweet.card) } catch {}
+  const media: MediaItem[] = safeParse<MediaItem[]>(tweet.mediaUrls) ?? []
+  const quoted = safeParse<QuotedTweet>(tweet.quotedTweet)
+  const cardRaw = safeParse<{ title: string; description: string | null; thumbnail: string | null; domain: string; url: string }>(tweet.card)
   const card = cardRaw?.title ? cardRaw : null
   const photos = media.filter((m) => m.type === 'photo')
   const videos = media.filter((m) => m.type === 'video' || m.type === 'animated_gif')

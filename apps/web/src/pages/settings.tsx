@@ -1,22 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { useLocation } from 'wouter-preact'
 import { api } from '../helpers/api'
+import { Countdown } from '../helpers/components'
 import { useApi } from '../helpers/hooks'
-
-// === Countdown ===
-
-function Countdown({ targetMs, prefix }: { targetMs: number; prefix?: string }) {
-  const [now, setNow] = useState(Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [])
-  const diff = Math.max(0, Math.floor((targetMs - now) / 1000))
-  if (diff <= 0) return null
-  const m = Math.floor(diff / 60)
-  const s = diff % 60
-  return <span>{prefix}{m}:{s.toString().padStart(2, '0')}</span>
-}
 
 // === X Section ===
 
