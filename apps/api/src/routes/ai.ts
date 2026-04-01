@@ -429,13 +429,16 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
     const tweetText = formatTweetsForAI(batch)
     const prompt = `${FILTER_SYSTEM_PROMPT}\n\nUser preferences:\n${userPrefs}`
 
+    // Build valid ID set from this batch to filter out hallucinated IDs
+    const validIds = new Set(batch.map((t) => t.id))
+
     try {
       let response = await callAI(ai.config, prompt, tweetText)
       response = response.replace(/^```json?\n?/m, '').replace(/\n?```$/m, '').trim()
       const scores: Array<{ id: string; score: number }> = JSON.parse(response)
 
       for (const s of scores) {
-        if (typeof s.id === 'string' && typeof s.score === 'number') {
+        if (typeof s.id === 'string' && typeof s.score === 'number' && validIds.has(s.id)) {
           await db.insert(tweetScores).values({
             userId: userId,
             tweetId: s.id,
