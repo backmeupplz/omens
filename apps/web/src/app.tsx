@@ -186,7 +186,7 @@ export function App() {
               </button>
             )}
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1 sm:gap-2 shrink-0">
             {showFeed && (
               <Link
                 href="/"

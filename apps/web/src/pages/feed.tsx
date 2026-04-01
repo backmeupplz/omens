@@ -579,7 +579,7 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
         </div>
         {/* Bio tooltip */}
         {tweet.authorBio && (
-          <div class="hidden group-hover/author:block absolute left-0 top-full mt-1 z-10 w-72 rounded-lg border border-zinc-700 bg-zinc-800 p-3 shadow-xl">
+          <div class="hidden group-hover/author:block absolute left-0 top-full mt-1 z-10 w-64 sm:w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-zinc-700 bg-zinc-800 p-3 shadow-xl">
             <div class="flex items-center gap-2 mb-1">
               <span class="font-semibold text-sm text-zinc-100">{tweet.authorName}</span>
               {tweet.authorFollowers > 0 && (

@@ -60,9 +60,12 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* Prevent text overflow on mobile */
+* {
+  min-width: 0;
+}
 body {
   overflow-x: hidden;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 @keyframes fade-up {
