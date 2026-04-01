@@ -11,6 +11,7 @@ import apiKeysRouter from './routes/apikeys'
 import authRoutes from './routes/auth'
 import feedRouter from './routes/feed'
 import xRouter from './routes/x'
+import shareRouter from './routes/share'
 import { fetchOg } from './x/og'
 
 async function securityHeaders(c: Context, next: Next) {
@@ -109,6 +110,9 @@ export function createApp() {
   app.route('/x', xRouter)
   app.route('/api-keys', apiKeysRouter)
   app.route('/ai', aiRouter)
+
+  // Public share routes (no auth) — must be before static fallback
+  app.route('/', shareRouter)
 
   // Serve frontend static files in production
   if (process.env.NODE_ENV === 'production') {

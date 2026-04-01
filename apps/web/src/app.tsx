@@ -4,6 +4,7 @@ import { api } from './helpers/api'
 import { AiReportPage, Feed, FilteredFeed } from './pages/feed'
 import { Login } from './pages/login'
 import { Settings } from './pages/settings'
+import { SharePage } from './pages/share'
 
 interface AuthState {
   checked: boolean
@@ -273,6 +274,9 @@ export function App() {
             <AuthGuard auth={auth}>
               <Settings onXChange={auth.recheckX} xConnected={auth.xConnected} singleUser={auth.singleUser} onLogout={auth.logout} />
             </AuthGuard>
+          </Route>
+          <Route path="/:handle/status/:tweetId">
+            {(params) => <SharePage handle={params.handle} tweetId={params.tweetId} />}
           </Route>
         </Switch>
       </main>
