@@ -1,0 +1,1 @@
+ALTER TABLE "x_sessions" ADD COLUMN "last_fetched_at" timestamp;

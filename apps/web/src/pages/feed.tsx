@@ -781,31 +781,42 @@ function AiReportView() {
   const [viewingReport, setViewingReport] = useState<AiReportData | null>(null)
   const [showPastReports, setShowPastReports] = useState(false)
   const reportPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const reportPollFirstRef = useRef(true)
 
   // Check if report generation is in progress on load
+  const startReportPoll = useCallback((interval: number) => {
+    if (reportPollRef.current) clearInterval(reportPollRef.current)
+    reportPollRef.current = setInterval(() => {
+      api<{ generating: boolean }>('/ai/report-status')
+        .then((st) => {
+          if (!st.generating) {
+            if (reportPollRef.current) clearInterval(reportPollRef.current)
+            reportPollRef.current = null
+            setGenerating(false)
+            refetch()
+          } else if (reportPollFirstRef.current) {
+            // After first poll response, slow down to 10s
+            reportPollFirstRef.current = false
+            startReportPoll(10000)
+          }
+        })
+        .catch(() => {})
+    }, interval)
+  }, [refetch])
+
   useEffect(() => {
     api<{ generating: boolean; tweetCount: number }>('/ai/report-status')
       .then((s) => {
         if (s.generating) {
           setGenerating(true)
           setGenTweetCount(s.tweetCount)
-          // Poll for completion
-          reportPollRef.current = setInterval(() => {
-            api<{ generating: boolean }>('/ai/report-status')
-              .then((st) => {
-                if (!st.generating) {
-                  if (reportPollRef.current) clearInterval(reportPollRef.current)
-                  setGenerating(false)
-                  refetch()
-                }
-              })
-              .catch(() => {})
-          }, 3000)
+          reportPollFirstRef.current = true
+          startReportPoll(3000)
         }
       })
       .catch(() => {})
     return () => { if (reportPollRef.current) clearInterval(reportPollRef.current) }
-  }, [refetch])
+  }, [startReportPoll])
 
   const generate = async () => {
     setGenerating(true)
@@ -965,15 +976,14 @@ export function AiReportPage() {
   return <AiReportView />
 }
 
-function useMinScore(): number {
+function useAiSettings(): { minScore: number; configured: boolean } {
   const { data } = useApi<{ configured: boolean; minScore?: number }>('/ai/settings')
-  return data?.minScore ?? 50
+  return { minScore: data?.minScore ?? 50, configured: data?.configured ?? false }
 }
 
 export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
   const { nudges, onNudge, feedback } = useNudges()
-  const minScore = useMinScore()
-  const { data: aiSettings } = useApi<{ configured: boolean }>('/ai/settings')
+  const { minScore, configured: aiConfigured } = useAiSettings()
   const [page, setPage] = useState(1)
   const [feedKey, setFeedKey] = useState(0) // bump to re-fetch feed
   const { data, loading, error } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}&_=${feedKey}`)
@@ -1026,12 +1036,12 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
           }
         })
         .catch(() => {})
-    }, 2000)
+    }, 5000)
   }, [stopPolling, updateStatus])
 
   // Check initial scoring status — if pending but not active, kick off scoring
   useEffect(() => {
-    if (!aiSettings?.configured) return
+    if (!aiConfigured) return
     api<ScoringStatus>('/ai/scoring-status')
       .then((s) => {
         updateStatus(s)
@@ -1043,7 +1053,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
       })
       .catch(() => {})
     return stopPolling
-  }, [stopPolling, startPolling, updateStatus, aiSettings?.configured])
+  }, [stopPolling, startPolling, updateStatus, aiConfigured])
 
   const refresh = useCallback(async () => {
     try {
@@ -1132,7 +1142,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
           <svg class="w-10 h-10 text-zinc-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
             <path d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
           </svg>
-          {!aiSettings?.configured ? (
+          {!aiConfigured ? (
             <>
               <p class="text-zinc-400 mb-4">Set up an AI provider to filter your feed</p>
               <a href="/settings" class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500">
@@ -1163,7 +1173,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 
 export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
   const { nudges, onNudge, feedback } = useNudges()
-  const minScore = useMinScore()
+  const { minScore } = useAiSettings()
   const [page, setPage] = useState(1)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
@@ -1178,8 +1188,6 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
       const res = await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
       setRefreshCount(res.count)
       refetch()
-      // Also trigger AI filtering in background
-      api('/ai/filter', { method: 'POST' }).catch(() => {})
       setTimeout(() => setRefreshCount(null), 4000)
     } catch (e) {
       setRefreshError(e instanceof Error ? e.message : 'Failed to refresh feed')

@@ -29,6 +29,7 @@ export const xSessions = pgTable('x_sessions', {
   username: text('username').notNull(),
   authToken: text('auth_token').notNull(),
   ct0: text('ct0').notNull(),
+  lastFetchedAt: timestamp('last_fetched_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 

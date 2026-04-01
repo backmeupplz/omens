@@ -469,16 +469,18 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
       response = response.replace(/^```json?\n?/m, '').replace(/\n?```$/m, '').trim()
       const scores: Array<{ id: string; score: number }> = JSON.parse(response)
 
-      for (const s of scores) {
-        if (typeof s.id === 'string' && typeof s.score === 'number' && validIds.has(s.id)) {
-          await db.insert(tweetScores).values({
-            userId: userId,
-            tweetId: s.id,
-            score: Math.max(0, Math.min(100, Math.round(s.score))),
-          }).onConflictDoNothing()
-          totalScored++
-        }
-      }
+      const validScores = scores.filter(
+        (s): s is { id: string; score: number } =>
+          typeof s.id === 'string' && typeof s.score === 'number' && validIds.has(s.id),
+      )
+      await Promise.all(validScores.map((s) =>
+        db.insert(tweetScores).values({
+          userId: userId,
+          tweetId: s.id,
+          score: Math.max(0, Math.min(100, Math.round(s.score))),
+        }).onConflictDoNothing(),
+      ))
+      totalScored += validScores.length
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
       console.error(`[ai] Filter batch ${batchNum}/${totalBatches} error:`, errMsg)

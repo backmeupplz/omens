@@ -1,10 +1,11 @@
 /**
  * Background prompt regeneration batcher.
- * Runs every 5 minutes, regenerates prompts for users with pending nudges/instructions.
+ * Checks every 60 seconds, but only processes changes that are >= 5 minutes old.
+ * This ensures the frontend countdown (earliest pending + 5min) matches reality.
  */
 
 import { getDb, aiSettings, nudges, promptChanges } from '@omens/db'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, lte } from 'drizzle-orm'
 import env from '../env'
 import { regeneratePromptForUser } from '../routes/ai'
 
@@ -13,17 +14,20 @@ let intervalHandle: ReturnType<typeof setInterval> | null = null
 async function processAll() {
   const db = getDb(env.DATABASE_URL)
 
-  // Find users with pending nudges
+  // Fix 7: Only select nudges/instructions where createdAt <= now() - 5 minutes
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
+
+  // Find users with pending nudges that are old enough
   const usersWithNudges = await db
     .selectDistinct({ userId: nudges.userId })
     .from(nudges)
-    .where(eq(nudges.consumed, false))
+    .where(and(eq(nudges.consumed, false), lte(nudges.createdAt, fiveMinutesAgo)))
 
-  // Find users with pending instructions
+  // Find users with pending instructions that are old enough
   const usersWithInstructions = await db
     .selectDistinct({ userId: promptChanges.userId })
     .from(promptChanges)
-    .where(eq(promptChanges.consumed, false))
+    .where(and(eq(promptChanges.consumed, false), lte(promptChanges.createdAt, fiveMinutesAgo)))
 
   // Combine unique user IDs
   const userIds = new Set([
@@ -52,12 +56,13 @@ async function processAll() {
 }
 
 export function initPromptBatcher() {
-  console.log('[promptBatch] Starting prompt batcher (every 5m)')
+  console.log('[promptBatch] Starting prompt batcher (every 60s, processes changes >= 5m old)')
 
   // First run after 30 seconds
   setTimeout(() => void processAll(), 30_000)
 
-  intervalHandle = setInterval(() => void processAll(), 5 * 60 * 1000)
+  // Fix 7: Check every 60 seconds instead of every 5 minutes
+  intervalHandle = setInterval(() => void processAll(), 60 * 1000)
 }
 
 export function stopPromptBatcher() {

@@ -3,17 +3,46 @@
  */
 
 import { aiSettings, getDb, tweets, xSessions } from '@omens/db'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import env from '../env'
 import { decrypt } from '../helpers/crypto'
 import { scoreUnscoredTweets } from '../routes/ai'
 import { getHomeTimeline } from './graphql'
+import { fetchOg } from './og'
 
 // Per-user state tracking
-const lastFetchTime = new Map<string, number>()
 const activeFetches = new Set<string>()
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null
+
+/** After inserting tweets, prefetch OG metadata for tweets with URLs but no card/media */
+async function prefetchOgForTweets(
+  userId: string,
+  tweetRows: Array<{ tweetId: string; content: string; card: string | null; mediaUrls: string | null }>,
+) {
+  const db = getDb(env.DATABASE_URL)
+  for (const t of tweetRows) {
+    if (t.card || t.mediaUrls) continue
+    const urls = t.content.match(/https?:\/\/\S+/g)
+    if (!urls || urls.length === 0) continue
+    for (const url of urls) {
+      try {
+        const og = await fetchOg(url)
+        if (og) {
+          await db
+            .update(tweets)
+            .set({ card: JSON.stringify(og) })
+            .where(
+              and(eq(tweets.userId, userId), eq(tweets.tweetId, t.tweetId)),
+            )
+          break // Only use the first URL that returns OG data
+        }
+      } catch (err) {
+        console.error(`[fetcher] OG prefetch error for ${url}:`, err instanceof Error ? err.message : err)
+      }
+    }
+  }
+}
 
 async function fetchForUser(userId: string): Promise<{ count: number; error?: string }> {
   const db = getDb(env.DATABASE_URL)
@@ -47,8 +76,8 @@ async function fetchForUser(userId: string): Promise<{ count: number; error?: st
       )
     const existingSet = new Set(existingRows.map((r) => r.tweetId))
 
-    let newCount = 0
-    for (const tweet of parsedTweets) {
+    // Fix 3: Run all upserts concurrently instead of sequentially
+    const results = await Promise.all(parsedTweets.map(async (tweet) => {
       try {
         await db
           .insert(tweets)
@@ -93,13 +122,20 @@ async function fetchForUser(userId: string): Promise<{ count: number; error?: st
               views: tweet.views,
             },
           })
-        if (!existingSet.has(tweet.tweetId)) {
-          newCount++
-        }
+        return !existingSet.has(tweet.tweetId)
       } catch (err) {
         console.error(`[fetcher] Error upserting tweet:`, err)
+        return false
       }
-    }
+    }))
+
+    const newCount = results.filter(Boolean).length
+
+    // Fix 11: Persist lastFetchedAt in DB
+    await db
+      .update(xSessions)
+      .set({ lastFetchedAt: new Date() })
+      .where(eq(xSessions.userId, userId))
 
     if (newCount > 0) {
       console.log(`[fetcher] Inserted ${newCount} new tweets for user ${userId} (${parsedTweets.length - newCount} updated)`)
@@ -108,6 +144,22 @@ async function fetchForUser(userId: string): Promise<{ count: number; error?: st
         console.error(`[fetcher] Scoring error for user ${userId}:`, err instanceof Error ? err.message : err),
       )
     }
+
+    // Fix 4: Prefetch OG metadata in background for tweets without card/media
+    const tweetsForOg = parsedTweets
+      .filter((t) => !existingSet.has(t.tweetId))
+      .map((t) => ({
+        tweetId: t.tweetId,
+        content: t.content,
+        card: t.card ? JSON.stringify(t.card) : null,
+        mediaUrls: t.media ? JSON.stringify(t.media) : null,
+      }))
+    if (tweetsForOg.length > 0) {
+      void prefetchOgForTweets(userId, tweetsForOg).catch((err) =>
+        console.error(`[fetcher] OG prefetch batch error:`, err instanceof Error ? err.message : err),
+      )
+    }
+
     return { count: newCount }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err)
@@ -119,28 +171,35 @@ async function fetchForUser(userId: string): Promise<{ count: number; error?: st
 
 async function pollAll() {
   const db = getDb(env.DATABASE_URL)
-  const sessions = await db.select({ userId: xSessions.userId }).from(xSessions)
+
+  // Fix 2: Single JOIN query instead of N+1
+  const sessionsWithSettings = await db
+    .select({
+      userId: xSessions.userId,
+      fetchIntervalMinutes: aiSettings.fetchIntervalMinutes,
+      lastFetchedAt: xSessions.lastFetchedAt,
+    })
+    .from(xSessions)
+    .leftJoin(aiSettings, eq(aiSettings.userId, xSessions.userId))
 
   const tasks: Promise<void>[] = []
 
-  for (const { userId } of sessions) {
+  for (const row of sessionsWithSettings) {
+    const userId = row.userId
     // Skip if already fetching for this user
     if (activeFetches.has(userId)) continue
 
     // Check user's fetch interval
-    const [settings] = await db.select({ fetchIntervalMinutes: aiSettings.fetchIntervalMinutes })
-      .from(aiSettings).where(eq(aiSettings.userId, userId)).limit(1)
-
-    const interval = settings?.fetchIntervalMinutes ?? 15
+    const interval = row.fetchIntervalMinutes ?? 15
     if (interval === 0) continue // manual only
 
-    const lastFetch = lastFetchTime.get(userId) || 0
+    // Fix 11: Use DB-persisted lastFetchedAt instead of in-memory Map
+    const lastFetch = row.lastFetchedAt?.getTime() || 0
     const elapsed = (Date.now() - lastFetch) / 60_000
     if (elapsed < interval) continue
 
     // Run fetch in parallel
     activeFetches.add(userId)
-    lastFetchTime.set(userId, Date.now())
     tasks.push(
       fetchForUser(userId)
         .then(() => {})
@@ -177,8 +236,9 @@ async function checkAutoReports() {
     const elapsed = (Date.now() - lastReport) / 3_600_000
     if (elapsed < s.reportIntervalHours) continue
 
-    // For daily reports, only trigger at the configured hour (within a 1-hour window)
-    if (s.reportIntervalHours >= 24 && Math.abs(currentUtcHour - s.reportAtHour) > 0) continue
+    // Fix 10: Handle midnight wraparound correctly
+    const hourDiff = (currentUtcHour - s.reportAtHour + 24) % 24
+    if (s.reportIntervalHours >= 24 && hourDiff > 0) continue
 
     activeReports.add(s.userId)
     tasks.push(
