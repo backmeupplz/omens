@@ -2,7 +2,7 @@
  * Periodic tweet fetcher — polls HomeLatestTimeline for all users with sessions
  */
 
-import { aiSettings, getDb, tweets, xSessions } from '@omens/db'
+import { aiSettings, getDb, tweets, userTweets, xSessions } from '@omens/db'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import env from '../env'
 import { decrypt } from '../helpers/crypto'
@@ -17,8 +17,7 @@ let intervalHandle: ReturnType<typeof setInterval> | null = null
 
 /** After inserting tweets, prefetch OG metadata for tweets with URLs but no card/media */
 async function prefetchOgForTweets(
-  userId: string,
-  tweetRows: Array<{ tweetId: string; content: string; card: string | null; mediaUrls: string | null }>,
+  tweetRows: Array<{ id: string; content: string; card: string | null; mediaUrls: string | null }>,
 ) {
   const db = getDb(env.DATABASE_URL)
   for (const t of tweetRows) {
@@ -32,9 +31,7 @@ async function prefetchOgForTweets(
           await db
             .update(tweets)
             .set({ card: JSON.stringify(og) })
-            .where(
-              and(eq(tweets.userId, userId), eq(tweets.tweetId, t.tweetId)),
-            )
+            .where(eq(tweets.id, t.id))
           break // Only use the first URL that returns OG data
         }
       } catch (err) {
@@ -63,26 +60,26 @@ async function fetchForUser(userId: string): Promise<{ count: number; error?: st
 
     if (parsedTweets.length === 0) return { count: 0 }
 
-    // Find which tweetIds already exist for this user so we can count only genuinely new inserts
+    // Find which tweets this user already has linked
     const incomingTweetIds = parsedTweets.map((t) => t.tweetId)
-    const existingRows = await db
+    const existingLinks = await db
       .select({ tweetId: tweets.tweetId })
-      .from(tweets)
+      .from(userTweets)
+      .innerJoin(tweets, eq(tweets.id, userTweets.tweetId))
       .where(
         and(
-          eq(tweets.userId, userId),
+          eq(userTweets.userId, userId),
           inArray(tweets.tweetId, incomingTweetIds),
         ),
       )
-    const existingSet = new Set(existingRows.map((r) => r.tweetId))
+    const existingSet = new Set(existingLinks.map((r) => r.tweetId))
 
-    // Fix 3: Run all upserts concurrently instead of sequentially
-    const results = await Promise.all(parsedTweets.map(async (tweet) => {
+    // 1. Upsert tweets globally (no userId)
+    await Promise.all(parsedTweets.map(async (tweet) => {
       try {
         await db
           .insert(tweets)
           .values({
-            userId,
             tweetId: tweet.tweetId,
             authorId: tweet.authorId,
             authorName: tweet.authorName,
@@ -104,7 +101,7 @@ async function fetchForUser(userId: string): Promise<{ count: number; error?: st
             publishedAt: tweet.publishedAt,
           })
           .onConflictDoUpdate({
-            target: [tweets.userId, tweets.tweetId],
+            target: tweets.tweetId,
             set: {
               authorName: tweet.authorName,
               authorHandle: tweet.authorHandle,
@@ -122,14 +119,24 @@ async function fetchForUser(userId: string): Promise<{ count: number; error?: st
               views: tweet.views,
             },
           })
-        return !existingSet.has(tweet.tweetId)
       } catch (err) {
         console.error(`[fetcher] Error upserting tweet:`, err)
-        return false
       }
     }))
 
-    const newCount = results.filter(Boolean).length
+    // 2. Get internal IDs for these tweets
+    const tweetRows = await db
+      .select({ id: tweets.id, tweetId: tweets.tweetId, content: tweets.content, card: tweets.card, mediaUrls: tweets.mediaUrls })
+      .from(tweets)
+      .where(inArray(tweets.tweetId, incomingTweetIds))
+
+    // 3. Link user to tweets
+    await Promise.all(tweetRows.map((t) =>
+      db.insert(userTweets).values({ userId, tweetId: t.id }).onConflictDoNothing(),
+    ))
+
+    // 4. Count new links (not previously linked for this user)
+    const newCount = tweetRows.filter((t) => !existingSet.has(t.tweetId)).length
 
     // Fix 11: Persist lastFetchedAt in DB
     await db
@@ -146,16 +153,10 @@ async function fetchForUser(userId: string): Promise<{ count: number; error?: st
     }
 
     // Fix 4: Prefetch OG metadata in background for tweets without card/media
-    const tweetsForOg = parsedTweets
+    const tweetsForOg = tweetRows
       .filter((t) => !existingSet.has(t.tweetId))
-      .map((t) => ({
-        tweetId: t.tweetId,
-        content: t.content,
-        card: t.card ? JSON.stringify(t.card) : null,
-        mediaUrls: t.media ? JSON.stringify(t.media) : null,
-      }))
     if (tweetsForOg.length > 0) {
-      void prefetchOgForTweets(userId, tweetsForOg).catch((err) =>
+      void prefetchOgForTweets(tweetsForOg).catch((err) =>
         console.error(`[fetcher] OG prefetch batch error:`, err instanceof Error ? err.message : err),
       )
     }

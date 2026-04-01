@@ -1,4 +1,4 @@
-import { getDb, tweets, tweetScores } from '@omens/db'
+import { getDb, tweets, tweetScores, userTweets } from '@omens/db'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import env from '../env'
@@ -20,19 +20,20 @@ feedRouter.get('/', async (c) => {
       score: tweetScores.score,
     })
     .from(tweets)
+    .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
     .leftJoin(tweetScores, and(
       eq(tweetScores.tweetId, tweets.id),
       eq(tweetScores.userId, user.id),
     ))
-    .where(eq(tweets.userId, user.id))
+    .where(eq(userTweets.userId, user.id))
     .orderBy(desc(tweets.publishedAt))
     .limit(limit)
     .offset(offset)
 
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)` })
-    .from(tweets)
-    .where(eq(tweets.userId, user.id))
+    .from(userTweets)
+    .where(eq(userTweets.userId, user.id))
 
   return c.json({
     data: result.map((r) => ({ ...r.tweet, score: r.score })),

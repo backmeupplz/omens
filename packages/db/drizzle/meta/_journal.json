@@ -99,6 +99,13 @@
       "when": 1775058120379,
       "tag": "0013_real_rockslide",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1775058287499,
+      "tag": "0014_curious_karma",
+      "breakpoints": true
     }
   ]
 }

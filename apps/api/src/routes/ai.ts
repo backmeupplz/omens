@@ -7,6 +7,7 @@ import {
   promptChanges,
   tweets,
   tweetScores,
+  userTweets,
 } from '@omens/db'
 import { aiSettingsSchema, nudgeSchema, promptChangeSchema } from '@omens/shared'
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
@@ -437,10 +438,11 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
   const db = getDb(env.DATABASE_URL)
 
   const allTweets = await db
-    .select()
+    .select({ id: tweets.id, tweetId: tweets.tweetId, authorId: tweets.authorId, authorName: tweets.authorName, authorHandle: tweets.authorHandle, authorAvatar: tweets.authorAvatar, authorFollowers: tweets.authorFollowers, authorBio: tweets.authorBio, content: tweets.content, mediaUrls: tweets.mediaUrls, isRetweet: tweets.isRetweet, quotedTweet: tweets.quotedTweet, card: tweets.card, replyToHandle: tweets.replyToHandle, url: tweets.url, likes: tweets.likes, retweets: tweets.retweets, replies: tweets.replies, views: tweets.views, publishedAt: tweets.publishedAt, fetchedAt: tweets.fetchedAt })
     .from(tweets)
+    .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
     .where(and(
-      eq(tweets.userId, userId),
+      eq(userTweets.userId, userId),
       sql`NOT EXISTS (SELECT 1 FROM tweet_scores WHERE tweet_scores.tweet_id = tweets.id AND tweet_scores.user_id = ${userId})`,
     ))
     .orderBy(desc(tweets.publishedAt))
@@ -511,7 +513,7 @@ aiRouter.get('/scoring-status', async (c) => {
   const minScore = await getUserMinScore(user.id)
 
   const [{ total }] = await db.select({ total: sql<number>`count(*)` })
-    .from(tweets).where(eq(tweets.userId, user.id))
+    .from(userTweets).where(eq(userTweets.userId, user.id))
 
   const [{ scored }] = await db.select({ scored: sql<number>`count(*)` })
     .from(tweetScores).where(eq(tweetScores.userId, user.id))
@@ -546,12 +548,13 @@ aiRouter.get('/filtered-feed', async (c) => {
       score: tweetScores.score,
     })
     .from(tweets)
+    .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
     .innerJoin(tweetScores, and(
       eq(tweetScores.tweetId, tweets.id),
       eq(tweetScores.userId, user.id),
     ))
     .where(and(
-      eq(tweets.userId, user.id),
+      eq(userTweets.userId, user.id),
       gte(tweetScores.score, minScore),
     ))
     .orderBy(desc(tweets.publishedAt))
@@ -561,11 +564,12 @@ aiRouter.get('/filtered-feed', async (c) => {
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)` })
     .from(tweets)
+    .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
     .innerJoin(tweetScores, and(
       eq(tweetScores.tweetId, tweets.id),
       eq(tweetScores.userId, user.id),
     ))
-    .where(and(eq(tweets.userId, user.id), gte(tweetScores.score, minScore)))
+    .where(and(eq(userTweets.userId, user.id), gte(tweetScores.score, minScore)))
 
   return c.json({
     data: result.map((r) => ({ ...r.tweet, score: r.score })),
@@ -601,15 +605,18 @@ export async function generateReportForUser(userId: string): Promise<any> {
   // Use all scored tweets from the AI-filtered feed (score >= minScore) in the last 24h
   let tweetList = await db.select({ tweet: tweets })
     .from(tweets)
+    .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
     .innerJoin(tweetScores, and(eq(tweetScores.tweetId, tweets.id), eq(tweetScores.userId, userId)))
-    .where(and(eq(tweets.userId, userId), gte(tweets.publishedAt, since), gte(tweetScores.score, minScore)))
+    .where(and(eq(userTweets.userId, userId), gte(tweets.publishedAt, since), gte(tweetScores.score, minScore)))
     .orderBy(desc(tweets.publishedAt))
     .then((rows) => rows.map((r) => r.tweet))
 
   // Fallback to all tweets from last 24h if nothing scored yet
   if (tweetList.length === 0) {
-    tweetList = await db.select().from(tweets)
-      .where(and(eq(tweets.userId, userId), gte(tweets.publishedAt, since)))
+    tweetList = await db.select({ id: tweets.id, tweetId: tweets.tweetId, authorId: tweets.authorId, authorName: tweets.authorName, authorHandle: tweets.authorHandle, authorAvatar: tweets.authorAvatar, authorFollowers: tweets.authorFollowers, authorBio: tweets.authorBio, content: tweets.content, mediaUrls: tweets.mediaUrls, isRetweet: tweets.isRetweet, quotedTweet: tweets.quotedTweet, card: tweets.card, replyToHandle: tweets.replyToHandle, url: tweets.url, likes: tweets.likes, retweets: tweets.retweets, replies: tweets.replies, views: tweets.views, publishedAt: tweets.publishedAt, fetchedAt: tweets.fetchedAt })
+      .from(tweets)
+      .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
+      .where(and(eq(userTweets.userId, userId), gte(tweets.publishedAt, since)))
       .orderBy(desc(tweets.publishedAt))
   }
 

@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator'
-import { getDb, nudges, promptChanges, tweets, tweetScores, xSessions } from '@omens/db'
+import { getDb, nudges, promptChanges, tweets, tweetScores, userTweets, xSessions } from '@omens/db'
 import { xLoginSchema } from '@omens/shared'
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -63,8 +63,8 @@ xRouter.post('/login', zValidator('json', xLoginSchema), async (c) => {
       })
     }
 
-    // Delete old tweets so reconnection gets fresh data
-    await db.delete(tweets).where(eq(tweets.userId, user.id))
+    // Delete old user-tweet links so reconnection gets fresh data
+    await db.delete(userTweets).where(eq(userTweets.userId, user.id))
 
     console.log(`[x] User ${user.id} connected X @${session.username}`)
 
@@ -120,8 +120,8 @@ xRouter.delete('/session', async (c) => {
   await db.delete(nudges).where(eq(nudges.userId, user.id))
   await db.delete(tweetScores).where(eq(tweetScores.userId, user.id))
   await db.delete(promptChanges).where(eq(promptChanges.userId, user.id))
+  await db.delete(userTweets).where(eq(userTweets.userId, user.id))
   await db.delete(xSessions).where(eq(xSessions.userId, user.id))
-  await db.delete(tweets).where(eq(tweets.userId, user.id))
 
   console.log(`[x] User ${user.id} disconnected X`)
 

@@ -39,9 +39,6 @@ export const tweets = pgTable(
     id: text('id')
       .primaryKey()
       .$defaultFn(() => createId()),
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
     tweetId: text('tweet_id').notNull(),
     authorId: text('author_id').notNull(),
     authorName: text('author_name').notNull(),
@@ -64,7 +61,23 @@ export const tweets = pgTable(
     fetchedAt: timestamp('fetched_at').notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('tweets_dedup_idx').on(table.userId, table.tweetId),
+    uniqueIndex('tweets_dedup_idx').on(table.tweetId),
+  ],
+)
+
+export const userTweets = pgTable(
+  'user_tweets',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tweetId: text('tweet_id')
+      .notNull()
+      .references(() => tweets.id, { onDelete: 'cascade' }),
+    fetchedAt: timestamp('fetched_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('user_tweets_idx').on(table.userId, table.tweetId),
   ],
 )
 
