@@ -502,7 +502,7 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
   return (
     <div>
     {tweet.parentTweet && (
-      <div class="rounded-t-xl border border-b-0 border-zinc-800 bg-zinc-950 px-4 py-2.5 flex items-start gap-2.5">
+      <div class="rounded-t-xl border border-b-0 border-zinc-800 bg-zinc-950 px-3 sm:px-4 py-2.5 flex items-start gap-2.5">
         {tweet.parentTweet.authorAvatar && (
           <img src={tweet.parentTweet.authorAvatar} alt="" class="w-5 h-5 rounded-full mt-0.5 shrink-0" />
         )}
@@ -515,7 +515,7 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
         </div>
       </div>
     )}
-    <div class={`${tweet.parentTweet ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} border border-zinc-800 bg-zinc-900 px-4 py-3 hover:border-zinc-700 transition-colors`}>
+    <div class={`${tweet.parentTweet ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} border border-zinc-800 bg-zinc-900 px-3 sm:px-4 py-3 hover:border-zinc-700 transition-colors`}>
       {lightbox !== null && (
         <Lightbox
           items={media.filter((m) => m.type === 'photo')}
@@ -629,7 +629,7 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
       )}
 
       {/* Engagement */}
-      <div class="flex items-center gap-5 mt-2 text-xs text-zinc-500">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-zinc-500">
             <button
               type="button"
               class="flex items-center gap-1 hover:text-blue-400 transition-colors"
@@ -969,7 +969,7 @@ function AiReportView() {
             {genStartedAt > 0 && <ElapsedTime since={genStartedAt} />}
           </div>
           {streamContent && (
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-5">
+            <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5">
               {renderReportContent(streamContent, streamTweets)}
             </div>
           )}
@@ -997,8 +997,7 @@ function AiReportView() {
 
       {activeReport && (
         <div>
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center gap-2 mb-2">
               <button
                 type="button"
                 onClick={generate}
@@ -1023,8 +1022,6 @@ function AiReportView() {
                   />
                 </span>
               )}
-            </div>
-            <div class="flex items-center gap-3">
               {pastData && pastData.reports.length > 1 && (
                 <button type="button" onClick={() => setShowPastReports(!showPastReports)}
                   class="text-xs text-zinc-500 hover:text-zinc-300">
@@ -1033,9 +1030,8 @@ function AiReportView() {
               )}
               <CopyShareButton url={`${window.location.origin}/report/${viewingReportId || activeReport.id}`} />
               <span class="text-xs text-zinc-600">{new Date(activeReport.createdAt).toLocaleString()}</span>
-            </div>
           </div>
-          <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-5">
+          <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5">
             {renderReportContent(activeReport.content, refTweetMap)}
           </div>
         </div>

@@ -59,6 +59,12 @@ input[type="range"]::-moz-range-thumb {
   scrollbar-color: #3f3f46 transparent;
 }
 
+/* Prevent text overflow on mobile */
+body {
+  overflow-x: hidden;
+  word-break: break-word;
+}
+
 @keyframes fade-up {
   from { opacity: 1; transform: translateX(-50%) translateY(0); }
   to { opacity: 0; transform: translateX(-50%) translateY(-12px); }

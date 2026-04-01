@@ -158,8 +158,8 @@ export function App() {
 
   return (
     <div class="min-h-screen bg-zinc-950 text-zinc-100">
-      <nav class="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur px-4 py-3">
-        <div class="mx-auto max-w-xl flex items-center justify-between">
+      <nav class="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur px-3 sm:px-4 py-3">
+        <div class="mx-auto max-w-xl flex items-center justify-between gap-2">
           <div class="flex items-center gap-2">
             <Link href="/" class="text-lg font-bold tracking-tight">
               Omens
@@ -256,7 +256,7 @@ export function App() {
           </div>
         </div>
       </nav>
-      <main class="mx-auto max-w-xl px-4 py-4">
+      <main class="mx-auto max-w-xl px-3 sm:px-4 py-4">
         <Switch>
           <Route path="/login" component={Login} />
           <Route path="/">
