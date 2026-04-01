@@ -404,6 +404,9 @@ function AiTuningSection() {
   const [instruction, setInstruction] = useState('')
   const [regenerating, setRegenerating] = useState(false)
   const [regenStatus, setRegenStatus] = useState('')
+  const [editingPrompt, setEditingPrompt] = useState(false)
+  const [promptDraft, setPromptDraft] = useState('')
+  const [savingPrompt, setSavingPrompt] = useState(false)
   const [localMinScore, setLocalMinScore] = useState<number | null>(null)
   const [fetchInterval, setFetchInterval] = useState<number | null>(null)
   const [reportInterval, setReportInterval] = useState<number | null>(null)
@@ -677,16 +680,59 @@ function AiTuningSection() {
         <p class="text-xs text-zinc-600">Last regenerated: {new Date(internals.lastRegenAt).toLocaleString()}</p>
       )}
 
-      {/* Current prompt (collapsible) */}
+      {/* Current prompt (collapsible + editable) */}
       <div>
-        <button type="button" onClick={() => setShowPrompt(!showPrompt)}
-          class="text-xs text-zinc-500 hover:text-zinc-300">
-          {showPrompt ? 'Hide' : 'Show'} current prompt
-        </button>
-        {showPrompt && (
+        <div class="flex items-center gap-2">
+          <button type="button" onClick={() => setShowPrompt(!showPrompt)}
+            class="text-xs text-zinc-500 hover:text-zinc-300">
+            {showPrompt ? 'Hide' : 'Show'} current prompt
+          </button>
+          {showPrompt && !editingPrompt && (
+            <button type="button" onClick={() => { setPromptDraft(internals.currentPrompt || internals.defaultPrompt); setEditingPrompt(true) }}
+              class="text-xs text-zinc-500 hover:text-zinc-300">Edit</button>
+          )}
+        </div>
+        {showPrompt && !editingPrompt && (
           <pre class="mt-2 rounded bg-zinc-900 border border-zinc-800 px-3 py-2 text-xs text-zinc-400 whitespace-pre-wrap overflow-auto max-h-60 scrollbar-dark">
             {internals.currentPrompt || internals.defaultPrompt}
           </pre>
+        )}
+        {editingPrompt && (
+          <div class="mt-2">
+            <textarea
+              class="w-full rounded bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs text-zinc-300 font-mono min-h-[200px] resize-y focus:border-zinc-500 focus:outline-none scrollbar-dark"
+              value={promptDraft}
+              onInput={(e) => setPromptDraft((e.target as HTMLTextAreaElement).value)}
+            />
+            <div class="flex items-center gap-2 mt-2">
+              <button
+                type="button"
+                disabled={savingPrompt}
+                onClick={async () => {
+                  setSavingPrompt(true)
+                  try {
+                    await api('/ai/settings/prompt', { method: 'PUT', body: JSON.stringify({ systemPrompt: promptDraft }) })
+                    setEditingPrompt(false)
+                    refetch()
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : 'Failed to save prompt')
+                  } finally {
+                    setSavingPrompt(false)
+                  }
+                }}
+                class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {savingPrompt ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingPrompt(false)}
+                class="rounded bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-700"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>
