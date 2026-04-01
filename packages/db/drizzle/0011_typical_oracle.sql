@@ -1,0 +1,1 @@
+ALTER TABLE "ai_settings" ADD COLUMN "report_at_hour" integer DEFAULT 6 NOT NULL;

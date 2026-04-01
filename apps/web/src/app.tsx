@@ -105,6 +105,28 @@ function XGuard({
   return <>{children}</>
 }
 
+function ScrollToTop() {
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    const onScroll = () => setShow(window.scrollY > 400)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+  if (!show) return null
+  return (
+    <button
+      type="button"
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      class="fixed bottom-6 right-6 z-40 rounded-full bg-zinc-800 border border-zinc-700 p-2.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 shadow-lg transition-colors"
+      title="Scroll to top"
+    >
+      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path d="M5 15l7-7 7 7" />
+      </svg>
+    </button>
+  )
+}
+
 export function App() {
   const [location] = useLocation()
   const auth = useAuth()
@@ -254,6 +276,7 @@ export function App() {
           </Route>
         </Switch>
       </main>
+      <ScrollToTop />
     </div>
   )
 }

@@ -158,12 +158,15 @@ async function checkAutoReports() {
   const allSettings = await db.select({
     userId: aiSettings.userId,
     reportIntervalHours: aiSettings.reportIntervalHours,
+    reportAtHour: aiSettings.reportAtHour,
     lastAutoReportAt: aiSettings.lastAutoReportAt,
   }).from(aiSettings)
 
   const { generateReportForUser } = await import('../routes/ai')
 
   const tasks: Promise<void>[] = []
+  const currentUtcHour = new Date().getUTCHours()
+
   for (const s of allSettings) {
     if (s.reportIntervalHours === 0) continue // manual only
     if (activeReports.has(s.userId)) continue
@@ -171,6 +174,9 @@ async function checkAutoReports() {
     const lastReport = s.lastAutoReportAt?.getTime() || 0
     const elapsed = (Date.now() - lastReport) / 3_600_000
     if (elapsed < s.reportIntervalHours) continue
+
+    // For daily reports, only trigger at the configured hour (within a 1-hour window)
+    if (s.reportIntervalHours >= 24 && Math.abs(currentUtcHour - s.reportAtHour) > 0) continue
 
     activeReports.add(s.userId)
     tasks.push(

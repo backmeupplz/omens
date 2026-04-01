@@ -76,6 +76,7 @@ aiRouter.get('/settings', async (c) => {
     minScore: settings.minScore,
     fetchIntervalMinutes: settings.fetchIntervalMinutes,
     reportIntervalHours: settings.reportIntervalHours,
+    reportAtHour: settings.reportAtHour,
     baseUrl: settings.baseUrl || '',
     model: settings.model,
     systemPrompt: settings.systemPrompt || '',
@@ -147,7 +148,7 @@ aiRouter.put('/settings/min-score', async (c) => {
 
 aiRouter.put('/settings/intervals', async (c) => {
   const user = c.get('user')
-  const body = await c.req.json<{ fetchIntervalMinutes?: number; reportIntervalHours?: number }>()
+  const body = await c.req.json<{ fetchIntervalMinutes?: number; reportIntervalHours?: number; reportAtHour?: number }>()
   const db = getDb(env.DATABASE_URL)
   const updates: Record<string, unknown> = {}
   if (body.fetchIntervalMinutes !== undefined) {
@@ -155,6 +156,9 @@ aiRouter.put('/settings/intervals', async (c) => {
   }
   if (body.reportIntervalHours !== undefined) {
     updates.reportIntervalHours = Math.max(0, Math.round(body.reportIntervalHours))
+  }
+  if (body.reportAtHour !== undefined) {
+    updates.reportAtHour = Math.max(0, Math.min(23, Math.round(body.reportAtHour)))
   }
   if (Object.keys(updates).length > 0) {
     await db.update(aiSettings).set(updates).where(eq(aiSettings.userId, user.id))

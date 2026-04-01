@@ -412,7 +412,7 @@ interface InternalsData {
 }
 
 function AiTuningSection() {
-  const { data: settings } = useApi<{ configured: boolean; minScore?: number; fetchIntervalMinutes?: number; reportIntervalHours?: number }>('/ai/settings')
+  const { data: settings } = useApi<{ configured: boolean; minScore?: number; fetchIntervalMinutes?: number; reportIntervalHours?: number; reportAtHour?: number }>('/ai/settings')
   const { data: internals, refetch } = useApi<InternalsData>('/ai/internals')
 
   // Poll internals every 30s to catch background prompt regeneration
@@ -425,6 +425,7 @@ function AiTuningSection() {
   const [localMinScore, setLocalMinScore] = useState<number | null>(null)
   const [fetchInterval, setFetchInterval] = useState<number | null>(null)
   const [reportInterval, setReportInterval] = useState<number | null>(null)
+  const [reportAtHour, setReportAtHour] = useState<number | null>(null)
   const [savingScore, setSavingScore] = useState(false)
   const [savingIntervals, setSavingIntervals] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -434,7 +435,13 @@ function AiTuningSection() {
     if (settings?.minScore != null && localMinScore === null) setLocalMinScore(settings.minScore)
     if (settings?.fetchIntervalMinutes != null && fetchInterval === null) setFetchInterval(settings.fetchIntervalMinutes)
     if (settings?.reportIntervalHours != null && reportInterval === null) setReportInterval(settings.reportIntervalHours)
-  }, [settings, localMinScore, fetchInterval, reportInterval])
+    if (settings?.reportAtHour != null && reportAtHour === null) {
+      // Convert UTC hour to local hour for display
+      const utcH = settings.reportAtHour
+      const localH = (utcH + 24 - new Date().getTimezoneOffset() / 60) % 24
+      setReportAtHour(Math.round(localH))
+    }
+  }, [settings, localMinScore, fetchInterval, reportInterval, reportAtHour])
 
   const onSliderChange = (val: number) => {
     setLocalMinScore(val)
@@ -559,6 +566,28 @@ function AiTuningSection() {
             <option value="24">24 hours</option>
             <option value="48">2 days</option>
           </select>
+          {reportInterval != null && reportInterval > 0 && reportAtHour !== null && (
+            <>
+              <label class="text-xs text-zinc-400 block">Generate report at</label>
+              <select
+                class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700 select-styled"
+                value={reportAtHour}
+                onChange={(e) => {
+                  const localH = Number((e.target as HTMLSelectElement).value)
+                  setReportAtHour(localH)
+                  // Convert local hour to UTC for storage
+                  const utcH = (localH + new Date().getTimezoneOffset() / 60 + 24) % 24
+                  setSavingIntervals(true)
+                  api('/ai/settings/intervals', { method: 'PUT', body: JSON.stringify({ reportAtHour: Math.round(utcH) }) })
+                    .finally(() => setSavingIntervals(false))
+                }}
+              >
+                {Array.from({ length: 24 }, (_, i) => (
+                  <option key={i} value={i}>{i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i - 12}:00 PM`}</option>
+                ))}
+              </select>
+            </>
+          )}
           {savingIntervals && <span class="text-xs text-zinc-500">Saving...</span>}
         </div>
       )}
