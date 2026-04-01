@@ -829,6 +829,8 @@ function AiReportView() {
   const [viewingReport, setViewingReport] = useState<AiReportData | null>(null)
   const [showPastReports, setShowPastReports] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  const refetchRef = useRef(refetch)
+  refetchRef.current = refetch
 
   /** Connect to SSE stream and accumulate content */
   const connectStream = useCallback(() => {
@@ -856,7 +858,7 @@ function AiReportView() {
               completed = true
               setGenerating(false)
               setStreamContent('')
-              refetch()
+              refetchRef.current()
               return
             }
             if (data.startsWith('[ERROR]')) {
@@ -887,7 +889,7 @@ function AiReportView() {
         setStreamContent('')
         setError(e instanceof Error ? e.message : 'Connection lost during report generation')
       })
-  }, [refetch])
+  }, [])
 
   // Check if report is already generating on mount
   useEffect(() => {
@@ -904,7 +906,7 @@ function AiReportView() {
       })
       .catch(() => {})
     return () => abortRef.current?.abort()
-  }, [connectStream])
+  }, [])
 
   const generate = async () => {
     setGenerating(true)
