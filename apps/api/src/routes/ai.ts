@@ -579,12 +579,24 @@ export async function generateReportForUser(userId: string): Promise<any> {
   const db = getDb(env.DATABASE_URL)
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const [settings] = await db.select({ minScore: aiSettings.minScore })
+    .from(aiSettings).where(eq(aiSettings.userId, userId)).limit(1)
+  const minScore = settings?.minScore ?? 50
 
-  // Use ALL tweets from the last 24h — the AI decides what's important for the report
-  let tweetList = await db.select().from(tweets)
-    .where(and(eq(tweets.userId, userId), gte(tweets.publishedAt, since)))
+  // Use all scored tweets from the AI-filtered feed (score >= minScore) in the last 24h
+  let tweetList = await db.select({ tweet: tweets })
+    .from(tweets)
+    .innerJoin(tweetScores, and(eq(tweetScores.tweetId, tweets.id), eq(tweetScores.userId, userId)))
+    .where(and(eq(tweets.userId, userId), gte(tweets.publishedAt, since), gte(tweetScores.score, minScore)))
     .orderBy(desc(tweets.publishedAt))
-    .limit(300)
+    .then((rows) => rows.map((r) => r.tweet))
+
+  // Fallback to all tweets from last 24h if nothing scored yet
+  if (tweetList.length === 0) {
+    tweetList = await db.select().from(tweets)
+      .where(and(eq(tweets.userId, userId), gte(tweets.publishedAt, since)))
+      .orderBy(desc(tweets.publishedAt))
+  }
 
   if (tweetList.length === 0) return null
 
