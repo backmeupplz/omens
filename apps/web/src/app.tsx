@@ -146,6 +146,12 @@ export function App() {
 
   const showFeed = auth.loggedIn && auth.xConnected
 
+  // Share pages get their own layout — no navbar
+  const shareMatch = location.match(/^\/([^/]+)\/status\/(\d+)$/)
+  if (shareMatch) {
+    return <SharePage handle={shareMatch[1]} tweetId={shareMatch[2]} />
+  }
+
   return (
     <div class="min-h-screen bg-zinc-950 text-zinc-100">
       <nav class="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur px-4 py-3">
@@ -274,9 +280,6 @@ export function App() {
             <AuthGuard auth={auth}>
               <Settings onXChange={auth.recheckX} xConnected={auth.xConnected} singleUser={auth.singleUser} onLogout={auth.logout} />
             </AuthGuard>
-          </Route>
-          <Route path="/:handle/status/:tweetId">
-            {(params) => <SharePage handle={params.handle} tweetId={params.tweetId} />}
           </Route>
         </Switch>
       </main>
