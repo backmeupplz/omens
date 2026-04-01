@@ -38,6 +38,7 @@ COPY packages/shared/ packages/shared/
 RUN ln -s /app/packages/db/drizzle /app/drizzle
 
 ENV NODE_ENV=production
+ENV WEB_DIR=../web
 EXPOSE 3000
 
 CMD ["bun", "api/index.js"]
