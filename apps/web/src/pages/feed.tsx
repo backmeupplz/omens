@@ -169,7 +169,7 @@ function RepliesModal({
       onClick={onClose}
     >
       <div
-        class="w-full max-w-lg max-h-[80vh] rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col"
+        class="w-full max-w-lg max-h-[80vh] rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col overflow-hidden mx-3"
         onClick={(e) => e.stopPropagation()}
       >
         <div class="flex items-center justify-between p-4 pb-2 border-b border-zinc-800">
@@ -211,7 +211,7 @@ function RepliesModal({
                       <span class="text-xs text-zinc-600">&middot; {fmt(r.likes)} likes</span>
                     )}
                   </div>
-                  <p class="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{r.content}</p>
+                  <p class="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed break-words">{r.content}</p>
                 </div>
               </div>
             ))}
@@ -292,7 +292,7 @@ function LinkCard({ data, fallbackUrl }: { data: CardData; fallbackUrl?: string 
       onClick={(e) => e.stopPropagation()}
     >
       {data.thumbnail && (
-        <img src={data.thumbnail} alt="" class="w-full rounded-t-xl" loading="lazy" />
+        <img src={data.thumbnail} alt="" class="w-full max-w-full rounded-t-xl" loading="lazy" />
       )}
       <div class="p-2.5">
         <p class="text-sm font-medium text-zinc-200 line-clamp-2">{data.title}</p>
@@ -344,10 +344,10 @@ function MediaGrid({
 }) {
   if (media.length === 0) return null
   const single = media.length === 1
-  const sizeClass = single ? 'max-h-72 w-full' : 'h-28 w-28'
+  const sizeClass = single ? 'max-h-72 w-full max-w-full' : 'h-28 w-28 max-w-[calc(50%-0.375rem)]'
   const fit = single ? 'object-contain' : 'object-cover'
   return (
-    <div class={`mt-2 flex gap-1.5 flex-wrap ${single ? '' : ''}`}>
+    <div class={`mt-2 flex gap-1.5 flex-wrap overflow-hidden ${single ? '' : ''}`}>
       {media.slice(0, 4).map((item, i) =>
         item.type === 'video' ? (
           <a
@@ -407,7 +407,7 @@ function linkify(text: string): preact.ComponentChildren[] {
           href={match[1]}
           target="_blank"
           rel="noopener"
-          class="text-blue-400 hover:underline"
+          class="text-blue-400 hover:underline break-all"
           onClick={(e: Event) => e.stopPropagation()}
         >
           {match[1].replace(/^https?:\/\//, '')}
@@ -442,8 +442,8 @@ function TweetContent({ text, hideUrls }: { text: string; hideUrls?: boolean }) 
   const display = needsTruncation && !expanded ? `${cleaned.slice(0, MAX_CHARS)}...` : cleaned
 
   return (
-    <div>
-      <p class="text-[15px] text-zinc-200 whitespace-pre-wrap leading-relaxed">
+    <div class="overflow-hidden">
+      <p class="text-[15px] text-zinc-200 whitespace-pre-wrap leading-relaxed break-words">
         {linkify(display)}
       </p>
       {needsTruncation && (
@@ -500,9 +500,9 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
   const onOgLoaded = useCallback(() => setOgLoaded(true), [])
 
   return (
-    <div>
+    <div class="overflow-hidden">
     {tweet.parentTweet && (
-      <div class="rounded-t-xl border border-b-0 border-zinc-800 bg-zinc-950 px-3 sm:px-4 py-2.5 flex items-start gap-2.5">
+      <div class="rounded-t-xl border border-b-0 border-zinc-800 bg-zinc-950 px-3 sm:px-4 py-2.5 flex items-start gap-2.5 overflow-hidden">
         {tweet.parentTweet.authorAvatar && (
           <img src={tweet.parentTweet.authorAvatar} alt="" class="w-5 h-5 rounded-full mt-0.5 shrink-0" />
         )}
@@ -511,11 +511,11 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
             <span class="font-medium text-zinc-400">{tweet.parentTweet.authorName}</span>
             {' '}@{tweet.parentTweet.authorHandle}
           </span>
-          <p class="text-xs text-zinc-500 line-clamp-2 mt-0.5">{tweet.parentTweet.content}</p>
+          <p class="text-xs text-zinc-500 line-clamp-2 mt-0.5 break-words">{tweet.parentTweet.content}</p>
         </div>
       </div>
     )}
-    <div class={`${tweet.parentTweet ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} border border-zinc-800 bg-zinc-900 px-3 sm:px-4 py-3 hover:border-zinc-700 transition-colors`}>
+    <div class={`${tweet.parentTweet ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} border border-zinc-800 bg-zinc-900 px-3 sm:px-4 py-3 hover:border-zinc-700 transition-colors overflow-hidden`}>
       {lightbox !== null && (
         <Lightbox
           items={media.filter((m) => m.type === 'photo')}
@@ -560,11 +560,11 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
               @{tweet.isRetweet} reposted
             </div>
           )}
-          <div class="flex items-baseline gap-1 flex-wrap">
-            <span class="font-semibold text-sm text-zinc-100 truncate">
+          <div class="flex items-baseline gap-1 flex-wrap overflow-hidden">
+            <span class="font-semibold text-sm text-zinc-100 truncate max-w-[60%]">
               {tweet.authorName}
             </span>
-            <span class="text-sm text-zinc-500 shrink-0">@{tweet.authorHandle}</span>
+            <span class="text-sm text-zinc-500 truncate max-w-[40%]">@{tweet.authorHandle}</span>
             {tweet.authorFollowers > 0 && (
               <span class="text-xs text-zinc-600 shrink-0">
                 &middot; {fmt(tweet.authorFollowers)}
@@ -615,7 +615,7 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
             <span class="text-sm font-semibold text-zinc-200">{quoted.authorName}</span>
             <span class="text-xs text-zinc-500">@{quoted.authorHandle}</span>
           </div>
-          <p class="text-sm text-zinc-400 line-clamp-3">{quoted.content}</p>
+          <p class="text-sm text-zinc-400 line-clamp-3 break-words">{quoted.content}</p>
           <MediaGrid media={quoted.media || []} linkUrl={quoted.url} onPhotoClick={setQuotedLightbox} />
           {quoted.card && <LinkCard data={quoted.card} fallbackUrl={quoted.url} />}
         </div>
@@ -629,7 +629,7 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
       )}
 
       {/* Engagement */}
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-zinc-500">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-zinc-500 overflow-hidden">
             <button
               type="button"
               class="flex items-center gap-1 hover:text-blue-400 transition-colors"
@@ -794,8 +794,8 @@ function renderReportContent(
     if (tweetMatch) {
       const tweet = refTweets.get(tweetMatch[1])
       result.push(tweet
-        ? <div key={`t-${i}`} class="my-1.5 overflow-hidden"><TweetCard tweet={tweet} /></div>
-        : <div key={`t-${i}`} class="my-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-500 italic">Referenced post is no longer available</div>
+        ? <div key={`t-${i}`} class="my-1.5 overflow-hidden max-w-full"><TweetCard tweet={tweet} /></div>
+        : <div key={`t-${i}`} class="my-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-500 italic overflow-hidden">Referenced post is no longer available</div>
       )
       continue
     }
@@ -977,7 +977,7 @@ function AiReportView() {
             {genStartedAt > 0 && <ElapsedTime since={genStartedAt} />}
           </div>
           {streamContent && (
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5">
+            <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden">
               {renderReportContent(streamContent, streamTweets)}
             </div>
           )}
@@ -1296,7 +1296,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
                 {scoringLog.length > 0 && (
                   <div class="mt-2 pt-2 border-t border-zinc-800 space-y-0.5 max-h-32 overflow-y-auto scrollbar-dark">
                     {scoringLog.map((entry, i) => (
-                      <p key={i} class="text-[11px] text-zinc-500 font-mono">{entry}</p>
+                      <p key={i} class="text-[11px] text-zinc-500 font-mono break-all">{entry}</p>
                     ))}
                   </div>
                 )}
