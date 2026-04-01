@@ -1,0 +1,441 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e5]:
+      - link "Omens" [ref=e7] [cursor=pointer]:
+        - /url: /
+      - generic [ref=e8]:
+        - link "AI Report" [ref=e9] [cursor=pointer]:
+          - /url: /
+          - img [ref=e10]
+        - link "AI-Filtered Feed" [ref=e12] [cursor=pointer]:
+          - /url: /filtered
+          - img [ref=e13]
+        - link "All Posts" [ref=e15] [cursor=pointer]:
+          - /url: /feed
+          - img [ref=e16]
+        - link "Settings" [ref=e18] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e19]
+  - main [ref=e22]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]: 4/1/2026, 4:37:34 AM · 37 posts
+        - generic [ref=e29]: · next in 17h 21m
+        - generic [ref=e30]:
+          - button "Share" [ref=e31] [cursor=pointer]:
+            - img [ref=e32]
+            - text: Share
+          - button "Report history" [ref=e35] [cursor=pointer]:
+            - img [ref=e36]
+          - button "Generate new report" [ref=e38] [cursor=pointer]:
+            - img [ref=e39]
+      - 'heading "The 5-MeO-DMT Aftermath: Consciousness and Physiological Reset" [level=3] [ref=e41]'
+      - paragraph [ref=e43]: "Bryan Johnson details his ten-day follow-up from a 5-MeO-DMT experience, reporting significantly increased sleep requirements (8hrs + midday nap + 9hrs following night), 2-3x elevated sex drive, vivid dreams, and persistent \"kid vibe excitement\" about life. He describes a profound philosophical residue: the unsettling realization that humans are a \"breakout intelligence\" carrying consciousness yet neurologically unequipped to appreciate existence's preciousness, with previous normalized behaviors like mindless scrolling now appearing \"insane\" and societal norms feeling irrational."
+      - generic [ref=e47]:
+        - generic [ref=e50]:
+          - generic [ref=e51]: Bryan Johnson
+          - generic [ref=e52]: "@bryan_johnson"
+          - generic [ref=e53]: · 979.8K
+          - generic [ref=e54]: · 2h
+        - generic [ref=e55]:
+          - paragraph [ref=e56]: 10 days post 5-MeO-DMT > my body can't sleep enough > I'll sleep 8 hrs + midday hr nap + 9hrs that night > mind feels really fast > sex drive is up by 2-3x > kid vibe excitement levels about life > dreams are vivid, more alive than I can remember > previous normalized i.e. scrolling, now seem insane > societal norms generally feel insane to me, how we trade our existence for ephemeral things ...
+          - button "Show full post" [ref=e57] [cursor=pointer]
+        - generic [ref=e58]:
+          - button "198" [ref=e59] [cursor=pointer]:
+            - img [ref=e60]
+            - text: "198"
+          - generic [ref=e62]:
+            - img [ref=e63]
+            - text: "86"
+          - generic [ref=e68]:
+            - img [ref=e69]
+            - text: 2.7K
+          - generic [ref=e71]:
+            - img [ref=e72]
+            - text: 159.0K
+          - generic [ref=e75]:
+            - button "Share" [ref=e76] [cursor=pointer]:
+              - img [ref=e77]
+              - text: Share
+            - link "View on X" [ref=e80] [cursor=pointer]:
+              - /url: https://x.com/bryan_johnson/status/2039392379862704529
+              - img [ref=e81]
+              - text: View on X
+      - generic [ref=e88]:
+        - generic [ref=e91]:
+          - generic [ref=e92]: Bryan Johnson
+          - generic [ref=e93]: "@bryan_johnson"
+          - generic [ref=e94]: · 979.8K
+          - generic [ref=e95]: · 1h
+        - generic [ref=e96]:
+          - paragraph [ref=e97]: Our minds are not naturally capable of understanding the preciousness of our existence. That was the single omnipresent concept at my deepest experience of 5-MeO-DMT. Ten days later, the resonance remains. This felt deeply unsettling. We humans are a breakout intelligence in this part of the galaxy. We carry the flame of consciousness and we're not naturally equipped to appreciate the situat...
+          - button "Show full post" [ref=e98] [cursor=pointer]
+        - generic [ref=e99]:
+          - button "68" [ref=e100] [cursor=pointer]:
+            - img [ref=e101]
+            - text: "68"
+          - generic [ref=e103]:
+            - img [ref=e104]
+            - text: "19"
+          - generic [ref=e109]:
+            - img [ref=e110]
+            - text: "297"
+          - generic [ref=e112]:
+            - img [ref=e113]
+            - text: 20.8K
+          - generic [ref=e116]:
+            - button "Share" [ref=e117] [cursor=pointer]:
+              - img [ref=e118]
+              - text: Share
+            - link "View on X" [ref=e121] [cursor=pointer]:
+              - /url: https://x.com/bryan_johnson/status/2039405931910545670
+              - img [ref=e122]
+              - text: View on X
+      - 'heading "Dehydration as a Confounding Biomarker: Brain Volume and Aging Metrics" [level=3] [ref=e127]'
+      - paragraph [ref=e129]: Even mild dehydration can shrink brain volume by over 0.5%, potentially triggering headaches and critically confounding MRI-based assessments of brain atrophy used as aging biomarkers. Johnson notes hydration status also negatively impacts Transcranial Magnetic Stimulation (TMS) efficacy, adding another variable to neuro-optimization protocols. The actionable standard remains maintaining light yellow urine.
+      - generic [ref=e133]:
+        - generic [ref=e136]:
+          - generic [ref=e137]: Bryan Johnson
+          - generic [ref=e138]: "@bryan_johnson"
+          - generic [ref=e139]: · 979.8K
+          - generic [ref=e140]: · 2h
+        - paragraph [ref=e142]: Dehydration can shrink your brain by over 0.5%, and may be a reason you get a headache. Hydrate to maintain light yellow urine. Also hydrate before an MRI, as dehydration-related small decreases in brain volume can confound MRI-based assessment of brain atrophy which is a biomarker of aging. Dehydration can also negatively effect the efficacy of TMS interventions.
+        - generic [ref=e143]:
+          - button [ref=e144] [cursor=pointer]
+          - button [ref=e145] [cursor=pointer]
+        - generic [ref=e146]:
+          - button "44" [ref=e147] [cursor=pointer]:
+            - img [ref=e148]
+            - text: "44"
+          - generic [ref=e150]:
+            - img [ref=e151]
+            - text: "33"
+          - generic [ref=e156]:
+            - img [ref=e157]
+            - text: "480"
+          - generic [ref=e159]:
+            - img [ref=e160]
+            - text: 31.2K
+          - generic [ref=e163]:
+            - button "Share" [ref=e164] [cursor=pointer]:
+              - img [ref=e165]
+              - text: Share
+            - link "View on X" [ref=e168] [cursor=pointer]:
+              - /url: https://x.com/bryan_johnson/status/2039387465488970108
+              - img [ref=e169]
+              - text: View on X
+      - 'heading "Endocrine Disruptors: The Hidden Tax on Reproductive and Developmental Health" [level=3] [ref=e174]'
+      - paragraph [ref=e176]: New analysis links "everywhere chemicals" (phthalates) leaching from plastics to 1.97 million preterm births and 74,000 newborn deaths globally in 2018 alone, with survivors facing 7x risk of hearing impairment and 5x risk of vision abnormalities. Separately, @levelsio highlights research connecting high BPA levels from thermal receipts to 50% testosterone reduction in adolescents, while noting that "BPA-free" products typically substitute equally toxic BP-S or BP-F compounds.
+      - generic [ref=e180]:
+        - generic [ref=e183]:
+          - generic [ref=e184]: Bryan Johnson
+          - generic [ref=e185]: "@bryan_johnson"
+          - generic [ref=e186]: · 979.8K
+          - generic [ref=e187]: · 18h
+        - generic [ref=e188]:
+          - paragraph [ref=e189]: "This is not good. “Everywhere chemicals” leaching from plastics may have contributed to 1.97 million preterm births and 74,000 newborn deaths worldwide in one year (2018), with an estimated 6.69 million years of life lost. Born at 28 weeks. The child faces: 7x the risk of hearing impairment 5x the risk of vision abnormalities 3x the odds of dental enamel defects 2x the odds of developmental de..."
+          - button "Show full post" [ref=e190] [cursor=pointer]
+        - button [ref=e192] [cursor=pointer]
+        - generic [ref=e193]:
+          - button "39" [ref=e194] [cursor=pointer]:
+            - img [ref=e195]
+            - text: "39"
+          - generic [ref=e197]:
+            - img [ref=e198]
+            - text: "87"
+          - generic [ref=e203]:
+            - img [ref=e204]
+            - text: "812"
+          - generic [ref=e206]:
+            - img [ref=e207]
+            - text: 112.7K
+          - generic [ref=e210]:
+            - button "Share" [ref=e211] [cursor=pointer]:
+              - img [ref=e212]
+              - text: Share
+            - link "View on X" [ref=e215] [cursor=pointer]:
+              - /url: https://x.com/bryan_johnson/status/2039144463797473412
+              - img [ref=e216]
+              - text: View on X
+      - generic [ref=e223]:
+        - generic [ref=e226]:
+          - generic [ref=e227]: "@levelsio"
+          - generic [ref=e228]: "@levelsio"
+          - generic [ref=e229]: · 845.6K
+          - generic [ref=e230]: · 2h
+        - paragraph [ref=e232]: I don't wanna say but I told you guys Touching receipts -> BPA enters your bloodstream High BPA levels in adolescents -> 50% reduction in Testosterone levels
+        - generic [ref=e233]:
+          - generic [ref=e234]:
+            - generic [ref=e235]: Maddie Evans
+            - generic [ref=e236]: "@EstieMaddie"
+          - paragraph [ref=e237]: 🧾 BE CAREFUL HANDLING THERMAL RECEIPTS!! 😳 DID YOU KNOW THIS???
+          - link [ref=e239] [cursor=pointer]:
+            - /url: https://x.com/EstieMaddie/status/2039240613145530391
+            - generic:
+              - img
+        - generic [ref=e241]:
+          - button "69" [ref=e242] [cursor=pointer]:
+            - img [ref=e243]
+            - text: "69"
+          - generic [ref=e245]:
+            - img [ref=e246]
+            - text: "32"
+          - generic [ref=e251]:
+            - img [ref=e252]
+            - text: "638"
+          - generic [ref=e254]:
+            - img [ref=e255]
+            - text: 120.0K
+          - generic [ref=e258]:
+            - button "Share" [ref=e259] [cursor=pointer]:
+              - img [ref=e260]
+              - text: Share
+            - link "View on X" [ref=e263] [cursor=pointer]:
+              - /url: https://x.com/levelsio/status/2039382066907770994
+              - img [ref=e264]
+              - text: View on X
+      - 'heading "Creatine Safety Under Fire: Large-Scale Study Challenges Supplementation Dogma" [level=3] [ref=e269]'
+      - paragraph [ref=e271]: A massive 24-month clinical trial across dozens of centers worldwide suggests creatine supplementation may compromise kidney function at any non-zero dose. The preliminary conclusion circulating in biohacking circles indicates that zero grams per day represents the only dose without negative changes to renal stress markers—potentially upending decades of sports nutrition consensus if the full dataset holds up to peer review.
+      - generic [ref=e275]:
+        - generic [ref=e278]:
+          - generic [ref=e279]: vittorio
+          - generic [ref=e280]: "@IterIntellectus"
+          - generic [ref=e281]: · 179.8K
+          - generic [ref=e282]: · 4h
+        - paragraph [ref=e284]: holy shit they finally published the full creatine safety data and the only actually safe amount is 0g/day
+        - button [ref=e286] [cursor=pointer]
+        - generic [ref=e287]:
+          - button "197" [ref=e288] [cursor=pointer]:
+            - img [ref=e289]
+            - text: "197"
+          - generic [ref=e291]:
+            - img [ref=e292]
+            - text: "74"
+          - generic [ref=e297]:
+            - img [ref=e298]
+            - text: 1.9K
+          - generic [ref=e300]:
+            - img [ref=e301]
+            - text: 863.7K
+          - generic [ref=e304]:
+            - button "Share" [ref=e305] [cursor=pointer]:
+              - img [ref=e306]
+              - text: Share
+            - link "View on X" [ref=e309] [cursor=pointer]:
+              - /url: https://x.com/IterIntellectus/status/2039355161454211386
+              - img [ref=e310]
+              - text: View on X
+      - heading "@levelsio on Building, Startups, and Tech Experimentation" [level=3] [ref=e315]
+      - paragraph [ref=e317]: Responding to malware takeovers of popular browser extensions (including JSON formatters injecting geolocation tracking), @levelsio advocates "vibe-coding" custom Chrome extensions with Claude Code to avoid supply-chain attacks. He released "XDR Boost," an open-source MacOS utility that safely manages MacBook Pro XDR display brightness without Vivid's persistent sleep/wake bugs. On European startup economics, he identifies Portugal's hostile tax thresholds—where exceeding ~€150,000/year triggers punitive tiers and bookkeeping burdens—as the structural reason local businesses actively avoid scaling beyond "lifestyle" size, evidenced by customer-averse service culture.
+      - generic [ref=e321]:
+        - generic [ref=e324]:
+          - generic [ref=e325]: "@levelsio"
+          - generic [ref=e326]: "@levelsio"
+          - generic [ref=e327]: · 845.6K
+          - generic [ref=e328]: · 3h
+        - generic [ref=e329]:
+          - paragraph [ref=e330]: Chrome extensions are so incredibly unsafe Malware criminals find popular ones, pay the owners of the extension lots of money, they add malware to the code and millions of people get infected Then they take your cookies, localStorage, anything they can access Which is why in locked down advanced security devices you can't even install Chrome extensions I mostly run uBlock Origin, but have some...
+          - button "Show full post" [ref=e331] [cursor=pointer]
+        - generic [ref=e332]:
+          - generic [ref=e333]:
+            - generic [ref=e334]: "@levelsio"
+            - generic [ref=e335]: "@levelsio"
+          - paragraph [ref=e336]: I think I'll just vibe code all my Chrome extensions with Claude Code to avoid having to use any and being dependent on someone getting bribed to add malware to their extension It's not a question IF it happens, just WHEN
+        - generic [ref=e337]:
+          - button "75" [ref=e338] [cursor=pointer]:
+            - img [ref=e339]
+            - text: "75"
+          - generic [ref=e341]:
+            - img [ref=e342]
+            - text: "35"
+          - generic [ref=e347]:
+            - img [ref=e348]
+            - text: "674"
+          - generic [ref=e350]:
+            - img [ref=e351]
+            - text: 70.6K
+          - generic [ref=e354]:
+            - button "Share" [ref=e355] [cursor=pointer]:
+              - img [ref=e356]
+              - text: Share
+            - link "View on X" [ref=e359] [cursor=pointer]:
+              - /url: https://x.com/levelsio/status/2039368480164618635
+              - img [ref=e360]
+              - text: View on X
+      - generic [ref=e367]:
+        - generic [ref=e370]:
+          - generic [ref=e371]: "@levelsio"
+          - generic [ref=e372]: "@levelsio"
+          - generic [ref=e373]: · 845.6K
+          - generic [ref=e374]: · 4h
+        - generic [ref=e375]:
+          - paragraph [ref=e376]: Today I made a new free open source app called [ ☀️ XDR Boost ] for MacOS Before I use Vivid to make my MacBook Pro 16" screen brighter, it uses the XDR feature to pump the brightness to its physical max (and yes it's safe) Problem is Vivid is buggy, I close my MacBook and if I open it next time, Vivid says it's ON but it's not bright, I have to then switch it ON and OFF and ON again, and it's a...
+          - button "Show full post" [ref=e377] [cursor=pointer]
+        - generic [ref=e378]:
+          - button [ref=e379] [cursor=pointer]
+          - button [ref=e380] [cursor=pointer]
+          - button [ref=e381] [cursor=pointer]
+        - generic [ref=e382]:
+          - generic [ref=e383]:
+            - generic [ref=e384]: "@levelsio"
+            - generic [ref=e385]: "@levelsio"
+          - paragraph [ref=e386]: Anyone else running @thevividapp And you have to Disable -> Enable it again everytime you close your MacBook? Been a bug for ages?
+          - button [ref=e388] [cursor=pointer]
+        - generic [ref=e389]:
+          - button "23" [ref=e390] [cursor=pointer]:
+            - img [ref=e391]
+            - text: "23"
+          - generic [ref=e393]:
+            - img [ref=e394]
+            - text: "12"
+          - generic [ref=e399]:
+            - img [ref=e400]
+            - text: "396"
+          - generic [ref=e402]:
+            - img [ref=e403]
+            - text: 66.9K
+          - generic [ref=e406]:
+            - button "Share" [ref=e407] [cursor=pointer]:
+              - img [ref=e408]
+              - text: Share
+            - link "View on X" [ref=e411] [cursor=pointer]:
+              - /url: https://x.com/levelsio/status/2039356052827685167
+              - img [ref=e412]
+              - text: View on X
+      - generic [ref=e419]:
+        - generic [ref=e422]:
+          - generic [ref=e423]: "@levelsio"
+          - generic [ref=e424]: "@levelsio"
+          - generic [ref=e425]: · 845.6K
+          - generic [ref=e426]: · 15h
+        - paragraph [ref=e427]:
+          - text: Replying to
+          - generic [ref=e428]: "@levelsio"
+        - generic [ref=e429]:
+          - paragraph [ref=e430]: "\"It's not completely their fault though, the hostile tax system for both people and businesses literally gives you an incentive to never ever scale your business beyond I believe around €150,000/year, because you end up in a completely different category and tax tier that decimates you with more taxes and more bookkeeping So every business tries to stay small, and doesn't want more customers (how..."
+          - button "Show full post" [ref=e431] [cursor=pointer]
+        - button [ref=e433] [cursor=pointer]
+        - generic [ref=e434]:
+          - button "14" [ref=e435] [cursor=pointer]:
+            - img [ref=e436]
+            - text: "14"
+          - generic [ref=e438]:
+            - img [ref=e439]
+            - text: "40"
+          - generic [ref=e441]:
+            - img [ref=e442]
+            - text: 11.7K
+          - generic [ref=e445]:
+            - button "Share" [ref=e446] [cursor=pointer]:
+              - img [ref=e447]
+              - text: Share
+            - link "View on X" [ref=e450] [cursor=pointer]:
+              - /url: https://x.com/levelsio/status/2039189344393576668
+              - img [ref=e451]
+              - text: View on X
+      - 'heading "Claude Code Privacy Leak: Telemetry, Fingerprints, and \"Frustrated User Detection\"" [level=3] [ref=e456]'
+      - paragraph [ref=e458]: Yesterday's source code leak revealed Claude Code transmits 640+ telemetry events across 40+ fingerprint dimensions (Device ID, CPU, RAM, OS version) every 5 seconds, creating permanent device tracking. The codebase also contains a hardcoded regex for "Frustrated User Detection" that alters UI behavior when users cuss at the AI. Anthropic has reportedly issued wildcard DMCA notices to GitHub repositories mentioning Claude in response.
+      - generic [ref=e462]:
+        - generic [ref=e464]:
+          - generic [ref=e465]:
+            - img [ref=e466]
+            - text: "@evilsocket reposted"
+          - generic [ref=e471]:
+            - generic [ref=e472]: Kai
+            - generic [ref=e473]: "@hqmank"
+            - generic [ref=e474]: · 1.1K
+            - generic [ref=e475]: · 4h
+        - generic [ref=e476]:
+          - paragraph [ref=e477]: "🚨Your Claude ban wasn't random. Here's what Claude Code is quietly reporting: • Device ID, email, OS version, CPU, RAM • 640+ telemetry events, 40+ fingerprint dimensions • Reports home every 5 seconds • One permanent ID per device Yesterday's Claude Code source leak exposed the full scope. Someone already built a countermeasure overnight: 👉 What cc-gateway does: • Rewrites identity → single ..."
+          - button "Show full post" [ref=e478] [cursor=pointer]
+        - 'link "GitHub - motiful/cc-gateway: AI API identity gateway — reverse proxy that normalizes device... AI API identity gateway — reverse proxy that normalizes device fingerprints and telemetry for privacy-preserving API proxying - motiful/cc-gateway github.com" [ref=e479] [cursor=pointer]':
+          - /url: https://t.co/XMQa2O39Wl
+          - generic [ref=e480]:
+            - paragraph [ref=e481]: "GitHub - motiful/cc-gateway: AI API identity gateway — reverse proxy that normalizes device..."
+            - paragraph [ref=e482]: AI API identity gateway — reverse proxy that normalizes device fingerprints and telemetry for privacy-preserving API proxying - motiful/cc-gateway
+            - paragraph [ref=e483]: github.com
+        - generic [ref=e484]:
+          - button "15" [ref=e485] [cursor=pointer]:
+            - img [ref=e486]
+            - text: "15"
+          - generic [ref=e488]:
+            - img [ref=e489]
+            - text: "93"
+          - generic [ref=e494]:
+            - img [ref=e495]
+            - text: "644"
+          - generic [ref=e497]:
+            - img [ref=e498]
+            - text: 45.5K
+          - generic [ref=e501]:
+            - button "Share" [ref=e502] [cursor=pointer]:
+              - img [ref=e503]
+              - text: Share
+            - link "View on X" [ref=e506] [cursor=pointer]:
+              - /url: https://x.com/hqmank/status/2039198385367068828
+              - img [ref=e507]
+              - text: View on X
+      - generic [ref=e514]:
+        - generic [ref=e516]:
+          - generic [ref=e517]:
+            - img [ref=e518]
+            - text: "@steipete reposted"
+          - generic [ref=e523]:
+            - generic [ref=e524]: Humi
+            - generic [ref=e525]: "@byteHumi"
+            - generic [ref=e526]: · 4.3K
+            - generic [ref=e527]: · 23h
+        - paragraph [ref=e529]: lmao I can't stop laughing claude-code has a "Frustrated User Detection" There's a regex that detects when you're angry ( fully hard coded btw) When triggered, it changes Claude's behavior/UI state. Claude literally knows when you're cussing at it.
+        - button [ref=e531] [cursor=pointer]
+        - generic [ref=e532]:
+          - button "225" [ref=e533] [cursor=pointer]:
+            - img [ref=e534]
+            - text: "225"
+          - generic [ref=e536]:
+            - img [ref=e537]
+            - text: "354"
+          - generic [ref=e542]:
+            - img [ref=e543]
+            - text: 5.4K
+          - generic [ref=e545]:
+            - img [ref=e546]
+            - text: 539.1K
+          - generic [ref=e549]:
+            - button "Share" [ref=e550] [cursor=pointer]:
+              - img [ref=e551]
+              - text: Share
+            - link "View on X" [ref=e554] [cursor=pointer]:
+              - /url: https://x.com/byteHumi/status/2038960489154380261
+              - img [ref=e555]
+              - text: View on X
+      - 'heading "Tinygrad eGPU Breakthrough: Apple Approves Thunderbolt Drivers for AMD/NVIDIA" [level=3] [ref=e560]'
+      - paragraph [ref=e562]: The tiny corp announced Apple has officially approved their drivers enabling Thunderbolt and USB4 eGPU support for both AMD and NVIDIA cards on MacOS. This eliminates previous installation friction, allowing Mac users to run local AI/ML workloads on external GPUs with what they describe as "Qwen-simple" setup—a significant unlock for on-device model training and inference previously gated by Apple's ecosystem constraints.
+      - generic [ref=e566]:
+        - generic [ref=e569]:
+          - generic [ref=e570]: the tiny corp
+          - generic [ref=e571]: "@__tinygrad__"
+          - generic [ref=e572]: · 68.4K
+          - generic [ref=e573]: · 14h
+        - paragraph [ref=e575]: If you have a Thunderbolt or USB4 eGPU and a Mac, today is the day you've been waiting for! Apple finally approved our driver for both AMD and NVIDIA. It's so easy to install now a Qwen could do it, then it can run that Qwen...
+        - button [ref=e577] [cursor=pointer]
+        - generic [ref=e578]:
+          - button "139" [ref=e579] [cursor=pointer]:
+            - img [ref=e580]
+            - text: "139"
+          - generic [ref=e582]:
+            - img [ref=e583]
+            - text: "630"
+          - generic [ref=e588]:
+            - img [ref=e589]
+            - text: 4.6K
+          - generic [ref=e591]:
+            - img [ref=e592]
+            - text: 521.5K
+          - generic [ref=e595]:
+            - button "Share" [ref=e596] [cursor=pointer]:
+              - img [ref=e597]
+              - text: Share
+            - link "View on X" [ref=e600] [cursor=pointer]:
+              - /url: https://x.com/__tinygrad__/status/2039213719155310736
+              - img [ref=e601]
+              - text: View on X
