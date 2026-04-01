@@ -794,7 +794,7 @@ function renderReportContent(
     if (tweetMatch) {
       const tweet = refTweets.get(tweetMatch[1])
       result.push(tweet
-        ? <div key={`t-${i}`} class="my-1.5"><TweetCard tweet={tweet} /></div>
+        ? <div key={`t-${i}`} class="my-1.5 overflow-hidden"><TweetCard tweet={tweet} /></div>
         : <div key={`t-${i}`} class="my-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-500 italic">Referenced post is no longer available</div>
       )
       continue
@@ -1010,18 +1010,6 @@ function AiReportView() {
                   </svg>
                 </button>
               )}
-              <button
-                type="button"
-                class="rounded bg-zinc-800 p-1.5 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-                title="Copy share link"
-                onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/report/${viewingReportId || activeReport.id}`)
-                }}
-              >
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
-                </svg>
-              </button>
           </div>
 
           {/* Row 2: Info line */}
@@ -1071,8 +1059,11 @@ function AiReportView() {
           </div>
         )
       })()}
-          <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5">
-            <p class="text-xs text-zinc-500 mb-3">{new Date(activeReport.createdAt).toLocaleString()} &middot; {activeReport.tweetCount} posts analyzed</p>
+          <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden">
+            <div class="flex items-center gap-2 mb-3 text-xs text-zinc-500">
+              <span>{new Date(activeReport.createdAt).toLocaleString()} &middot; {activeReport.tweetCount} posts</span>
+              <span class="ml-auto"><CopyShareButton url={`${window.location.origin}/report/${viewingReportId || activeReport.id}`} /></span>
+            </div>
             {renderReportContent(activeReport.content, refTweetMap)}
           </div>
         </div>
