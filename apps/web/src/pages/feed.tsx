@@ -292,10 +292,11 @@ interface CardData {
   url: string
 }
 
-function LinkCard({ data }: { data: CardData }) {
+function LinkCard({ data, fallbackUrl }: { data: CardData; fallbackUrl?: string }) {
+  const url = data.url || fallbackUrl || '#'
   return (
     <a
-      href={data.url}
+      href={url}
       target="_blank"
       rel="noopener"
       class="mt-2 block rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors"
@@ -592,13 +593,13 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
           </div>
           <p class="text-sm text-zinc-400 line-clamp-3">{quoted.content}</p>
           <MediaGrid media={quoted.media || []} linkUrl={quoted.url} onPhotoClick={setQuotedLightbox} />
-          {quoted.card && <LinkCard data={quoted.card} />}
+          {quoted.card && <LinkCard data={quoted.card} fallbackUrl={quoted.url} />}
         </div>
       )}
 
       {/* Link card — from API card data or OG fetch */}
       {card ? (
-        <LinkCard data={card} />
+        <LinkCard data={card} fallbackUrl={tweet.url} />
       ) : (
         !quoted && media.length === 0 && <OgEmbed text={tweet.content} onLoaded={onOgLoaded} />
       )}

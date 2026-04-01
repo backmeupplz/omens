@@ -194,7 +194,7 @@ function getFullText(tweetResult: any, legacy: any): string {
   return text.trim()
 }
 
-function extractCard(tweetResult: any): ParsedTweet['card'] {
+function extractCard(tweetResult: any, tweetUrl?: string): ParsedTweet['card'] {
   // Check for X article data
   const article = tweetResult.article?.article_results?.result
   if (article) {
@@ -207,7 +207,7 @@ function extractCard(tweetResult: any): ParsedTweet['card'] {
         description: article.preview_body || article.subtitle || null,
         thumbnail: coverImg || null,
         domain: 'x.com',
-        url: article.url || '',
+        url: article.url || tweetUrl || '',
       }
     }
   }
@@ -257,7 +257,7 @@ function extractQuotedTweet(tweetResult: any): ParsedTweet['quotedTweet'] {
     authorAvatar: avatar,
     content: getFullText(qt, qLegacy),
     media: extractMedia(qLegacy),
-    card: extractCard(qt),
+    card: extractCard(qt, `https://x.com/${handle}/status/${qLegacy.id_str || qt.rest_id}`),
     url: `https://x.com/${handle}/status/${qLegacy.id_str || qt.rest_id}`,
   }
 }
@@ -318,7 +318,7 @@ function parseTweetData(tweetResult: any): ParsedTweet | null {
     content: getFullText(tweetResult, legacy),
     media: extractMedia(legacy),
     isRetweet: null,
-    card: extractCard(tweetResult),
+    card: extractCard(tweetResult, `https://x.com/${userLegacy.screen_name}/status/${legacy.id_str || tweetResult.rest_id}`),
     quotedTweet: extractQuotedTweet(tweetResult),
     url: `https://x.com/${userLegacy.screen_name}/status/${legacy.id_str || tweetResult.rest_id}`,
     likes: legacy.favorite_count || 0,
@@ -520,6 +520,9 @@ export async function getTweetReplies(
 
     const legacy = result.legacy
     if (legacy.id_str === tweetId) return
+
+    // Only include actual replies to this tweet (filter out "Discover more" suggestions)
+    if (legacy.in_reply_to_status_id_str && legacy.in_reply_to_status_id_str !== tweetId) return
 
     // User data can be in multiple places depending on API version:
     // New: result.core.user_results.result.core.{name,screen_name} + result.core.user_results.result.avatar.image_url

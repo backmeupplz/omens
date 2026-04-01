@@ -398,9 +398,10 @@ export function isScoringActive(userId: string) {
 export async function scoreUnscoredTweets(userId: string): Promise<number> {
   // Skip if already scoring for this user
   if (scoringActive.has(userId)) return 0
+  scoringActive.add(userId)
 
   const ai = await getAiConfig(userId)
-  if (!ai) return 0
+  if (!ai) { scoringActive.delete(userId); return 0 }
   const db = getDb(env.DATABASE_URL)
 
   const allTweets = await db
@@ -412,13 +413,10 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
     ))
     .orderBy(desc(tweets.publishedAt))
 
-  if (allTweets.length === 0) { scoringProgress.delete(userId); return 0 }
+  if (allTweets.length === 0) { scoringActive.delete(userId); scoringProgress.delete(userId); return 0 }
 
   const BATCH_SIZE = 10
   const totalBatches = Math.ceil(allTweets.length / BATCH_SIZE)
-
-  // Mark active and set initial progress immediately
-  scoringActive.add(userId)
   scoringProgress.set(userId, { batch: 0, totalBatches, batchSize: BATCH_SIZE })
   const userPrefs = ai.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT
   let totalScored = 0
