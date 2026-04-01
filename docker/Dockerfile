@@ -1,14 +1,15 @@
 FROM oven/bun:1 AS base
 WORKDIR /app
 
-# Install deps
+# Install deps with pnpm (lockfile is pnpm format)
 FROM base AS deps
+RUN npm i -g pnpm@10
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
 COPY packages/db/package.json packages/db/
-RUN bun install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # Build web
 FROM deps AS build-web
