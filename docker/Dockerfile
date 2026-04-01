@@ -3,7 +3,7 @@ WORKDIR /app
 
 # Install deps with pnpm (lockfile is pnpm format)
 FROM base AS deps
-RUN npm i -g pnpm@10
+RUN bun add -g pnpm@10
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
