@@ -53,6 +53,7 @@ export const tweets = pgTable(
     isRetweet: text('is_retweet'), // original author handle if retweet
     quotedTweet: text('quoted_tweet'), // JSON: {authorName, authorHandle, authorAvatar, content, url}
     card: text('card'), // JSON: {title, description, thumbnail, domain, url}
+    replyToHandle: text('reply_to_handle'), // handle of user being replied to
     url: text('url').notNull(),
     likes: integer('likes').notNull().default(0),
     retweets: integer('retweets').notNull().default(0),

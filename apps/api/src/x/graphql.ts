@@ -81,6 +81,7 @@ export interface ParsedTweet {
   retweets: number
   replies: number
   views: number
+  replyToHandle: string | null
   publishedAt: Date
 }
 
@@ -325,6 +326,7 @@ function parseTweetData(tweetResult: any): ParsedTweet | null {
     retweets: legacy.retweet_count || 0,
     replies: legacy.reply_count || 0,
     views: Number(tweetResult.views?.count) || 0,
+    replyToHandle: legacy.in_reply_to_screen_name || null,
     publishedAt: new Date(legacy.created_at),
   }
 }

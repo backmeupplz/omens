@@ -58,3 +58,11 @@ input[type="range"]::-moz-range-thumb {
   scrollbar-width: thin;
   scrollbar-color: #3f3f46 transparent;
 }
+
+@keyframes fade-up {
+  from { opacity: 1; transform: translateX(-50%) translateY(0); }
+  to { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+}
+.animate-fade-up {
+  animation: fade-up 1.2s ease-out forwards;
+}

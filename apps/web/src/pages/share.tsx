@@ -149,7 +149,7 @@ export function SharePage({ handle, tweetId }: { handle: string; tweetId: string
 
           {/* Engagement — compact */}
           {(tweet.likes > 0 || tweet.retweets > 0 || tweet.views > 0) && (
-            <div class="flex items-center gap-4 mt-3 pt-3 border-t border-zinc-800 text-xs text-zinc-500">
+            <div class="flex items-center gap-4 mt-3 text-xs text-zinc-500">
               {tweet.likes > 0 && <span>{fmt(tweet.likes)} likes</span>}
               {tweet.retweets > 0 && <span>{fmt(tweet.retweets)} reposts</span>}
               {tweet.views > 0 && <span>{fmt(tweet.views)} views</span>}

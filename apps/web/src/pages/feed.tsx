@@ -252,6 +252,7 @@ interface Tweet {
   isRetweet: string | null
   card: string | null // JSON: {title, description, thumbnail, domain, url}
   quotedTweet: string | null
+  replyToHandle: string | null
   url: string
   likes: number
   retweets: number
@@ -474,6 +475,33 @@ function TweetContent({ text, hideUrls }: { text: string; hideUrls?: boolean }) 
   )
 }
 
+function CopyShareButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      class="relative flex items-center gap-1 hover:text-zinc-300 transition-colors"
+      onClick={(e) => {
+        e.stopPropagation()
+        navigator.clipboard.writeText(url)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }}
+      title="Copy share link"
+    >
+      {copied && (
+        <span class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] text-emerald-400 font-medium animate-fade-up pointer-events-none">
+          Copied!
+        </span>
+      )}
+      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
+      </svg>
+      Share
+    </button>
+  )
+}
+
 function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
   tweet: Tweet
   nudge?: 'up' | 'down' | null
@@ -571,6 +599,11 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
           </div>
         )}
       </div>
+
+      {/* Reply context */}
+      {tweet.replyToHandle && (
+        <p class="text-xs text-zinc-500 mb-1">Replying to <span class="text-emerald-500">@{tweet.replyToHandle}</span></p>
+      )}
 
       {/* Content — full width, no indent */}
       <TweetContent text={tweet.content} hideUrls={ogLoaded || !!card} />
@@ -672,22 +705,7 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
                   {score}
                 </span>
               )}
-              <button
-                type="button"
-                class="flex items-center gap-1 hover:text-zinc-300 transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  const xId = tweet.url.match(/status\/(\d+)/)?.[1] || tweet.tweetId
-                  const shareUrl = `${window.location.origin}/${tweet.authorHandle}/status/${xId}`
-                  navigator.clipboard.writeText(shareUrl)
-                }}
-                title="Copy share link"
-              >
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
-                </svg>
-                Share
-              </button>
+              <CopyShareButton url={`${window.location.origin}/${tweet.authorHandle}/status/${tweet.url.match(/status\/(\d+)/)?.[1] || tweet.tweetId}`} />
               <a
                 href={tweet.url}
                 target="_blank"
@@ -1031,20 +1049,7 @@ function AiReportView() {
                   {showPastReports ? 'Hide history' : 'History'}
                 </button>
               )}
-              <button
-                type="button"
-                class="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1"
-                onClick={() => {
-                  const reportId = viewingReportId || activeReport.id
-                  navigator.clipboard.writeText(`${window.location.origin}/report/${reportId}`)
-                }}
-                title="Copy share link"
-              >
-                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
-                </svg>
-                Share
-              </button>
+              <CopyShareButton url={`${window.location.origin}/report/${viewingReportId || activeReport.id}`} />
               <span class="text-xs text-zinc-600">{new Date(activeReport.createdAt).toLocaleString()}</span>
             </div>
           </div>
