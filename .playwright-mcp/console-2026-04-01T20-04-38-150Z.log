@@ -1,2 +1,0 @@
-[  494979ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5173/src/pages/feed.tsx?t=1775074373099:0
-[  494985ms] [ERROR] [vite] Failed to reload /src/pages/feed.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5173/@vite/client:881

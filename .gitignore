@@ -7,3 +7,6 @@ dist/
 .env.local
 .DS_Store
 docker/.env
+.playwright-mcp/
+apps/api/omens.db-shm
+apps/api/omens.db-wal
