@@ -31,7 +31,6 @@ WORKDIR /app
 COPY --from=build-api /app/apps/api/dist ./api/
 COPY --from=build-web /app/apps/web/dist ./web/
 COPY --from=deps /app/node_modules ./node_modules/
-COPY --from=deps /app/packages/db/drizzle ./packages/db/drizzle/
 COPY packages/db/ packages/db/
 COPY packages/shared/ packages/shared/
 
