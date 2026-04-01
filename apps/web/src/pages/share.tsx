@@ -1,6 +1,7 @@
-import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
 import { api } from '../helpers/api'
+import { fmt } from '../helpers/format'
+import { renderMarkdown } from '../helpers/markdown'
 
 interface SharedTweet {
   tweetId: string
@@ -22,12 +23,6 @@ interface SharedTweet {
 
 interface MediaItem { url: string; type: string; thumbnailUrl?: string }
 interface QuotedTweet { authorName: string; authorHandle: string; authorAvatar?: string; content: string; media?: MediaItem[]; url: string; card?: { title: string; description: string | null; thumbnail: string | null; domain: string; url: string } }
-
-function fmt(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return String(n)
-}
 
 export function SharePage({ handle, tweetId }: { handle: string; tweetId: string }) {
   const [tweet, setTweet] = useState<SharedTweet | null>(null)
@@ -182,44 +177,6 @@ interface SharedReport {
   createdAt: string
 }
 
-function renderMarkdown(text: string): ComponentChildren[] {
-  const cleaned = text.replace(/\\([^\\])/g, '$1').replace(/\[\[tweet:[^\]]+\]\]/g, '')
-  const lines = cleaned.split('\n')
-  const result: ComponentChildren[] = []
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const bold = (s: string) => {
-      const parts: ComponentChildren[] = []
-      let last = 0
-      const re = /\*\*(.+?)\*\*/g
-      let m
-      while ((m = re.exec(s)) !== null) {
-        if (m.index > last) parts.push(s.slice(last, m.index))
-        parts.push(<strong key={`b-${i}-${m.index}`} class="text-zinc-100">{m[1]}</strong>)
-        last = m.index + m[0].length
-      }
-      if (last < s.length) parts.push(s.slice(last))
-      return parts
-    }
-    if (line.startsWith('### ')) {
-      result.push(<h4 key={i} class="text-sm font-bold text-zinc-100 mt-3 mb-0.5">{bold(line.slice(4))}</h4>)
-    } else if (line.startsWith('## ')) {
-      result.push(<h3 key={i} class="text-base font-bold text-zinc-100 mt-4 mb-0.5">{bold(line.slice(3))}</h3>)
-    } else if (line.startsWith('# ')) {
-      result.push(<h2 key={i} class="text-lg font-bold text-zinc-100 mt-4 mb-1">{bold(line.slice(2))}</h2>)
-    } else if (line.match(/^[-*]\s/)) {
-      result.push(<li key={i} class="text-sm text-zinc-300 ml-4 list-disc">{bold(line.slice(2))}</li>)
-    } else if (line.match(/^\d+\.\s/)) {
-      result.push(<li key={i} class="text-sm text-zinc-300 ml-4 list-decimal">{bold(line.replace(/^\d+\.\s/, ''))}</li>)
-    } else if (line.trim() === '') {
-      result.push(<div key={`br-${i}`} class="h-2" />)
-    } else {
-      result.push(<p key={i} class="text-sm text-zinc-300 leading-relaxed">{bold(line)}</p>)
-    }
-  }
-  return result
-}
-
 export function ReportSharePage({ id }: { id: string }) {
   const [report, setReport] = useState<SharedReport | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -263,7 +220,7 @@ export function ReportSharePage({ id }: { id: string }) {
             </div>
             <span class="text-xs font-medium text-emerald-500">Omens Report</span>
           </div>
-          <div>{renderMarkdown(report.content)}</div>
+          <div>{renderMarkdown(report.content.replace(/\[\[tweet:[^\]]+\]\]/g, ''))}</div>
         </article>
 
         <div class="mt-8 text-center">

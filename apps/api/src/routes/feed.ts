@@ -2,6 +2,7 @@ import { getDb, tweets, tweetScores } from '@omens/db'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import env from '../env'
+import { parsePagination } from '../helpers/http'
 import type { AuthUser } from '../middleware/auth'
 
 const feedRouter = new Hono<{ Variables: { user: AuthUser } }>()
@@ -10,9 +11,7 @@ feedRouter.get('/', async (c) => {
   const user = c.get('user')
   const db = getDb(env.DATABASE_URL)
 
-  const page = Math.max(1, Math.floor(Number(c.req.query('page') || '1')) || 1)
-  const limit = Math.max(1, Math.min(Math.floor(Number(c.req.query('limit') || '50')) || 50, 100))
-  const offset = (page - 1) * limit
+  const { page, limit, offset } = parsePagination(c)
 
   // Left join scores so each tweet gets its score if available
   const result = await db

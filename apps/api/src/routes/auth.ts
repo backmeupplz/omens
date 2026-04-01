@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { setCookie, deleteCookie } from 'hono/cookie'
 import env from '../env'
+import { clientIp } from '../helpers/http'
 import { createToken } from '../helpers/jwt'
 import { hashPassword, verifyPassword } from '../helpers/password'
 
@@ -20,14 +21,6 @@ auth.get('/me', authMiddleware, (c) => {
   const user = c.get('user')
   return c.json({ id: user.id, email: user.email })
 })
-
-function clientIp(c: any): string {
-  return (
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-    c.req.header('x-real-ip') ||
-    'unknown'
-  )
-}
 
 function setAuthCookie(c: any, token: string) {
   setCookie(c, 'omens_token', token, {

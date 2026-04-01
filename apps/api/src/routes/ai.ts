@@ -12,6 +12,7 @@ import { aiSettingsSchema, nudgeSchema, promptChangeSchema } from '@omens/shared
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import env from '../env'
+import { parsePagination } from '../helpers/http'
 import {
   DEFAULT_SYSTEM_PROMPT,
   FILTER_SYSTEM_PROMPT,
@@ -45,6 +46,30 @@ async function getAiConfig(userId: string) {
       baseUrl: settings.baseUrl || '',
       model: settings.model,
     },
+  }
+}
+
+async function getUserMinScore(userId: string): Promise<number> {
+  const db = getDb(env.DATABASE_URL)
+  const [settings] = await db.select({ minScore: aiSettings.minScore })
+    .from(aiSettings).where(eq(aiSettings.userId, userId)).limit(1)
+  return settings?.minScore ?? 50
+}
+
+async function hydrateReport(report: typeof aiReports.$inferSelect) {
+  const db = getDb(env.DATABASE_URL)
+  const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
+  const refTweets = tweetRefIds.length > 0
+    ? await db.select().from(tweets).where(inArray(tweets.id, tweetRefIds))
+    : []
+  return {
+    id: report.id,
+    content: report.content,
+    model: report.model,
+    tweetCount: report.tweetCount,
+    tweetRefs: tweetRefIds,
+    refTweets,
+    createdAt: report.createdAt,
   }
 }
 
@@ -481,10 +506,7 @@ aiRouter.get('/scoring-status', async (c) => {
   const user = c.get('user')
   const db = getDb(env.DATABASE_URL)
 
-  // Get stored min score threshold
-  const [settings] = await db.select({ minScore: aiSettings.minScore })
-    .from(aiSettings).where(eq(aiSettings.userId, user.id)).limit(1)
-  const minScore = settings?.minScore ?? 50
+  const minScore = await getUserMinScore(user.id)
 
   const [{ total }] = await db.select({ total: sql<number>`count(*)` })
     .from(tweets).where(eq(tweets.userId, user.id))
@@ -513,15 +535,8 @@ aiRouter.get('/filtered-feed', async (c) => {
   const user = c.get('user')
   const db = getDb(env.DATABASE_URL)
 
-  // Use stored minScore from user settings
-  const [settings] = await db.select({ minScore: aiSettings.minScore })
-    .from(aiSettings).where(eq(aiSettings.userId, user.id)).limit(1)
-  const storedMin = settings?.minScore ?? 50
-
-  const page = Math.max(1, Number(c.req.query('page') || '1') || 1)
-  const limit = Math.max(1, Math.min(Number(c.req.query('limit') || '50') || 50, 100))
-  const minScore = storedMin
-  const offset = (page - 1) * limit
+  const minScore = await getUserMinScore(user.id)
+  const { page, limit, offset } = parsePagination(c)
 
   const result = await db
     .select({
@@ -579,9 +594,7 @@ export async function generateReportForUser(userId: string): Promise<any> {
   const db = getDb(env.DATABASE_URL)
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const [settings] = await db.select({ minScore: aiSettings.minScore })
-    .from(aiSettings).where(eq(aiSettings.userId, userId)).limit(1)
-  const minScore = settings?.minScore ?? 50
+  const minScore = await getUserMinScore(userId)
 
   // Use all scored tweets from the AI-filtered feed (score >= minScore) in the last 24h
   let tweetList = await db.select({ tweet: tweets })
@@ -671,25 +684,7 @@ aiRouter.get('/report', async (c) => {
 
   if (!report) return c.json({ report: null })
 
-  const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
-
-  // Fetch referenced tweets
-  let refTweets: any[] = []
-  if (tweetRefIds.length > 0) {
-    refTweets = await db.select().from(tweets).where(inArray(tweets.id, tweetRefIds))
-  }
-
-  return c.json({
-    report: {
-      id: report.id,
-      content: report.content,
-      model: report.model,
-      tweetCount: report.tweetCount,
-      tweetRefs: tweetRefIds,
-      refTweets,
-      createdAt: report.createdAt,
-    },
-  })
+  return c.json({ report: await hydrateReport(report) })
 })
 
 // --- Past reports list ---
@@ -726,23 +721,7 @@ aiRouter.get('/report/:id', async (c) => {
 
   if (!report) return c.json({ error: 'Report not found' }, 404)
 
-  const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
-  let refTweets: any[] = []
-  if (tweetRefIds.length > 0) {
-    refTweets = await db.select().from(tweets).where(inArray(tweets.id, tweetRefIds))
-  }
-
-  return c.json({
-    report: {
-      id: report.id,
-      content: report.content,
-      model: report.model,
-      tweetCount: report.tweetCount,
-      tweetRefs: tweetRefIds,
-      refTweets,
-      createdAt: report.createdAt,
-    },
-  })
+  return c.json({ report: await hydrateReport(report) })
 })
 
 export default aiRouter

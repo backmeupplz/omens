@@ -1,4 +1,5 @@
 import type { Context, Next } from 'hono'
+import { clientIp } from '../helpers/http'
 
 interface RateLimitEntry {
   count: number
@@ -15,21 +16,13 @@ setInterval(() => {
   }
 }, 60_000)
 
-function getClientIp(c: Context): string {
-  return (
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-    c.req.header('x-real-ip') ||
-    'unknown'
-  )
-}
-
 export function rateLimiter(opts: {
   windowMs: number
   max: number
   keyPrefix?: string
 }) {
   return async (c: Context, next: Next) => {
-    const ip = getClientIp(c)
+    const ip = clientIp(c)
     const key = `${opts.keyPrefix || 'rl'}:${ip}`
     const now = Date.now()
 

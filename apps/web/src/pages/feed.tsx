@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { api } from '../helpers/api'
+import { decodeEntities, fmt, timeAgo } from '../helpers/format'
+import { renderMarkdownLine } from '../helpers/markdown'
 import { useApi } from '../helpers/hooks'
 import { AiSection } from './settings'
 
@@ -266,23 +268,6 @@ interface FeedResponse {
   pagination: { page: number; limit: number; total: number; totalPages: number }
 }
 
-function timeAgo(dateStr: string): string {
-  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h`
-  const days = Math.floor(hours / 24)
-  return `${days}d`
-}
-
-function fmt(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return String(n)
-}
-
 // === Link Cards ===
 
 interface CardData {
@@ -442,10 +427,6 @@ function linkify(text: string): preact.ComponentChildren[] {
   }
   if (lastIndex < text.length) parts.push(text.slice(lastIndex))
   return parts
-}
-
-function decodeEntities(s: string): string {
-  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
 }
 
 function TweetContent({ text, hideUrls }: { text: string; hideUrls?: boolean }) {
@@ -730,52 +711,6 @@ interface AiReport {
   createdAt: string
 }
 
-function simpleMarkdown(text: string): preact.ComponentChildren[] {
-  return text.split('\n').map((line, i) => {
-    // Bold
-    let processed: preact.ComponentChildren = line.replace(
-      /\*\*(.+?)\*\*/g, '\x01$1\x02',
-    )
-    const parts: preact.ComponentChildren[] = []
-    const str = processed as string
-    let last = 0
-    for (let j = 0; j < str.length; j++) {
-      if (str[j] === '\x01') {
-        if (j > last) parts.push(str.slice(last, j))
-        const end = str.indexOf('\x02', j + 1)
-        if (end !== -1) {
-          parts.push(<strong key={`${i}-${j}`} class="text-zinc-100">{str.slice(j + 1, end)}</strong>)
-          last = end + 1
-          j = end
-        }
-      }
-    }
-    if (last < str.length) parts.push(str.slice(last))
-
-    // Headers
-    if (line.startsWith('### ')) {
-      return <h4 key={i} class="text-sm font-bold text-zinc-100 mt-3 mb-1">{parts.length > 0 ? parts : line.slice(4)}</h4>
-    }
-    if (line.startsWith('## ')) {
-      return <h3 key={i} class="text-base font-bold text-zinc-100 mt-4 mb-1">{parts.length > 0 ? parts : line.slice(3)}</h3>
-    }
-    if (line.startsWith('# ')) {
-      return <h2 key={i} class="text-lg font-bold text-zinc-100 mt-4 mb-2">{parts.length > 0 ? parts : line.slice(2)}</h2>
-    }
-    // List items
-    if (line.match(/^[-*]\s/)) {
-      return <li key={i} class="text-sm text-zinc-300 ml-4 list-disc">{parts.length > 0 ? parts : line.slice(2)}</li>
-    }
-    if (line.match(/^\d+\.\s/)) {
-      return <li key={i} class="text-sm text-zinc-300 ml-4 list-decimal">{parts.length > 0 ? parts : line.replace(/^\d+\.\s/, '')}</li>
-    }
-    // Empty line
-    if (line.trim() === '') return <br key={i} />
-    // Normal paragraph
-    return <p key={i} class="text-sm text-zinc-300 leading-relaxed">{parts.length > 0 ? parts : line}</p>
-  })
-}
-
 // === Nudge Hook ===
 
 function useNudges() {
@@ -823,72 +758,24 @@ interface AiReportData {
   createdAt: string
 }
 
-function processBold(text: string, lineKey: number): preact.ComponentChildren[] {
-  const processed = text.replace(/\*\*(.+?)\*\*/g, '\x01$1\x02')
-  const parts: preact.ComponentChildren[] = []
-  let last = 0
-  for (let j = 0; j < processed.length; j++) {
-    if (processed[j] === '\x01') {
-      if (j > last) parts.push(processed.slice(last, j))
-      const end = processed.indexOf('\x02', j + 1)
-      if (end !== -1) {
-        parts.push(<strong key={`${lineKey}-${j}`} class="text-zinc-100">{processed.slice(j + 1, end)}</strong>)
-        last = end + 1
-        j = end
-      }
-    }
-  }
-  if (last < processed.length) parts.push(processed.slice(last))
-  return parts
-}
-
 function renderReportContent(
   text: string,
   refTweets: Map<string, Tweet>,
 ): preact.ComponentChildren[] {
-  // Strip escape backslashes (AI sometimes outputs \$ etc)
   const cleaned = text.replace(/\\([^\\])/g, '$1')
-  const lines = cleaned.split('\n')
   const result: preact.ComponentChildren[] = []
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-
-    // Inline tweet embed — tight spacing
+  for (const [i, line] of cleaned.split('\n').entries()) {
     const tweetMatch = line.match(/\[\[tweet:([^\]]+)\]\]/)
     if (tweetMatch) {
       const tweet = refTweets.get(tweetMatch[1])
-      if (tweet) {
-        result.push(<div key={`t-${i}`} class="my-1.5"><TweetCard tweet={tweet} /></div>)
-      } else {
-        result.push(<div key={`t-${i}`} class="my-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-500 italic">Referenced post is no longer available</div>)
-      }
+      result.push(tweet
+        ? <div key={`t-${i}`} class="my-1.5"><TweetCard tweet={tweet} /></div>
+        : <div key={`t-${i}`} class="my-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-500 italic">Referenced post is no longer available</div>
+      )
       continue
     }
-
-    // Determine line type and strip prefix
-    let content: preact.ComponentChildren[]
-    if (line.startsWith('### ')) {
-      content = processBold(line.slice(4), i)
-      result.push(<h4 key={i} class="text-sm font-bold text-zinc-100 mt-3 mb-0.5">{content}</h4>)
-    } else if (line.startsWith('## ')) {
-      content = processBold(line.slice(3), i)
-      result.push(<h3 key={i} class="text-base font-bold text-zinc-100 mt-4 mb-0.5">{content}</h3>)
-    } else if (line.startsWith('# ')) {
-      content = processBold(line.slice(2), i)
-      result.push(<h2 key={i} class="text-lg font-bold text-zinc-100 mt-4 mb-1">{content}</h2>)
-    } else if (line.match(/^[-*]\s/)) {
-      content = processBold(line.slice(2), i)
-      result.push(<li key={i} class="text-sm text-zinc-300 ml-4 list-disc">{content}</li>)
-    } else if (line.match(/^\d+\.\s/)) {
-      content = processBold(line.replace(/^\d+\.\s/, ''), i)
-      result.push(<li key={i} class="text-sm text-zinc-300 ml-4 list-decimal">{content}</li>)
-    } else if (line.trim() === '') {
-      result.push(<div key={`br-${i}`} class="h-2" />)
-    } else {
-      content = processBold(line, i)
-      result.push(<p key={i} class="text-sm text-zinc-300 leading-relaxed">{content}</p>)
-    }
+    result.push(renderMarkdownLine(line, i))
   }
 
   return result
