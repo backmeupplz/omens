@@ -463,24 +463,46 @@ function AiTuningSection() {
     refetch()
   }
 
+  const regenAbortRef = useRef<AbortController | null>(null)
+
   const regenerate = async () => {
     setRegenerating(true)
-    setRegenStatus('Collecting feedback...')
+    setRegenStatus('Starting...')
     setError('')
     try {
-      // Simulate phase updates (the API call is synchronous)
-      const timer = setTimeout(() => setRegenStatus('Sending to AI...'), 1500)
-      const timer2 = setTimeout(() => setRegenStatus('Updating prompt...'), 5000)
       await api('/ai/regenerate-prompt', { method: 'POST' })
-      clearTimeout(timer)
-      clearTimeout(timer2)
+      // Connect to SSE for live status
+      regenAbortRef.current?.abort()
+      const controller = new AbortController()
+      regenAbortRef.current = controller
+      const res = await fetch('/api/ai/regenerate-stream', { credentials: 'include', signal: controller.signal })
+      const reader = res.body?.getReader()
+      if (reader) {
+        const decoder = new TextDecoder()
+        let buf = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buf += decoder.decode(value, { stream: true })
+          const lines = buf.split('\n\n')
+          buf = lines.pop() || ''
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const data = line.slice(6)
+            if (data === '[DONE]') { setRegenerating(false); setRegenStatus(''); refetch(); return }
+            if (data.startsWith('[ERROR]')) { setError(data.slice(8)); setRegenerating(false); setRegenStatus(''); return }
+            try { const j = JSON.parse(data); if (j.status) setRegenStatus(j.status) } catch {}
+          }
+        }
+      }
+      setRegenerating(false)
       setRegenStatus('')
       refetch()
     } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') return
       setError(e instanceof Error ? e.message : 'Failed to regenerate')
-      setRegenStatus('')
-    } finally {
       setRegenerating(false)
+      setRegenStatus('')
     }
   }
 

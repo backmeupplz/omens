@@ -337,10 +337,21 @@ aiRouter.get('/internals', async (c) => {
 
 // ==================== PROMPT REGENERATION ====================
 
-export async function regeneratePromptForUser(userId: string): Promise<string | null> {
+// In-memory regen progress
+const regenProgress = new Map<string, { status: string; done: boolean; error?: string; subscribers: Set<(event: string) => void> }>()
+
+export async function regeneratePromptForUser(userId: string, onStatus?: (s: string) => void): Promise<string | null> {
+  const setStatus = (s: string) => {
+    onStatus?.(s)
+    const p = regenProgress.get(userId)
+    if (p) { p.status = s; for (const sub of p.subscribers) sub(JSON.stringify({ status: s })) }
+  }
+
   const ai = await getAiConfig(userId)
   if (!ai) return null
   const db = getDb(env.DATABASE_URL)
+
+  setStatus('Collecting feedback...')
 
   // Get pending nudges with tweet context
   const pendingNudgeRows = await db
@@ -381,7 +392,11 @@ export async function regeneratePromptForUser(userId: string): Promise<string | 
 
   const userMsg = `DEFAULT PROMPT:\n${DEFAULT_SYSTEM_PROMPT}\n\nCURRENT PROMPT:\n${ai.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT}\n\nUSER FEEDBACK:\n${feedback}`
 
+  setStatus(`Sending ${pendingNudgeRows.length} nudges + ${pendingInstructions.length} instructions to AI...`)
+
   const newPrompt = await callAI(ai.config, META_PROMPT, userMsg)
+
+  setStatus('Saving new prompt...')
 
   // Save new prompt and mark consumed
   await db.update(aiSettings).set({
@@ -405,14 +420,86 @@ export async function regeneratePromptForUser(userId: string): Promise<string | 
 
 aiRouter.post('/regenerate-prompt', async (c) => {
   const user = c.get('user')
-  try {
-    const newPrompt = await regeneratePromptForUser(user.id)
-    if (!newPrompt) return c.json({ ok: true, message: 'No pending changes' })
-    return c.json({ ok: true, newPrompt })
-  } catch (err) {
-    console.error('[ai] Prompt regen error:', err instanceof Error ? err.message : err)
-    return c.json({ error: 'Failed to regenerate prompt' }, 500)
+
+  if (regenProgress.has(user.id)) {
+    return c.json({ error: 'Already regenerating' }, 409)
   }
+
+  const progress: { status: string; done: boolean; error?: string; subscribers: Set<(event: string) => void> } = { status: 'Starting...', done: false, subscribers: new Set() }
+  regenProgress.set(user.id, progress)
+
+  // Fire and forget — frontend connects to SSE
+  void (async () => {
+    try {
+      const result = await regeneratePromptForUser(user.id)
+      progress.done = true
+      for (const sub of progress.subscribers) sub('[DONE]')
+      if (!result) {
+        progress.status = 'No pending changes'
+        for (const sub of progress.subscribers) sub(JSON.stringify({ status: 'No pending changes' }))
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[ai] Prompt regen error:', msg)
+      progress.error = msg
+      progress.done = true
+      for (const sub of progress.subscribers) sub(`[ERROR] ${msg}`)
+    } finally {
+      setTimeout(() => regenProgress.delete(user.id), 10_000)
+    }
+  })()
+
+  return c.json({ ok: true })
+})
+
+aiRouter.get('/regenerate-status', async (c) => {
+  const user = c.get('user')
+  const p = regenProgress.get(user.id)
+  return c.json({
+    active: !!p && !p.done,
+    status: p?.status || null,
+    error: p?.error || null,
+  })
+})
+
+aiRouter.get('/regenerate-stream', async (c) => {
+  const user = c.get('user')
+  const progress = regenProgress.get(user.id)
+
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        let closed = false
+        const encoder = new TextEncoder()
+        const send = (data: string) => {
+          if (closed) return
+          try { controller.enqueue(encoder.encode(`data: ${data}\n\n`)) } catch { closed = true }
+        }
+        const close = () => { if (closed) return; closed = true; try { controller.close() } catch {} }
+
+        if (!progress || progress.done) {
+          if (progress?.error) send(`[ERROR] ${progress.error}`)
+          else send('[DONE]')
+          close()
+          return
+        }
+
+        if (progress.status) send(JSON.stringify({ status: progress.status }))
+
+        const onEvent = (event: string) => {
+          if (event === '[DONE]' || event.startsWith('[ERROR]')) {
+            send(event)
+            close()
+            progress.subscribers.delete(onEvent)
+          } else {
+            send(event)
+          }
+        }
+        progress.subscribers.add(onEvent)
+      },
+    }),
+    { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' } },
+  )
 })
 
 // ==================== FEED FILTERING ====================
