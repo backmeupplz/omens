@@ -1169,8 +1169,18 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
     api<ScoringStatus>('/ai/scoring-status')
       .then((st) => {
         updateStatus(st)
-        if (st.pending === 0 && !st.active) {
+        if (!st.active) {
+          // Scoring finished (or never started) — stop polling, clear progress
           stopPolling()
+          setPendingCount(0)
+          setScoringActive(false)
+          setScoringBatch(0)
+          setScoringTotalBatches(0)
+          // Compute new posts for the banner
+          if (baselineRef.current !== null) {
+            const newAbove = st.aboveThreshold - baselineRef.current
+            if (newAbove > 0) setNewReady(newAbove)
+          }
           baselineRef.current = null
           jobSizeRef.current = 0
         }
@@ -1208,6 +1218,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 
       // Scoring will start automatically server-side; poll for progress
       setPendingCount(res.count)
+      setScoringActive(true)
       jobSizeRef.current = res.count
       startPolling()
     } catch (e) {
@@ -1241,7 +1252,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
       )}
 
       {/* Scoring progress */}
-      {(pendingCount > 0 || scoringActive) && (() => {
+      {scoringActive && (() => {
         const jobSize = jobSizeRef.current || pendingCount
         const done = Math.max(0, jobSize - pendingCount)
         const pct = jobSize > 0 ? (done / jobSize) * 100 : 0
