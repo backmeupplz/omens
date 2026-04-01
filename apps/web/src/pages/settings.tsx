@@ -403,6 +403,7 @@ function AiTuningSection() {
   }, [refetch])
   const [instruction, setInstruction] = useState('')
   const [regenerating, setRegenerating] = useState(false)
+  const [regenStatus, setRegenStatus] = useState('')
   const [localMinScore, setLocalMinScore] = useState<number | null>(null)
   const [fetchInterval, setFetchInterval] = useState<number | null>(null)
   const [reportInterval, setReportInterval] = useState<number | null>(null)
@@ -464,12 +465,20 @@ function AiTuningSection() {
 
   const regenerate = async () => {
     setRegenerating(true)
+    setRegenStatus('Collecting feedback...')
     setError('')
     try {
+      // Simulate phase updates (the API call is synchronous)
+      const timer = setTimeout(() => setRegenStatus('Sending to AI...'), 1500)
+      const timer2 = setTimeout(() => setRegenStatus('Updating prompt...'), 5000)
       await api('/ai/regenerate-prompt', { method: 'POST' })
+      clearTimeout(timer)
+      clearTimeout(timer2)
+      setRegenStatus('')
       refetch()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to regenerate')
+      setRegenStatus('')
     } finally {
       setRegenerating(false)
     }
@@ -599,10 +608,18 @@ function AiTuningSection() {
               {internals.autoApplyAt && <Countdown targetMs={internals.autoApplyAt} prefix=" · auto-applies in " />}
             </span>
             <button type="button" onClick={regenerate} disabled={regenerating}
-              class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium hover:bg-emerald-500 disabled:opacity-50">
-              {regenerating ? 'Regenerating...' : 'Apply now'}
+              class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium hover:bg-emerald-500 disabled:opacity-50 whitespace-nowrap">
+              {regenerating ? 'Applying...' : 'Apply now'}
             </button>
           </div>
+          {regenerating && regenStatus && (
+            <div class="flex items-center gap-2 text-xs text-zinc-400">
+              <svg class="w-3.5 h-3.5 animate-spin shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {regenStatus}
+            </div>
+          )}
 
           {internals.pendingInstructions.map((p) => (
             <div key={p.id} class="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-3 py-2">
