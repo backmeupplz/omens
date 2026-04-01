@@ -63,7 +63,7 @@ input[type="range"]::-moz-range-thumb {
 * {
   min-width: 0;
 }
-body {
+html, body {
   overflow-x: hidden;
   overflow-wrap: anywhere;
 }

@@ -157,7 +157,7 @@ export function App() {
   }
 
   return (
-    <div class="min-h-screen bg-zinc-950 text-zinc-100 max-w-[100vw] overflow-x-hidden">
+    <div class="min-h-screen bg-zinc-950 text-zinc-100">
       <nav class="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur px-3 sm:px-4 py-3">
         <div class="mx-auto max-w-xl w-full flex items-center justify-between gap-2">
           <div class="flex items-center gap-2">
