@@ -17,4 +17,5 @@ export default cleanEnv(process.env, {
   SINGLE_USER_MODE: bool({ default: false }),
   POLL_INTERVAL_MINUTES: num({ default: 5 }),
   CORS_ORIGIN: str({ default: '' }),
+  WEB_DIR: str({ default: '' }),
 })

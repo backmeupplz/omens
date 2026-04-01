@@ -114,9 +114,9 @@ export function createApp() {
   // Public share routes (no auth) — must be before static fallback
   app.route('/', shareRouter)
 
-  // Serve frontend static files in production
-  if (process.env.NODE_ENV === 'production') {
-    const webDir = process.env.WEB_DIR || './web'
+  // Serve frontend static files (in prod the built SPA is at WEB_DIR)
+  const webDir = env.WEB_DIR
+  if (webDir) {
     app.use('/*', serveStatic({ root: webDir }))
     app.get('*', serveStatic({ root: webDir, path: '/index.html' }))
   }
