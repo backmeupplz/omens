@@ -674,24 +674,12 @@ aiRouter.post('/report', async (c) => {
     return c.json({ error: 'Report is already being generated. Please wait.' }, 409)
   }
 
-  try {
-    const report = await generateReportForUser(user.id)
-    if (!report) {
-      return c.json({ error: 'No posts from the last 24 hours to analyze, or AI not configured.' }, 400)
-    }
+  // Fire and forget — frontend polls /report-status for progress
+  void generateReportForUser(user.id).catch((err) =>
+    console.error(`[ai] Report generation error for ${user.id}:`, err instanceof Error ? err.message : err),
+  )
 
-    const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
-    return c.json({
-      content: report.content,
-      model: report.model,
-      tweetCount: report.tweetCount,
-      tweetRefs: tweetRefIds,
-      createdAt: report.createdAt,
-    })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Report generation failed'
-    return c.json({ error: message }, 500)
-  }
+  return c.json({ ok: true })
 })
 
 aiRouter.get('/report', async (c) => {

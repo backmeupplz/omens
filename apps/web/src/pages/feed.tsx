@@ -841,10 +841,11 @@ function AiReportView() {
     setError(null)
     try {
       await api('/ai/report', { method: 'POST' })
-      refetch()
+      // Report generates in background — start polling for completion
+      reportPollFirstRef.current = true
+      startReportPoll(3000)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate report')
-    } finally {
       setGenerating(false)
     }
   }
