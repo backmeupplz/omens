@@ -62,17 +62,14 @@ function XSection({ onXChange }: { onXChange: () => void }) {
         {error && (
           <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>
         )}
-        <div class="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-4 py-3">
-          <div>
-            <span class="text-sm text-zinc-300">
-              Connected as{' '}
-              <span class="font-medium text-zinc-100">@{session.username}</span>
-            </span>
-          </div>
+        <div class="flex flex-wrap items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-4 py-3 gap-2">
+          <span class="text-sm text-zinc-300">
+            Connected as <span class="font-medium text-zinc-100">@{session.username}</span>
+          </span>
           <button
             type="button"
             onClick={disconnect}
-            class="rounded px-3 py-1.5 text-xs bg-red-900/50 text-red-400 hover:bg-red-900"
+            class="rounded px-3 py-1.5 text-xs bg-red-900/50 text-red-400 hover:bg-red-900 whitespace-nowrap"
           >
             Disconnect
           </button>
@@ -246,22 +243,17 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
       <div class="space-y-3">
         <h3 class="font-medium">AI Provider</h3>
         {error && <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>}
-        <div class="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-4 py-3">
-          <div>
-            <span class="text-sm text-zinc-300">
-              {providerName} &middot;{' '}
-              <span class="font-medium text-zinc-100">{settings.model}</span>
-            </span>
-          </div>
-          <div class="flex gap-2">
-            <button
-              type="button"
-              onClick={() => { setEditing(true); fetchSavedModels() }}
-              class="rounded px-3 py-1.5 text-xs bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-            >
-              Change
-            </button>
-          </div>
+        <div class="flex flex-wrap items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-4 py-3 gap-2">
+          <span class="text-sm text-zinc-300">
+            {providerName} &middot; <span class="font-medium text-zinc-100">{settings.model}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => { setEditing(true); fetchSavedModels() }}
+            class="rounded px-3 py-1.5 text-xs bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 whitespace-nowrap"
+          >
+            Change
+          </button>
         </div>
       </div>
     )

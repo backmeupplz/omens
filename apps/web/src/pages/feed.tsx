@@ -344,10 +344,10 @@ function MediaGrid({
 }) {
   if (media.length === 0) return null
   const single = media.length === 1
-  const sizeClass = single ? 'max-h-72 w-full max-w-full' : 'h-28 w-28 max-w-[calc(50%-0.375rem)]'
+  const sizeClass = single ? 'max-h-72 w-full' : 'w-full h-32 sm:h-36'
   const fit = single ? 'object-contain' : 'object-cover'
   return (
-    <div class={`mt-2 flex gap-1.5 flex-wrap overflow-hidden ${single ? '' : ''}`}>
+    <div class={`mt-2 grid gap-1.5 overflow-hidden ${single ? 'grid-cols-1' : 'grid-cols-2'}`}>
       {media.slice(0, 4).map((item, i) =>
         item.type === 'video' ? (
           <a
@@ -560,26 +560,24 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
               @{tweet.isRetweet} reposted
             </div>
           )}
-          <div class="flex items-baseline gap-1 flex-wrap overflow-hidden">
-            <span class="font-semibold text-sm text-zinc-100 truncate max-w-[60%]">
-              {tweet.authorName}
-            </span>
-            <span class="text-sm text-zinc-500 truncate max-w-[40%]">@{tweet.authorHandle}</span>
-            {tweet.authorFollowers > 0 && (
-              <span class="text-xs text-zinc-600 shrink-0">
-                &middot; {fmt(tweet.authorFollowers)}
+          <div class="overflow-hidden">
+            <div class="flex items-baseline gap-1 flex-wrap">
+              <span class="font-semibold text-sm text-zinc-100 truncate max-w-[70%]">
+                {tweet.authorName}
               </span>
-            )}
-            {tweet.publishedAt && (
-              <span class="text-sm text-zinc-600 shrink-0">
-                &middot; {timeAgo(tweet.publishedAt)}
-              </span>
-            )}
+              <span class="text-sm text-zinc-500 truncate">@{tweet.authorHandle}</span>
+              {tweet.authorFollowers > 0 && (
+                <span class="text-xs text-zinc-600 shrink-0">&middot; {fmt(tweet.authorFollowers)}</span>
+              )}
+              {tweet.publishedAt && (
+                <span class="text-sm text-zinc-600 shrink-0">&middot; {timeAgo(tweet.publishedAt)}</span>
+              )}
+            </div>
           </div>
         </div>
         {/* Bio tooltip */}
         {tweet.authorBio && (
-          <div class="hidden group-hover/author:block absolute left-0 top-full mt-1 z-10 w-64 sm:w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-zinc-700 bg-zinc-800 p-3 shadow-xl">
+          <div class="hidden sm:group-hover/author:block absolute left-0 top-full mt-1 z-10 w-64 sm:w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-zinc-700 bg-zinc-800 p-3 shadow-xl">
             <div class="flex items-center gap-2 mb-1">
               <span class="font-semibold text-sm text-zinc-100">{tweet.authorName}</span>
               {tweet.authorFollowers > 0 && (
@@ -629,7 +627,7 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
       )}
 
       {/* Engagement */}
-      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-zinc-500 overflow-hidden">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-zinc-500">
             <button
               type="button"
               class="flex items-center gap-1 hover:text-blue-400 transition-colors"
@@ -666,7 +664,7 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
                 {fmt(tweet.views)}
               </span>
             )}
-            <span class="ml-auto flex items-center gap-3">
+            <span class="ml-auto flex items-center gap-2">
               {onNudge && (
                 <span class="flex items-center gap-0.5">
                   <button
@@ -701,7 +699,7 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
                 href={tweet.url}
                 target="_blank"
                 rel="noopener"
-                class="flex items-center gap-1 hover:text-zinc-300 transition-colors"
+                class="flex items-center gap-1 hover:text-zinc-300 transition-colors whitespace-nowrap"
                 onClick={(e) => e.stopPropagation()}
               >
                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -1023,20 +1021,19 @@ function AiReportView() {
         )
       })()}
           <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden">
-            <div class="flex items-center gap-2 mb-3 text-xs text-zinc-500">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-3 text-xs text-zinc-500">
               <span>{new Date(activeReport.createdAt).toLocaleString()} &middot; {activeReport.tweetCount} posts</span>
-              {!viewingReportId && settings?.reportIntervalHours && settings.reportIntervalHours > 0 && (() => {
-                let nextMs: number
-                if (settings.reportIntervalHours >= 24 && settings.reportAtHour != null) {
-                  // For daily reports, next occurrence of reportAtHour (stored as UTC hour)
-                  const now = new Date()
-                  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), settings.reportAtHour))
-                  nextMs = today.getTime() <= Date.now() ? today.getTime() + 86_400_000 : today.getTime()
-                } else {
-                  nextMs = new Date(activeReport.createdAt).getTime() + settings.reportIntervalHours * 3_600_000
-                }
-                return <span><Countdown targetMs={nextMs} format="hm" prefix="&middot; next in " /></span>
-              })()}
+                {!viewingReportId && settings?.reportIntervalHours && settings.reportIntervalHours > 0 && (() => {
+                  let nextMs: number
+                  if (settings.reportIntervalHours >= 24 && settings.reportAtHour != null) {
+                    const now = new Date()
+                    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), settings.reportAtHour))
+                    nextMs = today.getTime() <= Date.now() ? today.getTime() + 86_400_000 : today.getTime()
+                  } else {
+                    nextMs = new Date(activeReport.createdAt).getTime() + settings.reportIntervalHours * 3_600_000
+                  }
+                  return <span><Countdown targetMs={nextMs} format="hm" prefix="&middot; next in " /></span>
+                })()}
               <span class="ml-auto flex items-center gap-1.5">
                 <CopyShareButton url={`${window.location.origin}/report/${viewingReportId || activeReport.id}`} />
                 {pastData && pastData.reports.length > 1 && (
@@ -1098,12 +1095,12 @@ function AiReportView() {
 function Pagination({ page, totalPages, onPage }: { page: number; totalPages: number; onPage: (p: number) => void }) {
   if (totalPages <= 1) return null
   return (
-    <div class="mt-6 flex items-center justify-center gap-4">
+    <div class="mt-6 flex items-center justify-center gap-2 sm:gap-4">
       <button type="button" onClick={() => onPage(Math.max(1, page - 1))} disabled={page <= 1}
-        class="rounded bg-zinc-800 px-3 py-1.5 text-sm hover:bg-zinc-700 disabled:opacity-50">Previous</button>
-      <span class="text-sm text-zinc-500">Page {page} of {totalPages}</span>
+        class="rounded bg-zinc-800 px-2 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm hover:bg-zinc-700 disabled:opacity-50 whitespace-nowrap">Previous</button>
+      <span class="text-xs sm:text-sm text-zinc-500 whitespace-nowrap">Page {page} of {totalPages}</span>
       <button type="button" onClick={() => onPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages}
-        class="rounded bg-zinc-800 px-3 py-1.5 text-sm hover:bg-zinc-700 disabled:opacity-50">Next</button>
+        class="rounded bg-zinc-800 px-2 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm hover:bg-zinc-700 disabled:opacity-50 whitespace-nowrap">Next</button>
     </div>
   )
 }

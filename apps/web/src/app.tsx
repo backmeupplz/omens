@@ -118,10 +118,10 @@ function ScrollToTop() {
     <button
       type="button"
       onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-      class="fixed bottom-6 right-6 z-40 rounded-full bg-zinc-800 border border-zinc-700 p-2.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 shadow-lg transition-colors"
+      class="fixed bottom-4 right-4 z-40 rounded-full bg-zinc-800 border border-zinc-700 p-2 sm:p-2.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 shadow-lg transition-colors"
       title="Scroll to top"
     >
-      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path d="M5 15l7-7 7 7" />
       </svg>
     </button>
@@ -256,7 +256,7 @@ export function App() {
           </div>
         </div>
       </nav>
-      <main class="mx-auto max-w-xl w-full px-3 sm:px-4 py-4 overflow-hidden">
+      <main class="mx-auto max-w-xl w-full px-3 sm:px-4 py-4 pb-16 overflow-hidden">
         <Switch>
           <Route path="/login" component={Login} />
           <Route path="/">
