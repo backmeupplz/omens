@@ -480,7 +480,7 @@ function CopyShareButton({ url }: { url: string }) {
   return (
     <button
       type="button"
-      class="relative flex items-center gap-1 hover:text-zinc-300 transition-colors"
+      class="flex items-center gap-1 hover:text-zinc-300 transition-colors"
       onClick={(e) => {
         e.stopPropagation()
         navigator.clipboard.writeText(url)
@@ -489,15 +489,10 @@ function CopyShareButton({ url }: { url: string }) {
       }}
       title="Copy share link"
     >
-      {copied && (
-        <span class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] text-emerald-400 font-medium animate-fade-up pointer-events-none">
-          Copied!
-        </span>
-      )}
       <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
         <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
       </svg>
-      Share
+      {copied ? <span class="text-white font-medium">Copied!</span> : 'Share'}
     </button>
   )
 }
