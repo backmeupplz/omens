@@ -10,6 +10,7 @@ RUN pnpm install --frozen-lockfile
 
 # Build web (vite — works with node)
 FROM deps AS build-web
+COPY tsconfig.base.json ./
 COPY apps/web/ apps/web/
 COPY packages/shared/ packages/shared/
 RUN cd apps/web && npx vite build
@@ -17,6 +18,7 @@ RUN cd apps/web && npx vite build
 # Build api (needs bun for bun build)
 FROM deps AS build-api
 RUN apk add --no-cache bash curl unzip && curl -fsSL https://bun.sh/install | bash
+COPY tsconfig.base.json ./
 COPY apps/api/ apps/api/
 COPY packages/shared/ packages/shared/
 COPY packages/db/ packages/db/
