@@ -1165,25 +1165,30 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
     }
   }, [])
 
+  const wasActiveRef = useRef(false)
+
   const pollOnce = useCallback(() => {
     api<ScoringStatus>('/ai/scoring-status')
       .then((st) => {
         updateStatus(st)
-        if (!st.active) {
-          // Scoring finished (or never started) — stop polling, clear progress
+        if (st.active) {
+          wasActiveRef.current = true
+        } else if (wasActiveRef.current || st.pending === 0) {
+          // Scoring was active and now finished, OR nothing to score
           stopPolling()
           setPendingCount(0)
           setScoringActive(false)
           setScoringBatch(0)
           setScoringTotalBatches(0)
-          // Compute new posts for the banner
           if (baselineRef.current !== null) {
             const newAbove = st.aboveThreshold - baselineRef.current
             if (newAbove > 0) setNewReady(newAbove)
           }
           baselineRef.current = null
           jobSizeRef.current = 0
+          wasActiveRef.current = false
         }
+        // else: not active yet but pending > 0 — keep polling, scoring will start soon
       })
       .catch(() => {})
   }, [stopPolling, updateStatus])
