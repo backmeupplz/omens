@@ -14,7 +14,7 @@ export const users = pgTable('users', {
     .$defaultFn(() => createId()),
   email: text('email').unique(),
   passwordHash: text('password_hash'),
-  createdAt: timestamp('created_at').defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 })
 
 export const xSessions = pgTable('x_sessions', {
@@ -29,8 +29,8 @@ export const xSessions = pgTable('x_sessions', {
   username: text('username').notNull(),
   authToken: text('auth_token').notNull(),
   ct0: text('ct0').notNull(),
-  lastFetchedAt: timestamp('last_fetched_at'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
+  lastFetchedAt: timestamp('last_fetched_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
 export const tweets = pgTable(
@@ -58,8 +58,8 @@ export const tweets = pgTable(
     retweets: integer('retweets').notNull().default(0),
     replies: integer('replies').notNull().default(0),
     views: integer('views').notNull().default(0),
-    publishedAt: timestamp('published_at'),
-    fetchedAt: timestamp('fetched_at').notNull().defaultNow(),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('tweets_dedup_idx').on(table.tweetId),
@@ -75,7 +75,7 @@ export const userTweets = pgTable(
     tweetId: text('tweet_id')
       .notNull()
       .references(() => tweets.id, { onDelete: 'cascade' }),
-    fetchedAt: timestamp('fetched_at').notNull().defaultNow(),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('user_tweets_idx').on(table.userId, table.tweetId),
@@ -89,7 +89,7 @@ export const ogCache = pgTable('og_cache', {
   description: text('description'),
   thumbnail: text('thumbnail'),
   domain: text('domain').notNull(),
-  fetchedAt: timestamp('fetched_at').notNull().defaultNow(),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
 export const aiSettings = pgTable('ai_settings', {
@@ -109,10 +109,10 @@ export const aiSettings = pgTable('ai_settings', {
   fetchIntervalMinutes: integer('fetch_interval_minutes').notNull().default(15), // 0 = manual only
   reportIntervalHours: integer('report_interval_hours').notNull().default(24), // 0 = manual only
   reportAtHour: integer('report_at_hour').notNull().default(6), // 0-23, hour in user's timezone
-  promptLastRegenAt: timestamp('prompt_last_regen_at'),
-  lastAutoReportAt: timestamp('last_auto_report_at'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  promptLastRegenAt: timestamp('prompt_last_regen_at', { withTimezone: true }),
+  lastAutoReportAt: timestamp('last_auto_report_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
 export const aiReports = pgTable('ai_reports', {
@@ -126,7 +126,7 @@ export const aiReports = pgTable('ai_reports', {
   model: text('model').notNull(),
   tweetCount: integer('tweet_count').notNull(),
   tweetRefs: text('tweet_refs'), // JSON array of tweet DB ids referenced in the report
-  createdAt: timestamp('created_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
 export const nudges = pgTable(
@@ -143,7 +143,7 @@ export const nudges = pgTable(
       .references(() => tweets.id, { onDelete: 'cascade' }),
     direction: text('direction').notNull(), // 'up' | 'down'
     consumed: boolean('consumed').notNull().default(false),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('nudges_user_tweet_idx').on(table.userId, table.tweetId),
@@ -159,7 +159,7 @@ export const promptChanges = pgTable('prompt_changes', {
     .references(() => users.id, { onDelete: 'cascade' }),
   instruction: text('instruction').notNull(),
   consumed: boolean('consumed').notNull().default(false),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
 export const tweetScores = pgTable(
@@ -175,7 +175,7 @@ export const tweetScores = pgTable(
       .notNull()
       .references(() => tweets.id, { onDelete: 'cascade' }),
     score: integer('score').notNull(), // 0-100
-    createdAt: timestamp('created_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('tweet_scores_user_tweet_idx').on(table.userId, table.tweetId),
@@ -192,6 +192,6 @@ export const apiKeys = pgTable('api_keys', {
   name: text('name').notNull(),
   keyHash: text('key_hash').notNull().unique(),
   prefix: text('prefix').notNull(),
-  lastUsedAt: timestamp('last_used_at'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })

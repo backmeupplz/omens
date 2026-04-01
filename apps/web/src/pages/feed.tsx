@@ -932,6 +932,13 @@ function AiReportView() {
   }
 
   const viewPastReport = async (id: string) => {
+    // If selecting the current latest report, just go back to it
+    if (data?.report && data.report.id === id) {
+      setViewingReportId(null)
+      setViewingReport(null)
+      setShowPastReports(false)
+      return
+    }
     try {
       const res = await api<{ report: AiReportData }>(`/ai/report/${id}`)
       setViewingReport(res.report)
