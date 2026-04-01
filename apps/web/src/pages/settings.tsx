@@ -184,6 +184,7 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
       setModels(res.models || [])
     } catch {
       setModels([])
+      setError('Failed to fetch models — check your API key')
     } finally {
       setModelsLoading(false)
     }
@@ -198,6 +199,7 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
       setModels(res.models || [])
     } catch {
       setModels([])
+      setError('Failed to fetch models — check your API key')
     } finally {
       setModelsLoading(false)
     }

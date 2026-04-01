@@ -737,12 +737,29 @@ function useNudges() {
   const onNudge = useCallback((tweetId: string, direction: 'up' | 'down') => {
     setNudges((prev) => {
       const next = new Map(prev)
-      if (next.get(tweetId) === direction) {
+      const wasSet = next.get(tweetId) === direction
+      if (wasSet) {
         next.delete(tweetId)
-        api(`/ai/nudge/${tweetId}`, { method: 'DELETE' }).catch(() => {})
+        api(`/ai/nudge/${tweetId}`, { method: 'DELETE' }).catch(() => {
+          // Revert: re-apply the nudge we just removed
+          setNudges((p) => { const r = new Map(p); r.set(tweetId, direction); return r })
+          setFeedback('Failed to save feedback')
+          setTimeout(() => setFeedback(null), 3000)
+        })
       } else {
+        const prevDirection = next.get(tweetId)
         next.set(tweetId, direction)
-        api('/ai/nudge', { method: 'POST', body: JSON.stringify({ tweetId, direction }) }).catch(() => {})
+        api('/ai/nudge', { method: 'POST', body: JSON.stringify({ tweetId, direction }) }).catch(() => {
+          // Revert to previous state
+          setNudges((p) => {
+            const r = new Map(p)
+            if (prevDirection) r.set(tweetId, prevDirection)
+            else r.delete(tweetId)
+            return r
+          })
+          setFeedback('Failed to save feedback')
+          setTimeout(() => setFeedback(null), 3000)
+        })
       }
       return next
     })
@@ -813,6 +830,7 @@ function AiReportView() {
         if (!reader) return
         const decoder = new TextDecoder()
         let buf = ''
+        let completed = false
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
@@ -823,12 +841,14 @@ function AiReportView() {
             if (!line.startsWith('data: ')) continue
             const data = line.slice(6)
             if (data === '[DONE]') {
+              completed = true
               setGenerating(false)
               setStreamContent('')
               refetch()
               return
             }
             if (data.startsWith('[ERROR]')) {
+              completed = true
               setGenerating(false)
               setStreamContent('')
               setError(data.slice(8))
@@ -841,9 +861,18 @@ function AiReportView() {
             } catch {}
           }
         }
+        // Stream ended without [DONE] or [ERROR] — connection was cut short
+        if (!completed) {
+          setGenerating(false)
+          setStreamContent('')
+          setError('Connection lost during report generation')
+        }
       })
       .catch((e) => {
         if (e instanceof Error && e.name === 'AbortError') return
+        setGenerating(false)
+        setStreamContent('')
+        setError(e instanceof Error ? e.message : 'Connection lost during report generation')
       })
   }, [refetch])
 
@@ -881,7 +910,9 @@ function AiReportView() {
       setViewingReport(res.report)
       setViewingReportId(id)
       setShowPastReports(false)
-    } catch {}
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load report')
+    }
   }
 
   const backToLatest = () => {
