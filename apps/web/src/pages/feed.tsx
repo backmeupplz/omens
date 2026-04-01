@@ -1315,15 +1315,17 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
         )
       })()}
 
-      {/* New posts pill */}
+      {/* New posts pill — fixed at top, below navbar */}
       {newReady > 0 && (
-        <button
-          type="button"
-          onClick={showNewPosts}
-          class="sticky top-14 z-40 mx-auto mb-3 block rounded-full bg-emerald-600 px-4 py-1.5 text-xs text-white font-medium hover:bg-emerald-500 transition-colors shadow-lg"
-        >
-          Show {newReady} new post{newReady !== 1 ? 's' : ''}
-        </button>
+        <div class="sticky top-14 z-40 flex justify-center pt-2 pb-1">
+          <button
+            type="button"
+            onClick={showNewPosts}
+            class="rounded-full bg-emerald-600 px-4 py-1.5 text-xs text-white font-medium hover:bg-emerald-500 transition-colors shadow-lg"
+          >
+            Show {newReady} new post{newReady !== 1 ? 's' : ''}
+          </button>
+        </div>
       )}
 
       {loading && <p class="text-zinc-500 py-8 text-center">Loading...</p>}
