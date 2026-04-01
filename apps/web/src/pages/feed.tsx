@@ -805,12 +805,24 @@ function renderReportContent(
   return result
 }
 
+function ElapsedTime({ since }: { since: number }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  const s = Math.floor((now - since) / 1000)
+  return <span class="text-xs text-zinc-600 tabular-nums">{Math.floor(s / 60)}:{(s % 60).toString().padStart(2, '0')}</span>
+}
+
 function AiReportView() {
   const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number }>('/ai/settings')
   const { data, loading, refetch } = useApi<{ report: AiReportData | null }>('/ai/report')
   const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>('/ai/reports')
   const [generating, setGenerating] = useState(false)
   const [streamContent, setStreamContent] = useState('')
+  const [genStatus, setGenStatus] = useState('Generating...')
+  const [genStartedAt, setGenStartedAt] = useState(0)
   const [genTweetCount, setGenTweetCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [viewingReportId, setViewingReportId] = useState<string | null>(null)
@@ -856,6 +868,7 @@ function AiReportView() {
             }
             try {
               const json = JSON.parse(data)
+              if (json.status) setGenStatus(json.status)
               if (json.content) setStreamContent(json.content)
               else if (json.chunk) setStreamContent((prev) => prev + json.chunk)
             } catch {}
@@ -878,12 +891,14 @@ function AiReportView() {
 
   // Check if report is already generating on mount
   useEffect(() => {
-    api<{ generating: boolean; tweetCount: number; error: string | null }>('/ai/report-status')
+    api<{ generating: boolean; tweetCount: number; status: string | null; startedAt: string | null; error: string | null }>('/ai/report-status')
       .then((s) => {
         if (s.error) { setError(s.error); return }
         if (s.generating) {
           setGenerating(true)
           setGenTweetCount(s.tweetCount)
+          setGenStatus(s.status || 'Generating...')
+          setGenStartedAt(s.startedAt ? new Date(s.startedAt).getTime() : Date.now())
           connectStream()
         }
       })
@@ -894,6 +909,8 @@ function AiReportView() {
   const generate = async () => {
     setGenerating(true)
     setStreamContent('')
+    setGenStatus('Starting...')
+    setGenStartedAt(Date.now())
     setError(null)
     try {
       await api('/ai/report', { method: 'POST' })
@@ -939,7 +956,8 @@ function AiReportView() {
             <svg class="w-4 h-4 animate-spin shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Generating{genTweetCount > 0 ? ` from ${genTweetCount} posts` : ''}...
+            <span>{genStatus}</span>
+            {genStartedAt > 0 && <ElapsedTime since={genStartedAt} />}
           </div>
           {streamContent && (
             <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-5">

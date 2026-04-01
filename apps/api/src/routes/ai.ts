@@ -595,10 +595,11 @@ aiRouter.get('/filtered-feed', async (c) => {
 interface ReportProgress {
   startedAt: Date
   tweetCount: number
+  status: string
   content: string
   done: boolean
   error?: string
-  subscribers: Set<(chunk: string) => void>
+  subscribers: Set<(event: string) => void>
 }
 const reportGenerating = new Map<string, ReportProgress>()
 
@@ -609,6 +610,7 @@ aiRouter.get('/report-status', async (c) => {
     generating: !!progress && !progress.done && !progress.error,
     startedAt: progress?.startedAt || null,
     tweetCount: progress?.tweetCount || 0,
+    status: progress?.status || null,
     error: progress?.error || null,
   })
 })
@@ -644,23 +646,33 @@ export async function generateReportForUser(userId: string): Promise<any> {
 
   if (tweetList.length === 0) return null
 
+  const emit = (event: string) => { for (const sub of progress.subscribers) sub(event) }
+  const setStatus = (s: string) => { progress.status = s; emit(JSON.stringify({ status: s })) }
+
   const progress: ReportProgress = {
-    startedAt: new Date(), tweetCount: tweetList.length,
+    startedAt: new Date(), tweetCount: tweetList.length, status: 'Preparing...',
     content: '', done: false, subscribers: new Set(),
   }
   reportGenerating.set(userId, progress)
 
   try {
+    setStatus(`Analyzing ${tweetList.length} posts...`)
+
     const systemPrompt = `${ai.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT}\n\n${REPORT_SYSTEM_PROMPT}`
     const tweetText = formatTweetsForAI(tweetList)
     const userContent = `Here are ${tweetList.length} posts from the last 24 hours (pre-filtered by relevance). Analyze and create a report:\n\n${tweetText}`
 
+    setStatus(`Waiting for AI response...`)
+
     // Stream content from AI provider
+    let firstChunk = true
     for await (const chunk of callAIStream(ai.config, systemPrompt, userContent)) {
+      if (firstChunk) { setStatus('Writing report...'); firstChunk = false }
       progress.content += chunk
-      for (const sub of progress.subscribers) sub(chunk)
+      emit(JSON.stringify({ chunk }))
     }
 
+    setStatus('Saving report...')
     const content = progress.content
     const refMatches = [...content.matchAll(/\[\[tweet:([^\]]+)\]\]/g)]
     const tweetRefIds = refMatches.map((m) => m[1])
@@ -729,7 +741,8 @@ aiRouter.get('/report-stream', async (c) => {
           return
         }
 
-        // Send accumulated content so far
+        // Send current status and accumulated content so far
+        if (progress.status) send(JSON.stringify({ status: progress.status }))
         if (progress.content) send(JSON.stringify({ content: progress.content }))
 
         if (progress.done || progress.error) {
@@ -740,13 +753,13 @@ aiRouter.get('/report-stream', async (c) => {
         }
 
         // Subscribe to new chunks
-        const onChunk = (chunk: string) => {
-          if (chunk === '[DONE]' || chunk.startsWith('[ERROR]')) {
-            send(chunk)
+        const onChunk = (event: string) => {
+          if (event === '[DONE]' || event.startsWith('[ERROR]')) {
+            send(event)
             controller.close()
             progress.subscribers.delete(onChunk)
           } else {
-            send(JSON.stringify({ chunk }))
+            send(event)
           }
         }
         progress.subscribers.add(onChunk)
