@@ -627,7 +627,8 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
       )}
 
       {/* Engagement */}
-      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-zinc-500">
+      <div class="flex flex-wrap items-center justify-between gap-y-1 mt-2 text-xs text-zinc-500">
+            <span class="flex items-center gap-3">
             <button
               type="button"
               class="flex items-center gap-1 hover:text-blue-400 transition-colors"
@@ -664,7 +665,8 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
                 {fmt(tweet.views)}
               </span>
             )}
-            <span class="ml-auto flex items-center gap-2">
+            </span>
+            <span class="flex items-center gap-2">
               {onNudge && (
                 <span class="flex items-center gap-0.5">
                   <button
@@ -1021,8 +1023,10 @@ function AiReportView() {
         )
       })()}
           <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden">
-            <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-3 text-xs text-zinc-500">
-              <span>{new Date(activeReport.createdAt).toLocaleString()} &middot; {activeReport.tweetCount} posts</span>
+            <div class="flex flex-wrap items-center justify-between gap-y-1 mb-3 text-xs text-zinc-500">
+              <span class="flex flex-wrap items-center gap-x-1">
+                <span>{new Date(activeReport.createdAt).toLocaleString()}</span>
+                <span>&middot; {activeReport.tweetCount} posts</span>
                 {!viewingReportId && settings?.reportIntervalHours && settings.reportIntervalHours > 0 && (() => {
                   let nextMs: number
                   if (settings.reportIntervalHours >= 24 && settings.reportAtHour != null) {
@@ -1032,9 +1036,10 @@ function AiReportView() {
                   } else {
                     nextMs = new Date(activeReport.createdAt).getTime() + settings.reportIntervalHours * 3_600_000
                   }
-                  return <span><Countdown targetMs={nextMs} format="hm" prefix="&middot; next in " /></span>
+                  return <Countdown targetMs={nextMs} format="hm" prefix="&middot; next in " />
                 })()}
-              <span class="ml-auto flex items-center gap-1.5">
+              </span>
+              <span class="flex items-center gap-1.5">
                 <CopyShareButton url={`${window.location.origin}/report/${viewingReportId || activeReport.id}`} />
                 {pastData && pastData.reports.length > 1 && (
                   <button type="button" onClick={() => setShowPastReports(!showPastReports)}
