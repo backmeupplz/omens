@@ -979,50 +979,6 @@ function AiReportView() {
 
       {activeReport && (
         <div>
-          {/* Row 1: Actions */}
-          <div class="flex items-center gap-1.5 mb-1.5">
-              <button
-                type="button"
-                onClick={generate}
-                disabled={generating}
-                class="rounded bg-zinc-800 p-1.5 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
-                title={generating ? 'Generating...' : 'Generate new report'}
-              >
-                <svg class={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </button>
-              {viewingReportId && (
-                <button type="button" onClick={backToLatest}
-                  class="rounded bg-zinc-800 p-1.5 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-                  title="Back to latest">
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-                  </svg>
-                </button>
-              )}
-              {pastData && pastData.reports.length > 1 && (
-                <button type="button" onClick={() => setShowPastReports(!showPastReports)}
-                  class={`rounded bg-zinc-800 p-1.5 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 ${showPastReports ? 'text-zinc-100 bg-zinc-700' : ''}`}
-                  title="Report history">
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </button>
-              )}
-          </div>
-
-          {/* Row 2: Info line */}
-          {!viewingReportId && settings?.reportIntervalHours && settings.reportIntervalHours > 0 && activeReport?.createdAt && (
-            <p class="text-xs text-zinc-500 mb-2">
-              <Countdown
-                targetMs={new Date(activeReport.createdAt).getTime() + settings.reportIntervalHours * 3_600_000}
-                format="hm"
-                prefix="Next auto-report in "
-                expiredLabel="Auto-report due soon"
-              />
-            </p>
-          )}
 
       {/* Past reports dropdown with pagination */}
       {showPastReports && pastData && (() => {
@@ -1062,7 +1018,45 @@ function AiReportView() {
           <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden">
             <div class="flex items-center gap-2 mb-3 text-xs text-zinc-500">
               <span>{new Date(activeReport.createdAt).toLocaleString()} &middot; {activeReport.tweetCount} posts</span>
-              <span class="ml-auto"><CopyShareButton url={`${window.location.origin}/report/${viewingReportId || activeReport.id}`} /></span>
+              {!viewingReportId && settings?.reportIntervalHours && settings.reportIntervalHours > 0 && activeReport?.createdAt && (
+                <span>
+                  <Countdown
+                    targetMs={new Date(activeReport.createdAt).getTime() + settings.reportIntervalHours * 3_600_000}
+                    format="hm"
+                    prefix="&middot; next in "
+                  />
+                </span>
+              )}
+              <span class="ml-auto flex items-center gap-1.5">
+                <CopyShareButton url={`${window.location.origin}/report/${viewingReportId || activeReport.id}`} />
+                {pastData && pastData.reports.length > 1 && (
+                  <button type="button" onClick={() => setShowPastReports(!showPastReports)}
+                    class={`hover:text-zinc-300 ${showPastReports ? 'text-zinc-300' : ''}`}
+                    title="Report history">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                )}
+                {viewingReportId && (
+                  <button type="button" onClick={backToLatest} class="hover:text-zinc-300" title="Back to latest">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                    </svg>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={generate}
+                  disabled={generating}
+                  class="hover:text-zinc-300 disabled:opacity-50"
+                  title={generating ? 'Generating...' : 'Generate new report'}
+                >
+                  <svg class={`w-3.5 h-3.5 ${generating ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+              </span>
             </div>
             {renderReportContent(activeReport.content, refTweetMap)}
           </div>
