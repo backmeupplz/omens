@@ -1,0 +1,14 @@
+node_modules
+.git
+.github
+*.md
+.env*
+!docker/.env
+apps/*/dist
+apps/landing
+.turbo
+.vscode
+.idea
+*.db
+*.db-shm
+*.db-wal

@@ -5,7 +5,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     environment:
       POSTGRES_USER: omens
-      POSTGRES_PASSWORD: omens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-omens}
       POSTGRES_DB: omens
     restart: unless-stopped
     healthcheck:
@@ -18,8 +18,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    ports:
-      - '3000:3000'
+    expose:
+      - '3000'
     env_file: .env
     depends_on:
       postgres:
@@ -27,12 +27,28 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgres://omens:omens@postgres:5432/omens
+      - DATABASE_URL=postgres://omens:${POSTGRES_PASSWORD:-omens}@postgres:5432/omens
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3000/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
 
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      omens:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:

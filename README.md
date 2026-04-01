@@ -1,126 +1,83 @@
 # Omens
 
-**Signal from noise.** Omens monitors Twitter, Reddit, and other sources — then uses AI to surface only what matters to you.
+**Signal from noise.** AI-filtered X/Twitter feed that surfaces only what matters to you.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## What it does
 
-1. **Connect sources** — Add subreddits, Twitter accounts (via Nitter), RSS feeds
-2. **Describe your interests** — Tell the AI what matters to you in plain language
-3. **Get signal** — Omens polls your sources, scores each item 0–100, and surfaces only what's relevant
+1. **Connect your X account** — Log in with your X/Twitter credentials
+2. **Choose an AI provider** — OpenAI, Anthropic, Google Gemini, Groq, xAI, Fireworks, OpenRouter, Ollama, or any OpenAI-compatible endpoint
+3. **Get signal** — Omens fetches your home timeline, scores every post 0-100 for relevance, and shows you only what matters
 
 ## Features
 
-- **Pluggable sources** — Reddit, Twitter/X (Nitter RSS), RSS. Easy adapter interface for adding more.
-- **Any LLM** — Fireworks (Kimi K2.5), OpenAI, Anthropic, Ollama, or any OpenAI-compatible endpoint.
-- **Self-hostable** — One Docker container, SQLite database. Your data stays yours.
-- **Managed instance** — Or just use [app.omens.online](https://app.omens.online).
-- **CLI** — Full-featured command-line interface.
-- **API** — REST API with API key authentication.
-- **Tiny frontend** — Preact + wouter, 11KB gzipped.
+- **AI-filtered feed** — Every post scored by your AI provider, filtered to your configured threshold
+- **AI reports** — Daily digest reports summarizing your feed's highlights
+- **Prompt tuning** — Thumbs up/down on posts + text instructions to refine your filter
+- **Auto-fetch** — Configurable polling interval (5min to 1hr)
+- **Shareable posts** — Public share pages with OG metadata for link previews
+- **Shareable reports** — Share AI reports with OG images
+- **Any LLM** — 9 built-in providers or any OpenAI-compatible endpoint
+- **Self-hostable** — Docker Compose with PostgreSQL. Your data stays yours.
+- **Tiny frontend** — Preact + Tailwind, minimal bundle
 
 ## Quick start
 
-### Self-host with Docker
+### Self-host with Docker Compose
 
 ```bash
 git clone https://github.com/backmeupplz/omens.git
 cd omens/docker
-cp .env.sample .env
-# Edit .env — set JWT_SECRET and LLM_API_KEY
+cp .env .env.local
+# Edit .env.local — set JWT_SECRET, ENCRYPTION_KEY, CORS_ORIGIN
 docker compose up -d
 ```
 
-Open `http://localhost:3000`. Single-user mode is enabled by default.
+Open `http://localhost:3000`. Set `SINGLE_USER_MODE=true` for personal use.
 
 ### Development
 
 ```bash
+# Prerequisites: Node 22+, pnpm, PostgreSQL
 pnpm install
 pnpm dev
 ```
 
 API runs on `:3000`, web dev server on `:5173`.
 
-### CLI
-
-```bash
-# Configure
-omens config --api-url http://localhost:3000 --api-key <your-key>
-
-# Add sources
-omens sources add --type reddit --config '{"subreddits":["technology","programming"]}'
-
-# View your feed
-omens feed --min-score 60
-```
-
 ## Architecture
 
 ```
 apps/
-  api/       Hono backend (Bun)
+  api/       Hono + Bun backend
   web/       Preact frontend
-  cli/       CLI tool
-  landing/   Static landing page
+  landing/   Static landing page (GitHub Pages)
 packages/
-  shared/    Types and Zod schemas
-  db/        Drizzle ORM + SQLite
+  shared/    Zod schemas
+  db/        Drizzle ORM + PostgreSQL
 ```
 
-### Source adapters
+## Environment variables
 
-Each source implements a simple interface:
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `JWT_SECRET` | Yes | Secret for JWT signing (generate: `openssl rand -hex 32`) |
+| `ENCRYPTION_KEY` | Yes | Secret for API key encryption (generate: `openssl rand -hex 32`) |
+| `CORS_ORIGIN` | Production | Your domain (e.g. `https://omens.example.com`) |
+| `SINGLE_USER_MODE` | No | `true` to skip registration (default: `false`) |
+| `PORT` | No | Server port (default: `3000`) |
 
-```typescript
-interface SourceAdapter {
-  type: string
-  fetch(config: Record<string, unknown>, since?: Date): Promise<RawItem[]>
-}
-```
-
-### LLM pipeline
-
-Items are batched and scored using structured output (`generateObject` + Zod schema). The LLM returns a relevance score (0–100), summary, and tags for each item.
-
-### Provider configuration
-
-Inspired by [OpenCode](https://github.com/sst/opencode). Configure via UI, CLI, or environment variables:
-
-```bash
-LLM_PROVIDER=fireworks
-LLM_MODEL=accounts/fireworks/models/kimi-k2p5
-LLM_API_KEY=your-key
-LLM_BASE_URL=https://api.fireworks.ai/inference/v1
-```
-
-Built-in providers: Fireworks, OpenAI, Anthropic, Ollama, or any custom OpenAI-compatible endpoint.
-
-## API
-
-All endpoints accept Bearer token or `X-API-Key` header.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/feed` | Signal feed (paginated, filterable) |
-| GET/POST/PUT/DELETE | `/sources` | Source CRUD |
-| GET/POST/DELETE | `/api-keys` | API key management |
-| GET/PUT | `/llm/config` | LLM configuration |
-| GET | `/llm/providers` | Available providers |
-| GET/PUT | `/settings` | User interests & preferences |
-| GET/POST/PUT/DELETE | `/outputs` | Output CRUD |
-| POST | `/auth/register` | Register (multi-user mode) |
-| POST | `/auth/login` | Login (multi-user mode) |
+AI provider credentials are configured per-user through the web UI settings page.
 
 ## Tech stack
 
-- **Runtime**: Bun
-- **Backend**: Hono
-- **Frontend**: Preact + wouter + Tailwind CSS
-- **Database**: SQLite + Drizzle ORM
-- **LLM**: Vercel AI SDK (`@ai-sdk/openai-compatible`)
-- **Monorepo**: pnpm workspaces + Turborepo
+- **Runtime**: [Bun](https://bun.sh)
+- **Backend**: [Hono](https://hono.dev)
+- **Frontend**: [Preact](https://preactjs.com) + [wouter](https://github.com/molefrog/wouter) + [Tailwind CSS](https://tailwindcss.com)
+- **Database**: PostgreSQL + [Drizzle ORM](https://orm.drizzle.team)
+- **Monorepo**: pnpm workspaces + [Turborepo](https://turbo.build)
 
 ## License
 
