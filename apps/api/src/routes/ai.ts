@@ -443,7 +443,13 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
         }
       }
     } catch (err) {
-      console.error(`[ai] Filter batch ${batchNum}/${totalBatches} error:`, err instanceof Error ? err.message : err)
+      const errMsg = err instanceof Error ? err.message : String(err)
+      console.error(`[ai] Filter batch ${batchNum}/${totalBatches} error:`, errMsg)
+      const authPatterns = ['401', '403', 'Unauthorized', 'Invalid', 'API key']
+      if (authPatterns.some((p) => errMsg.includes(p))) {
+        console.error(`[ai] Aborting scoring for user ${userId}: auth error detected — ${errMsg}`)
+        break
+      }
     }
   }
 
@@ -611,7 +617,7 @@ export async function generateReportForUser(userId: string): Promise<any> {
   } catch (err) {
     reportGenerating.delete(userId)
     console.error(`[ai] Report error for user ${userId}:`, err instanceof Error ? err.message : err)
-    return null
+    throw err
   }
 }
 
@@ -622,19 +628,24 @@ aiRouter.post('/report', async (c) => {
     return c.json({ error: 'Report is already being generated. Please wait.' }, 409)
   }
 
-  const report = await generateReportForUser(user.id)
-  if (!report) {
-    return c.json({ error: 'No posts from the last 24 hours to analyze, or AI not configured.' }, 400)
-  }
+  try {
+    const report = await generateReportForUser(user.id)
+    if (!report) {
+      return c.json({ error: 'No posts from the last 24 hours to analyze, or AI not configured.' }, 400)
+    }
 
-  const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
-  return c.json({
-    content: report.content,
-    model: report.model,
-    tweetCount: report.tweetCount,
-    tweetRefs: tweetRefIds,
-    createdAt: report.createdAt,
-  })
+    const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
+    return c.json({
+      content: report.content,
+      model: report.model,
+      tweetCount: report.tweetCount,
+      tweetRefs: tweetRefIds,
+      createdAt: report.createdAt,
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Report generation failed'
+    return c.json({ error: message }, 500)
+  }
 })
 
 aiRouter.get('/report', async (c) => {

@@ -15,7 +15,7 @@ const activeFetches = new Set<string>()
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null
 
-async function fetchForUser(userId: string): Promise<number> {
+async function fetchForUser(userId: string): Promise<{ count: number; error?: string }> {
   const db = getDb(env.DATABASE_URL)
 
   const [session] = await db
@@ -24,7 +24,7 @@ async function fetchForUser(userId: string): Promise<number> {
     .where(eq(xSessions.userId, userId))
     .limit(1)
 
-  if (!session) return 0
+  if (!session) return { count: 0 }
 
   try {
     const authToken = await decrypt(session.authToken)
@@ -32,7 +32,7 @@ async function fetchForUser(userId: string): Promise<number> {
 
     const { tweets: parsedTweets } = await getHomeTimeline({ authToken, ct0 })
 
-    if (parsedTweets.length === 0) return 0
+    if (parsedTweets.length === 0) return { count: 0 }
 
     // Find which tweetIds already exist for this user so we can count only genuinely new inserts
     const incomingTweetIds = parsedTweets.map((t) => t.tweetId)
@@ -106,10 +106,12 @@ async function fetchForUser(userId: string): Promise<number> {
         console.error(`[fetcher] Scoring error for user ${userId}:`, err instanceof Error ? err.message : err),
       )
     }
-    return newCount
+    return { count: newCount }
   } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err)
     console.error(`[fetcher] Error fetching for user ${userId}:`, err)
-    return 0
+    const isSessionError = /401|403|session|unauthorized/i.test(errMsg)
+    return { count: 0, error: isSessionError ? `X session error: ${errMsg}` : undefined }
   }
 }
 

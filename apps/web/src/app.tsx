@@ -114,8 +114,11 @@ export function App() {
   const handleRefresh = async () => {
     if (!refreshFn || refreshing) return
     setRefreshing(true)
-    await refreshFn()
-    setRefreshing(false)
+    try {
+      await refreshFn()
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   const showFeed = auth.loggedIn && auth.xConnected

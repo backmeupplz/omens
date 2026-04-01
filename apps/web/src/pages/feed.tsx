@@ -480,9 +480,12 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
   score?: number | null
   minScore?: number
 }) {
-  const media: MediaItem[] = tweet.mediaUrls ? JSON.parse(tweet.mediaUrls) : []
-  const quoted: QuotedTweet | null = tweet.quotedTweet ? JSON.parse(tweet.quotedTweet) : null
-  const cardRaw = tweet.card ? JSON.parse(tweet.card) : null
+  let media: MediaItem[] = []
+  let quoted: QuotedTweet | null = null
+  let cardRaw: any = null
+  try { if (tweet.mediaUrls) media = JSON.parse(tweet.mediaUrls) } catch {}
+  try { if (tweet.quotedTweet) quoted = JSON.parse(tweet.quotedTweet) } catch {}
+  try { if (tweet.card) cardRaw = JSON.parse(tweet.card) } catch {}
   const card = cardRaw?.title ? cardRaw : null
   const quotedMedia: MediaItem[] = quoted?.media || []
   const [lightbox, setLightbox] = useState<number | null>(null)
@@ -826,6 +829,8 @@ function renderReportContent(
       const tweet = refTweets.get(tweetMatch[1])
       if (tweet) {
         result.push(<div key={`t-${i}`} class="my-1.5"><TweetCard tweet={tweet} /></div>)
+      } else {
+        result.push(<div key={`t-${i}`} class="my-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-500 italic">Referenced post is no longer available</div>)
       }
       continue
     }
@@ -1122,6 +1127,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 
   // Check initial scoring status — if pending but not active, kick off scoring
   useEffect(() => {
+    if (!aiSettings?.configured) return
     api<ScoringStatus>('/ai/scoring-status')
       .then((s) => {
         updateStatus(s)
@@ -1133,7 +1139,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
       })
       .catch(() => {})
     return stopPolling
-  }, [stopPolling, startPolling, updateStatus])
+  }, [stopPolling, startPolling, updateStatus, aiSettings?.configured])
 
   const refresh = useCallback(async () => {
     try {

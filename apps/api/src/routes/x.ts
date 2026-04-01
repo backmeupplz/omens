@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator'
-import { getDb, tweets, xSessions } from '@omens/db'
+import { getDb, nudges, promptChanges, tweets, tweetScores, xSessions } from '@omens/db'
 import { xLoginSchema } from '@omens/shared'
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -117,6 +117,9 @@ xRouter.delete('/session', async (c) => {
   const user = c.get('user')
   const db = getDb(env.DATABASE_URL)
 
+  await db.delete(nudges).where(eq(nudges.userId, user.id))
+  await db.delete(tweetScores).where(eq(tweetScores.userId, user.id))
+  await db.delete(promptChanges).where(eq(promptChanges.userId, user.id))
   await db.delete(xSessions).where(eq(xSessions.userId, user.id))
   await db.delete(tweets).where(eq(tweets.userId, user.id))
 
@@ -129,8 +132,11 @@ xRouter.post('/refresh', async (c) => {
   const user = c.get('user')
 
   try {
-    const count = await fetchForUser(user.id)
-    return c.json({ ok: true, count })
+    const result = await fetchForUser(user.id)
+    if (result.error) {
+      return c.json({ error: result.error }, 502)
+    }
+    return c.json({ ok: true, count: result.count })
   } catch (err) {
     console.error(`[x] Refresh failed:`, err instanceof Error ? err.message : err)
     return c.json({ error: 'Refresh failed' }, 500)
