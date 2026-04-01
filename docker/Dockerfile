@@ -33,6 +33,9 @@ COPY --from=build-web /app/apps/web/dist ./web/
 COPY --from=deps /app/node_modules ./node_modules/
 COPY packages/db/ packages/db/
 COPY packages/shared/ packages/shared/
+# Symlink drizzle migrations to where the bundled code expects them
+# __dirname in bundle is /app/api, join('..', 'drizzle') = /app/drizzle
+RUN ln -s /app/packages/db/drizzle /app/drizzle
 
 ENV NODE_ENV=production
 EXPOSE 3000
