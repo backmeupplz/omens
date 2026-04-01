@@ -816,7 +816,7 @@ function ElapsedTime({ since }: { since: number }) {
 }
 
 function AiReportView() {
-  const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number }>('/ai/settings')
+  const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number; reportAtHour?: number }>('/ai/settings')
   const { data, loading, refetch } = useApi<{ report: AiReportData | null }>('/ai/report')
   const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>('/ai/reports')
   const [generating, setGenerating] = useState(false)
@@ -1025,15 +1025,18 @@ function AiReportView() {
           <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden">
             <div class="flex items-center gap-2 mb-3 text-xs text-zinc-500">
               <span>{new Date(activeReport.createdAt).toLocaleString()} &middot; {activeReport.tweetCount} posts</span>
-              {!viewingReportId && settings?.reportIntervalHours && settings.reportIntervalHours > 0 && activeReport?.createdAt && (
-                <span>
-                  <Countdown
-                    targetMs={new Date(activeReport.createdAt).getTime() + settings.reportIntervalHours * 3_600_000}
-                    format="hm"
-                    prefix="&middot; next in "
-                  />
-                </span>
-              )}
+              {!viewingReportId && settings?.reportIntervalHours && settings.reportIntervalHours > 0 && (() => {
+                let nextMs: number
+                if (settings.reportIntervalHours >= 24 && settings.reportAtHour != null) {
+                  // For daily reports, next occurrence of reportAtHour (stored as UTC hour)
+                  const now = new Date()
+                  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), settings.reportAtHour))
+                  nextMs = today.getTime() <= Date.now() ? today.getTime() + 86_400_000 : today.getTime()
+                } else {
+                  nextMs = new Date(activeReport.createdAt).getTime() + settings.reportIntervalHours * 3_600_000
+                }
+                return <span><Countdown targetMs={nextMs} format="hm" prefix="&middot; next in " /></span>
+              })()}
               <span class="ml-auto flex items-center gap-1.5">
                 <CopyShareButton url={`${window.location.origin}/report/${viewingReportId || activeReport.id}`} />
                 {pastData && pastData.reports.length > 1 && (
