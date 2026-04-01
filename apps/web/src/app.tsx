@@ -4,7 +4,7 @@ import { api } from './helpers/api'
 import { AiReportPage, Feed, FilteredFeed } from './pages/feed'
 import { Login } from './pages/login'
 import { Settings } from './pages/settings'
-import { SharePage } from './pages/share'
+import { ReportSharePage, SharePage } from './pages/share'
 
 interface AuthState {
   checked: boolean
@@ -150,6 +150,10 @@ export function App() {
   const shareMatch = location.match(/^\/([^/]+)\/status\/(\d+)$/)
   if (shareMatch) {
     return <SharePage handle={shareMatch[1]} tweetId={shareMatch[2]} />
+  }
+  const reportMatch = location.match(/^\/report\/([a-z0-9]+)$/)
+  if (reportMatch) {
+    return <ReportSharePage id={reportMatch[1]} />
   }
 
   return (

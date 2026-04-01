@@ -406,9 +406,10 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
 interface InternalsData {
   currentPrompt: string
   defaultPrompt: string
-  pendingNudges: Array<{ id: string; tweetId: string; tweetContent: string; authorHandle: string; direction: string; createdAt: string }>
-  pendingInstructions: Array<{ id: string; instruction: string; createdAt: string }>
+  pendingNudges: Array<{ id: string; tweetId: string; tweetContent: string; authorHandle: string; direction: string }>
+  pendingInstructions: Array<{ id: string; instruction: string }>
   lastRegenAt: string | null
+  autoApplyAt: number | null
 }
 
 function AiTuningSection() {
@@ -615,14 +616,7 @@ function AiTuningSection() {
           <div class="flex items-center justify-between">
             <span class="text-xs text-zinc-400">
               Pending changes ({internals.pendingNudges.length + internals.pendingInstructions.length})
-              {(() => {
-                const allDates = [
-                  ...internals.pendingNudges.map((n) => new Date(n.createdAt).getTime()),
-                  ...internals.pendingInstructions.map((p) => new Date(p.createdAt).getTime()),
-                ]
-                const earliest = allDates.length > 0 ? Math.min(...allDates) : 0
-                return earliest > 0 ? <Countdown targetMs={earliest + 5 * 60_000} prefix=" · auto-applies in " /> : null
-              })()}
+              {internals.autoApplyAt && <Countdown targetMs={internals.autoApplyAt} prefix=" · auto-applies in " />}
             </span>
             <button type="button" onClick={regenerate} disabled={regenerating}
               class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium hover:bg-emerald-500 disabled:opacity-50">

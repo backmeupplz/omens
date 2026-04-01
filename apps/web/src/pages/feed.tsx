@@ -801,6 +801,7 @@ function useNudges() {
 // === AI Report with Inline Tweets ===
 
 interface AiReportData {
+  id: string
   content: string
   model: string
   tweetCount: number
@@ -1030,6 +1031,20 @@ function AiReportView() {
                   {showPastReports ? 'Hide history' : 'History'}
                 </button>
               )}
+              <button
+                type="button"
+                class="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1"
+                onClick={() => {
+                  const reportId = viewingReportId || activeReport.id
+                  navigator.clipboard.writeText(`${window.location.origin}/report/${reportId}`)
+                }}
+                title="Copy share link"
+              >
+                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
+                </svg>
+                Share
+              </button>
               <span class="text-xs text-zinc-600">{new Date(activeReport.createdAt).toLocaleString()}</span>
             </div>
           </div>

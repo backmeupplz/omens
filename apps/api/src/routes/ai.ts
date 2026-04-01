@@ -281,6 +281,14 @@ aiRouter.get('/internals', async (c) => {
     .where(and(eq(promptChanges.userId, user.id), eq(promptChanges.consumed, false)))
     .orderBy(desc(promptChanges.createdAt))
 
+  // Compute auto-apply target as epoch ms (avoids client/server timezone mismatch)
+  const allCreatedAts = [
+    ...pendingNudgeRows.map((n) => n.createdAt?.getTime() || 0),
+    ...pendingInstructions.map((p) => p.createdAt?.getTime() || 0),
+  ].filter((t) => t > 0)
+  const earliestPending = allCreatedAts.length > 0 ? Math.min(...allCreatedAts) : null
+  const autoApplyAt = earliestPending ? earliestPending + 5 * 60_000 : null
+
   return c.json({
     currentPrompt: settings?.systemPrompt || '',
     defaultPrompt: DEFAULT_SYSTEM_PROMPT,
@@ -290,14 +298,13 @@ aiRouter.get('/internals', async (c) => {
       tweetContent: n.tweetContent?.slice(0, 200) || '',
       authorHandle: n.authorHandle,
       direction: n.direction,
-      createdAt: n.createdAt,
     })),
     pendingInstructions: pendingInstructions.map((p) => ({
       id: p.id,
       instruction: p.instruction,
-      createdAt: p.createdAt,
     })),
     lastRegenAt: settings?.promptLastRegenAt || null,
+    autoApplyAt,
   })
 })
 
@@ -572,24 +579,12 @@ export async function generateReportForUser(userId: string): Promise<any> {
   const db = getDb(env.DATABASE_URL)
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const [settings] = await db.select({ minScore: aiSettings.minScore })
-    .from(aiSettings).where(eq(aiSettings.userId, userId)).limit(1)
-  const minScore = settings?.minScore ?? 50
 
-  let tweetList = await db.select({ tweet: tweets, score: tweetScores.score })
-    .from(tweets)
-    .innerJoin(tweetScores, and(eq(tweetScores.tweetId, tweets.id), eq(tweetScores.userId, userId)))
-    .where(and(eq(tweets.userId, userId), gte(tweets.publishedAt, since), gte(tweetScores.score, minScore)))
+  // Use ALL tweets from the last 24h — the AI decides what's important for the report
+  let tweetList = await db.select().from(tweets)
+    .where(and(eq(tweets.userId, userId), gte(tweets.publishedAt, since)))
     .orderBy(desc(tweets.publishedAt))
-    .limit(150)
-    .then((rows) => rows.map((r) => r.tweet))
-
-  if (tweetList.length === 0) {
-    tweetList = await db.select().from(tweets)
-      .where(and(eq(tweets.userId, userId), gte(tweets.publishedAt, since)))
-      .orderBy(desc(tweets.publishedAt))
-      .limit(200)
-  }
+    .limit(300)
 
   if (tweetList.length === 0) return null
 
@@ -674,6 +669,7 @@ aiRouter.get('/report', async (c) => {
 
   return c.json({
     report: {
+      id: report.id,
       content: report.content,
       model: report.model,
       tweetCount: report.tweetCount,
