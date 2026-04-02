@@ -40,6 +40,34 @@ function ogTags(meta: { title: string; description: string; url: string; image?:
 <meta name="twitter:title" content="${esc(meta.title)}"><meta name="twitter:description" content="${esc(meta.description)}">`
 }
 
+function notFoundHtml(): Response {
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Not Found — Omens</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #09090b; color: #a1a1aa; font-family: ui-monospace, monospace; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .wrap { text-align: center; }
+  pre { font-size: 1.1rem; line-height: 1.4; color: #52525b; }
+  h1 { font-size: 1.25rem; margin: 1.5rem 0 0.5rem; color: #e4e4e7; font-weight: 600; }
+  p { margin-bottom: 1.5rem; }
+  a { display: inline-block; padding: 0.5rem 1.5rem; background: #27272a; color: #e4e4e7; text-decoration: none; border-radius: 0.5rem; font-size: 0.875rem; transition: background 0.15s; }
+  a:hover { background: #3f3f46; }
+</style></head><body><div class="wrap">
+<pre>
+  /\\_/\\
+ ( x.x )
+  > ~ <
+ /|   |\\
+(_|   |_)
+</pre>
+<h1>404</h1>
+<p>This page doesn't exist</p>
+<a href="/">Go to Omens</a>
+</div></body></html>`
+  return new Response(html, { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+}
+
 function spaWithOg(meta: { title: string; description: string; url: string; image?: string; largeImage?: boolean }): Response {
   const tags = ogTags(meta)
   const titleTag = `<title>${esc(meta.title)} — Omens</title>`
@@ -120,7 +148,7 @@ shareRouter.get('/:handle/status/:tweetId', async (c) => {
   const [tweet] = await db.select().from(tweets)
     .where(eq(tweets.tweetId, tweetId)).limit(1)
 
-  if (!tweet) return c.html('<meta http-equiv="refresh" content="0;url=/">', 404)
+  if (!tweet) return notFoundHtml()
 
   const meta = {
     title: `${tweet.authorName} (@${tweet.authorHandle})`,
@@ -163,7 +191,7 @@ shareRouter.get('/report/:id', async (c) => {
   const db = getDb(env.DATABASE_URL)
   const [report] = await db.select().from(aiReports).where(eq(aiReports.id, id)).limit(1)
 
-  if (!report) return c.html('<meta http-equiv="refresh" content="0;url=/">', 404)
+  if (!report) return notFoundHtml()
 
   const { title, bullets } = extractReportSummary(report.content)
   const description = truncate(bullets.map((b) => `\u2022 ${b}`).join(' ') || report.content.replace(/[#*\n]+/g, ' ').trim(), 200)
