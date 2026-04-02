@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks'
 import { Redirect, useLocation } from 'wouter-preact'
-import { api } from '../helpers/api'
+import { api, API_BASE } from '../helpers/api'
 import { useApi } from '../helpers/hooks'
 
 export function Login() {
@@ -78,6 +78,13 @@ export function Login() {
             : "Don't have an account? Register"}
         </button>
       </form>
+      <VersionFooter />
     </div>
   )
+}
+
+function VersionFooter() {
+  const { data } = useApi<{ version: string }>('/version')
+  if (!data) return null
+  return <p class="text-xs text-zinc-700 text-center mt-8">Omens v{data.version}</p>
 }
