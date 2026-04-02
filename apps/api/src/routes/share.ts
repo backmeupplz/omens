@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { and, eq, inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { aiReports, getDb, tweets } from '@omens/db'
 import { serveStatic } from 'hono/bun'
 import env from '../env'
@@ -44,7 +44,7 @@ shareDataRouter.get('/tweet/:handle/:tweetId', async (c) => {
   const { handle, tweetId } = c.req.param()
   const db = getDb(env.DATABASE_URL)
   const [tweet] = await db.select().from(tweets)
-    .where(and(eq(tweets.authorHandle, handle), eq(tweets.tweetId, tweetId))).limit(1)
+    .where(eq(tweets.tweetId, tweetId)).limit(1)
   if (!tweet) return c.json({ error: 'Tweet not found' }, 404)
   return c.json({
     tweet: {
@@ -80,7 +80,7 @@ shareRouter.get('/:handle/status/:tweetId/og.png', async (c) => {
   const { handle, tweetId } = c.req.param()
   const db = getDb(env.DATABASE_URL)
   const [tweet] = await db.select().from(tweets)
-    .where(and(eq(tweets.authorHandle, handle), eq(tweets.tweetId, tweetId))).limit(1)
+    .where(eq(tweets.tweetId, tweetId)).limit(1)
   if (!tweet) return c.text('Not found', 404)
 
   const png = await generateTweetOgPng({
@@ -105,7 +105,7 @@ shareRouter.get('/:handle/status/:tweetId', async (c) => {
   const { handle, tweetId } = c.req.param()
   const db = getDb(env.DATABASE_URL)
   const [tweet] = await db.select().from(tweets)
-    .where(and(eq(tweets.authorHandle, handle), eq(tweets.tweetId, tweetId))).limit(1)
+    .where(eq(tweets.tweetId, tweetId)).limit(1)
 
   if (!tweet) return c.html('<meta http-equiv="refresh" content="0;url=/">', 404)
 

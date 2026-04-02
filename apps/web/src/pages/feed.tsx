@@ -761,7 +761,7 @@ function ArticleModal({
       </div>
       {lightboxUrl && (
         <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80"
-          onClick={() => setLightboxUrl(null)}>
+          onClick={(e) => { e.stopPropagation(); setLightboxUrl(null) }}>
           <img src={lightboxUrl} alt="" class="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
             onClick={(e) => e.stopPropagation()} />
         </div>
