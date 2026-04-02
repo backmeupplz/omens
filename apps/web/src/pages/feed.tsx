@@ -1139,13 +1139,15 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
     {
       intervalMs: 2000,
       shouldStop: (st) => {
+        console.log('[scoring poll]', { active: st.active, pending: st.pending, wasActive: wasActiveRef.current, batch: st.batch, totalBatches: st.totalBatches })
         if (st.active) {
           wasActiveRef.current = true
           if (baselineRef.current === null) baselineRef.current = st.aboveThreshold
           return false
         }
-        // Not active — only stop if scoring actually ran
-        return wasActiveRef.current
+        if (wasActiveRef.current) return true
+        if (st.pending === 0) return true
+        return false
       },
       onStop: (st) => {
         const newAbove = baselineRef.current !== null ? st.aboveThreshold - baselineRef.current : 0
@@ -1179,10 +1181,11 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   }, [aiConfigured])
 
   const refresh = useCallback(async () => {
+    console.log('[refresh] called, starting fetch')
     setFetchingPosts(true)
     try {
-      await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
-      // Always start polling — auto-fetcher may have inserted tweets that need scoring
+      const res = await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
+      console.log('[refresh] done, count:', res.count, 'starting scoring poll')
       scoring.start()
     } catch (e) {
       setFilterError(e instanceof Error ? e.message : 'Failed to refresh')

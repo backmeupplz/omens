@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
-/** Generic polling hook with stable references. No stale closures. */
+/** Generic polling hook. Uses refs to avoid stale closures.
+ *  start/stop are stable and never change identity. */
 export function usePolling<T>(
   fetcher: () => Promise<T>,
   opts: {
@@ -14,40 +15,38 @@ export function usePolling<T>(
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fetcherRef = useRef(fetcher)
   const optsRef = useRef(opts)
-  const pollingRef = useRef(false)
   fetcherRef.current = fetcher
   optsRef.current = opts
 
-  // Stable stop — never changes identity
-  const stopRef = useRef(() => {
+  const stop = useCallback(() => {
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
-    pollingRef.current = false
     setPolling(false)
-  })
+  }, [])
 
-  const tickRef = useRef(() => {
+  const tick = useCallback(() => {
     fetcherRef.current()
       .then((d) => {
         setData(d)
         if (optsRef.current.shouldStop?.(d)) {
-          stopRef.current()
+          if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
+          setPolling(false)
           optsRef.current.onStop?.(d)
         }
       })
       .catch(() => {})
-  })
+  }, [])
 
-  // Stable start — never changes identity
-  const startRef = useRef(() => {
-    stopRef.current()
-    pollingRef.current = true
+  const start = useCallback(() => {
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
     setPolling(true)
-    tickRef.current() // immediate first fetch
-    intervalRef.current = setInterval(() => tickRef.current(), optsRef.current.intervalMs)
-  })
+    // Use setTimeout(0) to ensure state update flushes before first tick
+    setTimeout(() => {
+      tick()
+      intervalRef.current = setInterval(tick, optsRef.current.intervalMs)
+    }, 0)
+  }, [tick])
 
-  // Cleanup on unmount
-  useEffect(() => () => stopRef.current(), [])
+  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current) }, [])
 
-  return { data, polling, start: startRef.current, stop: stopRef.current }
+  return { data, polling, start, stop }
 }
