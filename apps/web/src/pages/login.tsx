@@ -46,6 +46,7 @@ export function Login() {
         <input
           type="email"
           placeholder="Email"
+          autoComplete="email"
           class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
           value={email}
           onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
@@ -53,7 +54,8 @@ export function Login() {
         />
         <input
           type="password"
-          placeholder="Password (min 8 chars, upper + lower + number)"
+          placeholder={isRegister ? 'Password (min 8 chars, upper + lower + number)' : 'Password'}
+          autoComplete={isRegister ? 'new-password' : 'current-password'}
           class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
           value={password}
           onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
