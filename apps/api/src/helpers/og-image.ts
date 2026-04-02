@@ -43,6 +43,10 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + '\u2026' : s
 }
 
+function stripEmoji(s: string): string {
+  return s.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').replace(/\s{2,}/g, ' ').trim()
+}
+
 function wrapText(text: string, maxChars: number, maxLines: number): string[] {
   const clean = text.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim()
   const words = clean.split(' ')
@@ -169,7 +173,7 @@ export async function generateTweetOgPng(t: TweetOgInput): Promise<Uint8Array> {
     nameX = avatarCx + avatarR + 16
   }
 
-  const contentLines = wrapText(t.content, maxChars, hasMedia ? 7 : 8)
+  const contentLines = wrapText(stripEmoji(t.content), maxChars, hasMedia ? 7 : 8)
   const date = t.publishedAt
     ? new Date(t.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : ''
@@ -201,7 +205,7 @@ export async function generateTweetOgPng(t: TweetOgInput): Promise<Uint8Array> {
   ${mediaSvg}
   ${avatarSvg}
 
-  <text x="${nameX}" y="${avatarDataUri ? avatarCy - 6 : 50}" font-family="${F}" font-size="28" font-weight="700" fill="#ffffff">${esc(truncate(t.authorName, hasMedia ? 22 : 35))}</text>
+  <text x="${nameX}" y="${avatarDataUri ? avatarCy - 6 : 50}" font-family="${F}" font-size="28" font-weight="700" fill="#ffffff">${esc(truncate(stripEmoji(t.authorName), hasMedia ? 22 : 35))}</text>
   <text x="${nameX}" y="${avatarDataUri ? avatarCy + 18 : 76}" font-family="${F}" font-size="19" fill="#71717a">@${esc(t.authorHandle)}</text>
 
   <line x1="${L}" y1="${sepY}" x2="${textR}" y2="${sepY}" stroke="#1e1e22" stroke-width="1"/>
@@ -276,7 +280,7 @@ export function generateReportOgPng(r: ReportOgInput): Uint8Array {
   <line x1="${L}" y1="118" x2="${R}" y2="118" stroke="#1e1e22" stroke-width="1"/>
 
   ${bullets.map((b, i) => `<circle cx="${L + 10}" cy="${bulletY0 + i * bulletH}" r="4" fill="#10b981"/>
-  <text x="${L + 28}" y="${bulletY0 + 7 + i * bulletH}" font-family="${F}" font-size="24" fill="#d4d4d8">${esc(b)}</text>`).join('\n  ')}
+  <text x="${L + 28}" y="${bulletY0 + 7 + i * bulletH}" font-family="${F}" font-size="24" fill="#d4d4d8">${esc(stripEmoji(b))}</text>`).join('\n  ')}
 
   <line x1="${L}" y1="580" x2="${R}" y2="580" stroke="#1e1e22" stroke-width="1"/>
   <text x="${L}" y="610" font-family="${F}" font-size="22" font-weight="700" fill="#10b981">omens.online</text>
