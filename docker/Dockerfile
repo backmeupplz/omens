@@ -28,6 +28,13 @@ RUN cd apps/api && /root/.bun/bin/bun build src/index.ts --outdir dist --target 
 FROM oven/bun:1-slim AS runtime
 WORKDIR /app
 
+# Install curl-impersonate for X/Twitter TLS fingerprint impersonation
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && \
+    curl -Lo /tmp/curl-impersonate.tar.gz https://github.com/lwthiker/curl-impersonate/releases/download/v0.6.1/curl-impersonate-v0.6.1.x86_64-linux-gnu.tar.gz && \
+    tar -xzf /tmp/curl-impersonate.tar.gz -C /usr/local/bin/ && \
+    rm /tmp/curl-impersonate.tar.gz && \
+    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build-api /app/apps/api/dist ./api/
 COPY --from=build-web /app/apps/web/dist ./web/
 COPY --from=deps /app/node_modules ./node_modules/

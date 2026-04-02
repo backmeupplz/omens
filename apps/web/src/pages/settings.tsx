@@ -861,7 +861,6 @@ export function Settings({
 }) {
   return (
     <div>
-      <h1 class="text-2xl font-bold mb-6">Settings</h1>
       <div class="space-y-8">
         <XSection onXChange={onXChange} />
         {xConnected && (

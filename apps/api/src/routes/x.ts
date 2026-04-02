@@ -83,8 +83,10 @@ xRouter.post('/login', zValidator('json', xLoginSchema), async (c) => {
       'Login failed',
       'Invalid credentials',
       'TOTP/2FA code required',
+      'curl-impersonate not found',
     ]
     const message = safeMessages.find((m) => internal.includes(m)) || 'Login failed'
+    console.error(`[x] Login error (shown to user: "${message}"):`, internal)
     return c.json({ error: message }, 400)
   }
 })
