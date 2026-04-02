@@ -1515,7 +1515,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
                   {score}
                 </span>
               )}
-              <CopyShareButton url={`${window.location.origin}/${tweet.authorHandle}/status/${tweet.url.match(/status\/(\d+)/)?.[1] || tweet.tweetId}`} />
+              <CopyShareButton url={`${window.location.origin}/${tweet.authorHandle}/status/${tweet.tweetId}`} />
               <a
                 href={tweet.url}
                 target="_blank"
