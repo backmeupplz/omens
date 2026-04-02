@@ -652,10 +652,8 @@ export async function getTweetReplies(
     if (!result?.legacy) return
 
     const legacy = result.legacy
-    if (legacy.id_str === tweetId) return
-
-    // Only include actual replies to this tweet (filter out "Discover more" suggestions)
-    if (legacy.in_reply_to_status_id_str && legacy.in_reply_to_status_id_str !== tweetId) return
+    // Only include actual replies to this tweet (skip focal tweet, parent, and suggestions)
+    if (legacy.in_reply_to_status_id_str !== tweetId) return
 
     // User data can be in multiple places depending on API version:
     // New: result.core.user_results.result.core.{name,screen_name} + result.core.user_results.result.avatar.image_url
@@ -710,7 +708,7 @@ export async function getTweetReplies(
     }
   }
 
-  return { replies, cursor: nextCursor }
+  return { replies, cursor: replies.length > 0 ? nextCursor : null }
 }
 
 // === Article Content ===
@@ -735,7 +733,7 @@ export interface ArticleRichBlock {
   format?: Array<{ start: number; end: number; type: string; href?: string }> // inline formatting
 }
 
-function parseRichText(contentState: any): ArticleRichBlock[] {
+function parseRichText(contentState: any, mediaMap?: Record<string, string>): ArticleRichBlock[] {
   const blocks: ArticleRichBlock[] = []
   if (!contentState?.blocks) return blocks
 
@@ -748,12 +746,14 @@ function parseRichText(contentState: any): ArticleRichBlock[] {
     if (block.entityRanges && contentState.entityMap) {
       for (const range of block.entityRanges) {
         const entity = contentState.entityMap[String(range.key)]
-        if (entity) {
+        if (!entity) continue
+        const eType = (entity.type || '').toUpperCase()
+        if (eType === 'LINK' || eType === 'URL') {
           format.push({
             start: range.offset,
             end: range.offset + range.length,
-            type: entity.type?.toLowerCase() || 'link',
-            href: entity.data?.url || entity.data?.href,
+            type: 'link',
+            href: entity.data?.url || entity.data?.href || entity.data?.uri,
           })
         }
       }
@@ -763,7 +763,7 @@ function parseRichText(contentState: any): ArticleRichBlock[] {
         format.push({
           start: range.offset,
           end: range.offset + range.length,
-          type: range.style?.toLowerCase() || 'bold',
+          type: (range.style || 'BOLD').toLowerCase(),
         })
       }
     }
@@ -772,16 +772,26 @@ function parseRichText(contentState: any): ArticleRichBlock[] {
       // Atomic blocks are typically media/embeds
       const entityKey = block.entityRanges?.[0]?.key
       const entity = entityKey != null ? contentState.entityMap?.[String(entityKey)] : null
-      if (entity?.type === 'IMAGE' || entity?.type === 'image') {
-        blocks.push({ type: 'image', url: entity.data?.src || entity.data?.url })
-      } else if (entity?.type === 'TWEET' || entity?.type === 'tweet' || entity?.type === 'EMBED') {
-        const tweetUrl = entity.data?.url || entity.data?.id || ''
-        const tweetIdMatch = String(tweetUrl).match(/status\/(\d+)/)
+      const eType = (entity?.type || '').toUpperCase()
+
+      if (eType === 'IMAGE' || eType === 'PHOTO') {
+        blocks.push({ type: 'image', url: entity.data?.src || entity.data?.url || entity.data?.media_url_https })
+      } else if (eType === 'MEDIA') {
+        // Media entity — look up in the article's media_entities map
+        const mediaId = entity.data?.mediaId || entity.data?.id || entity.data?.media_key
+        const mediaUrl = (mediaId && mediaMap?.[mediaId]) || entity.data?.src || entity.data?.url || entity.data?.media_url_https
+        if (mediaUrl) {
+          blocks.push({ type: 'image', url: mediaUrl })
+        }
+      } else if (eType === 'TWEET' || eType === 'EMBED' || eType === 'EMBEDDED_TWEET') {
+        const tweetUrl = entity.data?.url || entity.data?.id || entity.data?.tweetId || ''
+        const tweetIdMatch = String(tweetUrl).match(/(?:status\/)?(\d{10,})/)
         blocks.push({ type: 'tweet', tweetId: tweetIdMatch?.[1] || String(tweetUrl) })
-      } else if (entity?.type === 'DIVIDER' || entity?.type === 'divider') {
+      } else if (eType === 'DIVIDER' || eType === 'HR') {
         blocks.push({ type: 'divider' })
       } else {
-        // Unknown atomic — render as paragraph if has text
+        // Unknown atomic — log for debugging and render as paragraph
+        if (entity) console.log('[article] Unknown atomic entity type:', entity.type, 'data keys:', Object.keys(entity.data || {}))
         if (text.trim()) blocks.push({ type: 'paragraph', text, format: format.length > 0 ? format : undefined })
       }
     } else if (type.startsWith('header-')) {
@@ -867,19 +877,48 @@ export async function getArticleContent(
         const article = result.article?.article_results?.result
         if (!article) continue
 
+        // Debug: log the article structure to understand available fields
+        console.log('[article] Top-level keys:', Object.keys(article))
+        if (article.cover_image) console.log('[article] cover_image keys:', Object.keys(article.cover_image))
+        if (article.media_entities) console.log('[article] media_entities count:', Object.keys(article.media_entities).length)
+        if (article.content_state) console.log('[article] Has content_state, blocks:', article.content_state?.blocks?.length, 'entityMap keys:', Object.keys(article.content_state?.entityMap || {}))
+        if (article.rich_text) console.log('[article] Has rich_text, keys:', Object.keys(article.rich_text))
+        // Log a sample of entity types if rich content exists
+        const cs = article.content_state || article.rich_text?.content_state
+        if (cs?.entityMap) {
+          const entityTypes = Object.values(cs.entityMap).map((e: any) => `${e.type}(${Object.keys(e.data || {}).join(',')})`).slice(0, 10)
+          console.log('[article] Entity types sample:', entityTypes)
+        }
+
         const userResult = result.core?.user_results?.result
         const userLegacy = userResult?.legacy
         const userCore = userResult?.core
 
         const title = article.title || article.preview_title || ''
+        // Try multiple paths for cover image
         const coverImg = article.cover_image?.media_info?.original_img_url ||
-          article.cover_image?.media?.media_info?.original_img_url || null
+          article.cover_image?.media?.media_info?.original_img_url ||
+          article.cover_image?.media_url_https ||
+          article.cover_image?.url ||
+          null
+        if (!coverImg && article.cover_image) {
+          console.log('[article] cover_image structure:', JSON.stringify(article.cover_image).slice(0, 500))
+        }
+
+        // Build media map for inline images (articles store media separately)
+        const mediaMap: Record<string, string> = {}
+        if (article.media_entities) {
+          for (const [id, media] of Object.entries(article.media_entities as Record<string, any>)) {
+            const url = media.media_info?.original_img_url || media.media_url_https || media.url
+            if (url) mediaMap[id] = url
+          }
+        }
 
         // Try rich content first
         let richContent: ArticleRichBlock[] | null = null
         const contentState = article.content_state || article.rich_text?.content_state
         if (contentState) {
-          richContent = parseRichText(contentState)
+          richContent = parseRichText(contentState, mediaMap)
         }
 
         // Plain text fallback

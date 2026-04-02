@@ -6,6 +6,10 @@ import { useApi } from '../helpers/hooks'
 import { renderMarkdownLine } from '../helpers/markdown'
 import { AiSection } from './settings'
 
+function videoProxyUrl(url: string): string {
+  return `${API_BASE}/media/video?url=${encodeURIComponent(url)}`
+}
+
 // === Lightbox ===
 
 function Lightbox({
@@ -56,11 +60,13 @@ function Lightbox({
           </svg>
         </button>
       )}
-      {item.type === 'video' ? (
+      {item.type !== 'photo' ? (
         <video
-          src={item.url}
-          controls
+          src={videoProxyUrl(item.url)}
+          controls={item.type === 'video'}
           autoPlay
+          loop={item.type === 'gif'}
+          muted={item.type === 'gif'}
           class="max-h-[90vh] max-w-[90vw] rounded-lg"
           onClick={(e) => e.stopPropagation()}
         />
@@ -93,7 +99,7 @@ function Lightbox({
 }
 
 interface MediaItem {
-  type: 'photo' | 'video'
+  type: 'photo' | 'video' | 'gif'
   url: string
   thumbnail: string
 }
@@ -355,7 +361,7 @@ function ThreadTweetItem({ tweet, isLast }: { tweet: ThreadTweet; isLast: boolea
                 onClose={() => setLightbox(null)}
               />
             )}
-            <MediaGrid media={media} linkUrl={tweet.url} onPhotoClick={setLightbox} />
+            <MediaGrid media={media} onPhotoClick={setLightbox} />
           </>
         )}
         {tweet.quotedTweet && (
@@ -370,7 +376,7 @@ function ThreadTweetItem({ tweet, isLast }: { tweet: ThreadTweet; isLast: boolea
             <p class="text-xs text-zinc-400 line-clamp-3 break-words">{tweet.quotedTweet.content}</p>
           </div>
         )}
-        {tweet.card && <LinkCard data={tweet.card} fallbackUrl={tweet.url} />}
+        {tweet.card && <LinkCard data={tweet.card} fallbackUrl={tweet.url} tweetUrl={tweet.url} />}
         <div class="flex items-center gap-3 mt-1.5 text-xs text-zinc-600">
           {tweet.replies > 0 && <span>{fmt(tweet.replies)} replies</span>}
           {tweet.retweets > 0 && <span>{fmt(tweet.retweets)} RTs</span>}
@@ -391,7 +397,7 @@ interface QuotedTweet {
   url: string
 }
 
-interface Tweet {
+export interface Tweet {
   id: string
   tweetId: string
   authorName: string
@@ -441,8 +447,333 @@ interface CardData {
   url: string
 }
 
-function LinkCard({ data, fallbackUrl }: { data: CardData; fallbackUrl?: string }) {
+// === Article Modal ===
+
+interface ArticleRichBlock {
+  type: 'paragraph' | 'heading' | 'image' | 'tweet' | 'list' | 'blockquote' | 'divider'
+  text?: string
+  level?: number
+  url?: string
+  tweetId?: string
+  items?: string[]
+  format?: Array<{ start: number; end: number; type: string; href?: string }>
+}
+
+interface ArticleData {
+  title: string
+  coverImage: string | null
+  body: string
+  richContent: ArticleRichBlock[] | null
+  authorName: string
+  authorHandle: string
+  authorAvatar: string | null
+}
+
+function applyFormat(text: string, format?: ArticleRichBlock['format']): preact.ComponentChildren {
+  if (!format || format.length === 0) return text
+  // Sort by start position
+  const sorted = [...format].sort((a, b) => a.start - b.start)
+  const parts: preact.ComponentChildren[] = []
+  let cursor = 0
+  for (const f of sorted) {
+    if (f.start > cursor) parts.push(text.slice(cursor, f.start))
+    const segment = text.slice(f.start, f.end)
+    if (f.type === 'link' && f.href) {
+      parts.push(<a href={f.href} target="_blank" rel="noopener" class="text-blue-400 hover:underline">{segment}</a>)
+    } else if (f.type === 'bold') {
+      parts.push(<strong class="font-semibold">{segment}</strong>)
+    } else if (f.type === 'italic') {
+      parts.push(<em>{segment}</em>)
+    } else {
+      parts.push(segment)
+    }
+    cursor = f.end
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor))
+  return <>{parts}</>
+}
+
+/** Render embedded tweet by fetching its data */
+function EmbeddedTweet({ tweetId }: { tweetId: string }) {
+  const [tweet, setTweet] = useState<{ authorName: string; authorHandle: string; authorAvatar: string | null; content: string; url: string } | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // Try to fetch from the replies/thread endpoint which returns tweet data
+    api<{ tweets: Array<any> }>(`/x/thread/${tweetId}`)
+      .then((r) => {
+        const t = r.tweets?.[0]
+        if (t) setTweet({ authorName: t.authorName, authorHandle: t.authorHandle, authorAvatar: t.authorAvatar, content: t.content, url: t.url })
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [tweetId])
+
+  if (loading) {
+    return <div class="my-3 rounded-xl border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-sm text-zinc-500 animate-pulse">Loading embedded post...</div>
+  }
+
+  if (!tweet) {
+    return (
+      <a href={`https://x.com/i/status/${tweetId}`} target="_blank" rel="noopener"
+        class="my-3 block rounded-xl border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-sm text-zinc-400 hover:border-zinc-500 transition-colors">
+        View embedded post on X
+      </a>
+    )
+  }
+
+  return (
+    <a href={tweet.url} target="_blank" rel="noopener"
+      class="my-3 block rounded-xl border border-zinc-700 bg-zinc-800/50 overflow-hidden hover:border-zinc-500 transition-colors">
+      <div class="px-4 py-3">
+        <div class="flex items-center gap-2 mb-1.5">
+          {tweet.authorAvatar && <img src={tweet.authorAvatar} alt="" class="w-5 h-5 rounded-full" />}
+          <span class="text-sm font-semibold text-zinc-200">{tweet.authorName}</span>
+          <span class="text-xs text-zinc-500">@{tweet.authorHandle}</span>
+        </div>
+        <p class="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed break-words line-clamp-6">{tweet.content}</p>
+      </div>
+    </a>
+  )
+}
+
+/** Rich-format plain text: URLs become links, _italic_, **bold**, and x.com tweet URLs become embedded tweets */
+function articleFormatText(text: string): preact.ComponentChildren[] {
+  const parts: preact.ComponentChildren[] = []
+  // Match URLs, _italic_, **bold** — in order of priority
+  const regex = /(https?:\/\/[^\s]+)|\*\*(.+?)\*\*|_([^_\s][^_]*[^_\s])_/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index))
+    }
+    if (match[1]) {
+      // URL
+      parts.push(
+        <a href={match[1]} target="_blank" rel="noopener" class="text-blue-400 hover:underline break-all">{match[1].replace(/^https?:\/\//, '')}</a>,
+      )
+    } else if (match[2]) {
+      // **bold**
+      parts.push(<strong class="font-semibold text-zinc-100">{match[2]}</strong>)
+    } else if (match[3]) {
+      // _italic_
+      parts.push(<em class="italic">{match[3]}</em>)
+    }
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex))
+  return parts
+}
+
+/** Check if a paragraph is an embedded tweet URL */
+function isTweetUrl(text: string): string | null {
+  const m = text.trim().match(/^https?:\/\/(?:x\.com|twitter\.com)\/\w+\/status\/(\d+)/)
+  return m ? m[1] : null
+}
+
+/** Render plain text body with paragraph splitting, formatting, and embedded tweets */
+function ArticleBodyPlainText({ body }: { body: string }) {
+  const paragraphs = body.split(/\n\n+/)
+  return (
+    <div>
+      {paragraphs.map((p, i) => {
+        const trimmed = p.trim()
+        if (!trimmed) return null
+
+        // Detect embedded tweet URLs (standalone x.com/twitter.com status links)
+        const tweetId = isTweetUrl(trimmed)
+        if (tweetId) {
+          return <EmbeddedTweet key={i} tweetId={tweetId} />
+        }
+
+        // Detect heading-like lines (all uppercase, short-ish, no period at end)
+        const isHeading = trimmed.length < 200 && trimmed === trimmed.toUpperCase() && !trimmed.endsWith('.') && /[A-Z]/.test(trimmed)
+        if (isHeading) {
+          return <h3 key={i} class="text-lg font-bold text-zinc-100 mt-6 mb-2">{trimmed}</h3>
+        }
+
+        // Detect subheading-like lines (Title Case, short, no period)
+        const isSubheading = trimmed.length < 150 && !trimmed.endsWith('.') && /^[A-Z]/.test(trimmed) && trimmed.split(/\s+/).length <= 15 && /^[A-Z][^.!?]*[^.!?\s]$/.test(trimmed) && trimmed !== trimmed.toUpperCase() && /[A-Z].*\b[A-Z]/.test(trimmed)
+        if (isSubheading) {
+          return <h3 key={i} class="text-lg font-semibold text-zinc-100 mt-5 mb-1.5">{articleFormatText(trimmed)}</h3>
+        }
+
+        return <p key={i} class="text-[15px] text-zinc-300 leading-relaxed mb-3">{articleFormatText(trimmed)}</p>
+      })}
+    </div>
+  )
+}
+
+function ArticleModal({
+  tweetId,
+  cardData,
+  onClose,
+}: {
+  tweetId: string
+  cardData: CardData
+  onClose: () => void
+}) {
+  const [article, setArticle] = useState<ArticleData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    api<{ article: ArticleData }>(`/x/article/${tweetId}`)
+      .then((r) => setArticle(r.article))
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load article'))
+      .finally(() => setLoading(false))
+  }, [tweetId])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
+
+  const renderBlock = (block: ArticleRichBlock, i: number) => {
+    switch (block.type) {
+      case 'heading':
+        return block.level === 1
+          ? <h2 key={i} class="text-xl font-bold text-zinc-100 mt-6 mb-2">{applyFormat(block.text || '', block.format)}</h2>
+          : block.level === 3
+            ? <h4 key={i} class="text-base font-semibold text-zinc-200 mt-4 mb-1">{applyFormat(block.text || '', block.format)}</h4>
+            : <h3 key={i} class="text-lg font-semibold text-zinc-100 mt-5 mb-1.5">{applyFormat(block.text || '', block.format)}</h3>
+      case 'image':
+        return <img key={i} src={block.url} alt="" class="w-full rounded-lg my-4" loading="lazy" />
+      case 'blockquote':
+        return <blockquote key={i} class="border-l-2 border-zinc-600 pl-4 my-3 text-zinc-400 italic">{applyFormat(block.text || '', block.format)}</blockquote>
+      case 'list':
+        return (
+          <ul key={i} class="list-disc list-inside my-3 space-y-1 text-zinc-300">
+            {block.items?.map((item, j) => <li key={j}>{item}</li>)}
+          </ul>
+        )
+      case 'divider':
+        return <hr key={i} class="border-zinc-700 my-6" />
+      case 'tweet':
+        return <EmbeddedTweet key={i} tweetId={block.tweetId!} />
+      default:
+        return <p key={i} class="text-[15px] text-zinc-300 leading-relaxed mb-3">{applyFormat(block.text || '', block.format)}</p>
+    }
+  }
+
+  return (
+    <div
+      class="fixed inset-0 z-50 flex items-start justify-center bg-black/80 overflow-y-auto py-8 px-3"
+      onClick={onClose}
+    >
+      <div
+        class="w-full max-w-2xl rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-800 shrink-0">
+          <h3 class="font-semibold text-zinc-100 text-sm">Article</h3>
+          <div class="flex items-center gap-3">
+            <a href={cardData.url} target="_blank" rel="noopener"
+              class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
+              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+              Open on X
+            </a>
+            <button type="button" onClick={onClose} class="text-zinc-400 hover:text-zinc-200 text-xl leading-none">&times;</button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div class="overflow-y-auto flex-1 scrollbar-dark" style={{ maxHeight: 'calc(90vh - 56px)' }}>
+          {loading && <p class="text-zinc-500 text-sm py-12 text-center">Loading article...</p>}
+          {error && (
+            <div class="py-12 px-4 text-center">
+              <p class="text-red-400 text-sm mb-3">{error}</p>
+              <a href={cardData.url} target="_blank" rel="noopener" class="text-sm text-blue-400 hover:underline">Open on X instead</a>
+            </div>
+          )}
+          {article && (
+            <div>
+              {/* Cover image */}
+              {(article.coverImage || cardData.thumbnail) && (
+                <img src={article.coverImage || cardData.thumbnail!} alt="" class="w-full" loading="lazy" />
+              )}
+              <div class="px-5 py-5">
+                {/* Author */}
+                <div class="flex items-center gap-2.5 mb-4">
+                  {article.authorAvatar && (
+                    <img src={article.authorAvatar} alt="" class="w-8 h-8 rounded-full" />
+                  )}
+                  <div>
+                    <span class="text-sm font-semibold text-zinc-200">{article.authorName}</span>
+                    <span class="text-sm text-zinc-500 ml-1.5">@{article.authorHandle}</span>
+                  </div>
+                </div>
+
+                {/* Title */}
+                <h1 class="text-2xl font-bold text-zinc-100 leading-tight mb-4">{article.title}</h1>
+
+                {/* Body */}
+                {article.richContent ? (
+                  <div>{article.richContent.map(renderBlock)}</div>
+                ) : article.body ? (
+                  <ArticleBodyPlainText body={article.body} />
+                ) : cardData.description ? (
+                  <p class="text-[15px] text-zinc-400">{cardData.description}</p>
+                ) : null}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl?: string; tweetUrl?: string }) {
   const url = data.url || fallbackUrl || '#'
+  const [showArticle, setShowArticle] = useState(false)
+
+  // Detect X article cards
+  const isXArticle = data.domain === 'x.com' || data.domain === 'twitter.com'
+  const tweetIdMatch = isXArticle ? (tweetUrl || url).match(/status\/(\d+)/) : null
+  const articleTweetId = tweetIdMatch?.[1] || null
+
+  if (isXArticle && articleTweetId) {
+    return (
+      <>
+        {showArticle && (
+          <ArticleModal
+            tweetId={articleTweetId}
+            cardData={data}
+            onClose={() => setShowArticle(false)}
+          />
+        )}
+        <button
+          type="button"
+          class="mt-2 block w-full text-left rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors"
+          onClick={(e) => { e.stopPropagation(); setShowArticle(true) }}
+        >
+          {data.thumbnail && (
+            <img src={data.thumbnail} alt="" class="w-full max-w-full rounded-t-xl" loading="lazy" />
+          )}
+          <div class="p-2.5">
+            <p class="text-sm font-medium text-zinc-200 line-clamp-2">{data.title}</p>
+            {data.description && (
+              <p class="text-xs text-zinc-400 mt-0.5 line-clamp-2">{data.description}</p>
+            )}
+            <p class="text-xs text-zinc-500 mt-0.5">{data.domain}</p>
+          </div>
+        </button>
+      </>
+    )
+  }
+
   return (
     <a
       href={url}
@@ -493,13 +824,59 @@ function OgEmbed({
 
 // === Shared Media Grid ===
 
+function InlineVideo({ item, sizeClass, fit }: { item: MediaItem; sizeClass: string; fit: string }) {
+  const isGif = item.type === 'gif'
+  const [playing, setPlaying] = useState(false)
+
+  if (playing || isGif) {
+    return (
+      <div class="relative overflow-hidden rounded-lg border border-zinc-700 bg-black">
+        <video
+          src={videoProxyUrl(item.url)}
+          poster={`${item.thumbnail}?name=medium`}
+          controls={!isGif}
+          autoPlay
+          loop={isGif}
+          muted={isGif}
+          playsinline
+          class={`${fit} ${sizeClass}`}
+          onClick={(e) => e.stopPropagation()}
+        />
+        {isGif && (
+          <span class="absolute bottom-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+            GIF
+          </span>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      class="relative overflow-hidden rounded-lg border border-zinc-700 hover:border-zinc-500 transition-colors"
+      onClick={(e) => { e.stopPropagation(); setPlaying(true) }}
+    >
+      <img
+        src={`${item.thumbnail}?name=medium`}
+        alt=""
+        class={`${fit} ${sizeClass}`}
+        loading="lazy"
+      />
+      <div class="absolute inset-0 flex items-center justify-center bg-black/30">
+        <svg class="w-10 h-10 text-white/90 drop-shadow-lg" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      </div>
+    </button>
+  )
+}
+
 function MediaGrid({
   media,
-  linkUrl,
   onPhotoClick,
 }: {
   media: MediaItem[]
-  linkUrl: string
   onPhotoClick?: (index: number) => void
 }) {
   if (media.length === 0) return null
@@ -509,27 +886,8 @@ function MediaGrid({
   return (
     <div class={`mt-2 grid gap-1.5 overflow-hidden ${single ? 'grid-cols-1' : 'grid-cols-2'}`}>
       {media.slice(0, 4).map((item, i) =>
-        item.type === 'video' ? (
-          <a
-            key={item.thumbnail}
-            href={linkUrl}
-            target="_blank"
-            rel="noopener"
-            class="relative overflow-hidden rounded-lg border border-zinc-700 hover:border-zinc-500 transition-colors"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <img
-              src={`${item.thumbnail}?name=medium`}
-              alt=""
-              class={`${fit} ${sizeClass}`}
-              loading="lazy"
-            />
-            <div class="absolute inset-0 flex items-center justify-center bg-black/30">
-              <svg class="w-8 h-8 text-white/90" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </div>
-          </a>
+        item.type !== 'photo' ? (
+          <InlineVideo key={item.thumbnail} item={item} sizeClass={sizeClass} fit={fit} />
         ) : (
           <button
             key={item.thumbnail}
@@ -658,23 +1016,16 @@ function TweetDetailModal({
   score?: number | null
   minScore?: number
 }) {
-  const media: MediaItem[] = safeParse<MediaItem[]>(tweet.mediaUrls) ?? []
-  const quoted = safeParse<QuotedTweet>(tweet.quotedTweet)
-  const cardRaw = safeParse<CardData>(tweet.card)
-  const card = cardRaw?.title ? cardRaw : null
-  const quotedMedia: MediaItem[] = quoted?.media || []
-  const [lightbox, setLightbox] = useState<number | null>(null)
-  const [quotedLightbox, setQuotedLightbox] = useState<number | null>(null)
-  const [ogLoaded, setOgLoaded] = useState(false)
-  const onOgLoaded = useCallback(() => setOgLoaded(true), [])
-
   const [replies, setReplies] = useState<ReplyData[]>([])
   const [repliesLoading, setRepliesLoading] = useState(true)
   const [repliesCursor, setRepliesCursor] = useState<string | null>(null)
   const [repliesError, setRepliesError] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
 
-  const tweetIdForReplies = tweet.url.match(/status\/(\d+)/)?.[1] || tweet.tweetId
+  // For self-threads with inline parent, fetch replies for the parent (it has the actual discussion)
+  const isThread = tweet.replyToHandle === tweet.authorHandle && !!tweet.parentTweet
+  const replyTarget = isThread && tweet.parentTweet ? tweet.parentTweet : tweet
+  const tweetIdForReplies = replyTarget.url.match(/status\/(\d+)/)?.[1] || replyTarget.tweetId
 
   const fetchReplies = useCallback(
     (c?: string) => {
@@ -721,231 +1072,58 @@ function TweetDetailModal({
       class="fixed inset-0 z-50 flex items-start justify-center bg-black/80 overflow-y-auto py-8 px-3"
       onClick={onClose}
     >
-      {lightbox !== null && (
-        <Lightbox items={media.filter((m) => m.type === 'photo')} index={lightbox} onClose={() => setLightbox(null)} />
-      )}
-      {quotedLightbox !== null && (
-        <Lightbox items={quotedMedia.filter((m) => m.type === 'photo')} index={quotedLightbox} onClose={() => setQuotedLightbox(null)} />
-      )}
-      <div
-        class="w-full max-w-xl rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-800 shrink-0">
-          <div class="flex items-center gap-2">
-            <h3 class="font-semibold text-zinc-100 text-sm">Post</h3>
-            {score != null && (
-              <span class={`text-[10px] font-medium px-1 py-0.5 rounded-sm ${minScore != null && score < minScore ? 'text-red-500' : score >= 70 ? 'text-emerald-500' : score >= 50 ? 'text-yellow-500' : 'text-zinc-600'}`}>
-                Score: {score}
-              </span>
-            )}
-          </div>
-          <div class="flex items-center gap-3">
-            <a href={tweet.url} target="_blank" rel="noopener"
-              class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
-              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
-              </svg>
-              Open on X
-            </a>
-            <button type="button" onClick={onClose} class="text-zinc-400 hover:text-zinc-200 text-xl leading-none">&times;</button>
-          </div>
-        </div>
+      <div class="w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
+        <TweetCard tweet={tweet} nudge={nudge} onNudge={onNudge} score={score} minScore={minScore} embedded />
 
-        {/* Scrollable content */}
-        <div class="overflow-y-auto flex-1 scrollbar-dark" style={{ maxHeight: 'calc(90vh - 56px)' }}>
-          <div class="px-4 py-4">
-            {/* Parent tweet context */}
-            {tweet.parentTweet && (
-              <div class="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 mb-3 flex items-start gap-2.5">
-                {tweet.parentTweet.authorAvatar && (
-                  <img src={tweet.parentTweet.authorAvatar} alt="" class="w-5 h-5 rounded-full mt-0.5 shrink-0" />
-                )}
-                <div class="min-w-0">
-                  <span class="text-xs text-zinc-500">
-                    <span class="font-medium text-zinc-400">{tweet.parentTweet.authorName}</span>
-                    {' '}@{tweet.parentTweet.authorHandle}
-                  </span>
-                  <p class="text-xs text-zinc-500 mt-0.5 break-words">{tweet.parentTweet.content}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Author */}
-            <div class="flex gap-3 mb-3">
-              {tweet.authorAvatar ? (
-                <img src={tweet.authorAvatar} alt="" class="w-10 h-10 rounded-full shrink-0 bg-zinc-700" loading="lazy" />
-              ) : (
-                <div class="w-10 h-10 rounded-full bg-zinc-700 flex items-center justify-center text-sm font-bold text-zinc-300 shrink-0">
-                  {tweet.authorName.charAt(0).toUpperCase()}
-                </div>
-              )}
-              <div class="min-w-0">
-                {tweet.isRetweet && (
-                  <div class="flex items-center gap-1 text-xs text-zinc-500 mb-0.5">
-                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                      <path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                    </svg>
-                    @{tweet.isRetweet} reposted
+        {/* Replies section */}
+        <div class="mt-2 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
+          <h4 class="text-sm font-semibold text-zinc-300 mb-3">Replies</h4>
+          {repliesLoading && <p class="text-zinc-500 text-sm py-4 text-center">Loading replies...</p>}
+          {repliesError && <p class="text-red-400 text-sm py-4 text-center">{repliesError}</p>}
+          {!repliesLoading && !repliesError && replies.length === 0 && (
+            <p class="text-zinc-600 text-sm py-4 text-center">No replies yet.</p>
+          )}
+          <div class="space-y-3">
+            {replies.map((r, i) => (
+              <div key={i} class="flex gap-2.5">
+                {r.authorAvatar ? (
+                  <img src={r.authorAvatar} alt="" class="w-7 h-7 rounded-full shrink-0 bg-zinc-700" />
+                ) : (
+                  <div class="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">
+                    {(r.authorName || '?').charAt(0).toUpperCase()}
                   </div>
                 )}
-                <div class="flex items-baseline gap-1.5 flex-wrap">
-                  <span class="font-semibold text-zinc-100">{tweet.authorName}</span>
-                  <span class="text-sm text-zinc-500">@{tweet.authorHandle}</span>
-                </div>
-                {tweet.authorBio && <p class="text-xs text-zinc-500 mt-0.5 line-clamp-2">{tweet.authorBio}</p>}
-                <div class="flex items-center gap-2 mt-0.5 text-xs text-zinc-600">
-                  {tweet.authorFollowers > 0 && <span>{fmt(tweet.authorFollowers)} followers</span>}
-                  {tweet.publishedAt && <span>&middot; {timeAgo(tweet.publishedAt)}</span>}
-                </div>
-              </div>
-            </div>
-
-            {/* Reply context */}
-            {tweet.replyToHandle && !tweet.parentTweet && (
-              <p class="text-xs text-zinc-500 mb-2">Replying to <span class="text-emerald-500">@{tweet.replyToHandle}</span></p>
-            )}
-
-            {/* Full content — no truncation */}
-            <div class="mb-3">
-              <p class="text-[15px] text-zinc-200 whitespace-pre-wrap leading-relaxed break-words">
-                {linkify(ogLoaded || card ? tweet.content.replace(/\s*https?:\/\/\S+/g, '').trim() : tweet.content)}
-              </p>
-            </div>
-
-            <MediaGrid media={media} linkUrl={tweet.url} onPhotoClick={setLightbox} />
-
-            {quoted && (
-              <div class="mt-3 rounded-xl border border-zinc-700 overflow-hidden p-3">
-                <div class="flex items-center gap-2 mb-1">
-                  {quoted.authorAvatar && <img src={quoted.authorAvatar} alt="" class="w-5 h-5 rounded-full" />}
-                  <span class="text-sm font-semibold text-zinc-200">{quoted.authorName}</span>
-                  <span class="text-xs text-zinc-500">@{quoted.authorHandle}</span>
-                </div>
-                <p class="text-sm text-zinc-400 break-words">{quoted.content}</p>
-                <MediaGrid media={quoted.media || []} linkUrl={quoted.url} onPhotoClick={setQuotedLightbox} />
-                {quoted.card && <LinkCard data={quoted.card} fallbackUrl={quoted.url} />}
-              </div>
-            )}
-
-            {card ? (
-              <LinkCard data={card} fallbackUrl={tweet.url} />
-            ) : (
-              !quoted && media.length === 0 && <OgEmbed text={tweet.content} onLoaded={onOgLoaded} />
-            )}
-
-            {/* Engagement + actions */}
-            <div class="flex flex-wrap items-center justify-between gap-y-1 mt-3 pt-3 border-t border-zinc-800 text-xs text-zinc-500">
-              <span class="flex items-center gap-3">
-                <span class="flex items-center gap-1">
-                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                  </svg>
-                  {tweet.replies > 0 && fmt(tweet.replies)}
-                </span>
-                {tweet.retweets > 0 && (
-                  <span class="flex items-center gap-1">
-                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                      <path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                      <path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                    </svg>
-                    {fmt(tweet.retweets)}
-                  </span>
-                )}
-                {tweet.likes > 0 && (
-                  <span class="flex items-center gap-1">
-                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                    </svg>
-                    {fmt(tweet.likes)}
-                  </span>
-                )}
-                {tweet.views > 0 && (
-                  <span class="flex items-center gap-1">
-                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                    {fmt(tweet.views)}
-                  </span>
-                )}
-              </span>
-              <span class="flex items-center gap-2">
-                {onNudge && (
-                  <span class="flex items-center gap-0.5">
-                    <button type="button"
-                      class={`p-0.5 rounded transition-colors ${nudge === 'up' ? 'text-emerald-400' : 'hover:text-emerald-400'}`}
-                      onClick={() => onNudge(tweet.id, 'up')} title="Show more like this">
-                      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={nudge === 'up' ? '2.5' : '1.5'}>
-                        <path d="M12 19V5m0 0l-6 6m6-6l6 6" />
-                      </svg>
-                    </button>
-                    <button type="button"
-                      class={`p-0.5 rounded transition-colors ${nudge === 'down' ? 'text-red-400' : 'hover:text-red-400'}`}
-                      onClick={() => onNudge(tweet.id, 'down')} title="Show less like this">
-                      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={nudge === 'down' ? '2.5' : '1.5'}>
-                        <path d="M12 5v14m0 0l6-6m-6 6l-6-6" />
-                      </svg>
-                    </button>
-                  </span>
-                )}
-                <CopyShareButton url={`${window.location.origin}/${tweet.authorHandle}/status/${tweet.url.match(/status\/(\d+)/)?.[1] || tweet.tweetId}`} />
-              </span>
-            </div>
-          </div>
-
-          {/* Replies section */}
-          <div class="border-t border-zinc-800 px-4 py-3">
-            <h4 class="text-sm font-semibold text-zinc-300 mb-3">Replies</h4>
-            {repliesLoading && <p class="text-zinc-500 text-sm py-4 text-center">Loading replies...</p>}
-            {repliesError && <p class="text-red-400 text-sm py-4 text-center">{repliesError}</p>}
-            {!repliesLoading && !repliesError && replies.length === 0 && (
-              <p class="text-zinc-600 text-sm py-4 text-center">No replies yet.</p>
-            )}
-            <div class="space-y-3">
-              {replies.map((r, i) => (
-                <div key={i} class="flex gap-2.5">
-                  {r.authorAvatar ? (
-                    <img src={r.authorAvatar} alt="" class="w-7 h-7 rounded-full shrink-0 bg-zinc-700" />
-                  ) : (
-                    <div class="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">
-                      {(r.authorName || '?').charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <div class="min-w-0 flex-1">
-                    <div class="flex items-baseline gap-1 mb-0.5 flex-wrap">
-                      <span class="text-sm font-semibold text-zinc-200">{r.authorName}</span>
-                      {r.authorHandle && <span class="text-xs text-zinc-500">@{r.authorHandle}</span>}
-                      {r.authorFollowers > 0 && <span class="text-xs text-zinc-600">&middot; {fmt(r.authorFollowers)}</span>}
-                      {r.likes > 0 && <span class="text-xs text-zinc-600">&middot; {fmt(r.likes)} likes</span>}
-                    </div>
-                    <p class="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed break-words">{r.content}</p>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-baseline gap-1 mb-0.5 flex-wrap">
+                    <span class="text-sm font-semibold text-zinc-200">{r.authorName}</span>
+                    {r.authorHandle && <span class="text-xs text-zinc-500">@{r.authorHandle}</span>}
+                    {r.authorFollowers > 0 && <span class="text-xs text-zinc-600">&middot; {fmt(r.authorFollowers)}</span>}
+                    {r.likes > 0 && <span class="text-xs text-zinc-600">&middot; {fmt(r.likes)} likes</span>}
                   </div>
+                  <p class="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed break-words">{r.content}</p>
                 </div>
-              ))}
-            </div>
-            {repliesCursor && (
-              <button type="button" onClick={loadMoreReplies} disabled={loadingMore}
-                class="mt-3 w-full rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50">
-                {loadingMore ? 'Loading...' : 'Load more replies'}
-              </button>
-            )}
+              </div>
+            ))}
           </div>
+          {repliesCursor && (
+            <button type="button" onClick={loadMoreReplies} disabled={loadingMore}
+              class="mt-3 w-full rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50">
+              {loadingMore ? 'Loading...' : 'Load more replies'}
+            </button>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
+export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: {
   tweet: Tweet
   nudge?: 'up' | 'down' | null
   onNudge?: (tweetId: string, direction: 'up' | 'down') => void
   score?: number | null
   minScore?: number
+  embedded?: boolean
 }) {
   const media: MediaItem[] = safeParse<MediaItem[]>(tweet.mediaUrls) ?? []
   const quoted = safeParse<QuotedTweet>(tweet.quotedTweet)
@@ -954,6 +1132,7 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
   const quotedMedia: MediaItem[] = quoted?.media || []
   const [lightbox, setLightbox] = useState<number | null>(null)
   const [quotedLightbox, setQuotedLightbox] = useState<number | null>(null)
+  const [parentLightbox, setParentLightbox] = useState<number | null>(null)
   const [showReplies, setShowReplies] = useState(false)
   const [showThread, setShowThread] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
@@ -968,8 +1147,8 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
   const onOgLoaded = useCallback(() => setOgLoaded(true), [])
 
   return (
-    <div class="overflow-hidden">
-    {showDetail && (
+    <div>
+    {!embedded && showDetail && (
       <TweetDetailModal
         tweet={tweet}
         onClose={() => setShowDetail(false)}
@@ -994,8 +1173,11 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
       </div>
     )}
     <div
-      class={`${tweet.parentTweet && !isThread ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} border border-zinc-800 bg-zinc-900 px-3 sm:px-4 py-3 hover:border-zinc-700 transition-colors overflow-hidden cursor-pointer`}
-      onClick={() => setShowDetail(true)}
+      class={`${tweet.parentTweet && !isThread ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} border border-zinc-800 bg-zinc-900 px-3 sm:px-4 py-3 hover:border-zinc-700 transition-colors overflow-hidden${embedded ? '' : ' cursor-pointer'}`}
+      onClick={embedded ? undefined : () => {
+        if (lightbox !== null || quotedLightbox !== null || parentLightbox !== null || showReplies || showThread) return
+        setShowDetail(true)
+      }}
     >
       {lightbox !== null && (
         <Lightbox
@@ -1011,12 +1193,15 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
           onClose={() => setQuotedLightbox(null)}
         />
       )}
-      {showReplies && (
-        <RepliesModal
-          tweetId={tweet.url.match(/status\/(\d+)/)?.[1] || tweet.tweetId}
-          onClose={() => setShowReplies(false)}
-        />
-      )}
+      {showReplies && (() => {
+        const replyTarget = isThread && tweet.parentTweet ? tweet.parentTweet : tweet
+        return (
+          <RepliesModal
+            tweetId={replyTarget.url.match(/status\/(\d+)/)?.[1] || replyTarget.tweetId}
+            onClose={() => setShowReplies(false)}
+          />
+        )
+      })()}
       {showThread && (
         <ThreadModal
           tweetId={tweet.url.match(/status\/(\d+)/)?.[1] || tweet.tweetId}
@@ -1024,6 +1209,13 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
         />
       )}
       {/* Inline thread parent */}
+      {parentLightbox !== null && (
+        <Lightbox
+          items={parentMedia.filter((m) => m.type === 'photo')}
+          index={parentLightbox}
+          onClose={() => setParentLightbox(null)}
+        />
+      )}
       {isThread && tweet.parentTweet && (
         <div class="pb-2 mb-2 border-b border-zinc-800">
           <div class="flex items-center gap-2 mb-1">
@@ -1041,9 +1233,9 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
             )}
           </div>
           <TweetContent text={tweet.parentTweet.content} hideUrls={!!parentCard} />
-          {parentMedia.length > 0 && <MediaGrid media={parentMedia} linkUrl={tweet.parentTweet.url} />}
+          {parentMedia.length > 0 && <MediaGrid media={parentMedia} onPhotoClick={setParentLightbox} />}
           {parentQuoted && (
-            <div class="mt-2 rounded-xl border border-zinc-700 overflow-hidden p-2.5" onClick={(e) => e.stopPropagation()}>
+            <div class="mt-2 rounded-xl border border-zinc-700 overflow-hidden p-2.5 cursor-default" onClick={(e) => e.stopPropagation()}>
               <div class="flex items-center gap-2 mb-1">
                 {parentQuoted.authorAvatar && <img src={parentQuoted.authorAvatar} alt="" class="w-4 h-4 rounded-full" />}
                 <span class="text-xs font-semibold text-zinc-300">{parentQuoted.authorName}</span>
@@ -1053,10 +1245,49 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
             </div>
           )}
           {parentCard ? (
-            <LinkCard data={parentCard} fallbackUrl={tweet.parentTweet.url} />
+            <LinkCard data={parentCard} fallbackUrl={tweet.parentTweet.url} tweetUrl={tweet.parentTweet.url} />
           ) : (
             parentMedia.length === 0 && !parentQuoted && <OgEmbed text={tweet.parentTweet.content} onLoaded={() => {}} />
           )}
+          {/* Parent engagement */}
+          <div class="flex items-center gap-3 mt-2 text-xs text-zinc-500">
+            <button
+              type="button"
+              class="flex items-center gap-1 hover:text-blue-400 transition-colors"
+              onClick={(e) => { e.stopPropagation(); setShowReplies(true) }}
+            >
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+              </svg>
+              {tweet.parentTweet.replies > 0 && fmt(tweet.parentTweet.replies)}
+            </button>
+            {tweet.parentTweet.retweets > 0 && (
+              <span class="flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                  <path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                </svg>
+                {fmt(tweet.parentTweet.retweets)}
+              </span>
+            )}
+            {tweet.parentTweet.likes > 0 && (
+              <span class="flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                </svg>
+                {fmt(tweet.parentTweet.likes)}
+              </span>
+            )}
+            {tweet.parentTweet.views > 0 && (
+              <span class="flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                {fmt(tweet.parentTweet.views)}
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -1122,12 +1353,12 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
       <TweetContent text={tweet.content} hideUrls={ogLoaded || !!card} />
 
       {/* Media thumbnails */}
-      <MediaGrid media={media} linkUrl={tweet.url} onPhotoClick={setLightbox} />
+      <MediaGrid media={media} onPhotoClick={setLightbox} />
 
       {/* Quoted tweet */}
       {quoted && (
         <div
-          class="mt-2 rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors p-3"
+          class="mt-2 rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors p-3 cursor-default"
           onClick={(e) => e.stopPropagation()}
         >
           <div class="flex items-center gap-2 mb-1">
@@ -1138,14 +1369,14 @@ function TweetCard({ tweet, nudge, onNudge, score, minScore }: {
             <span class="text-xs text-zinc-500">@{quoted.authorHandle}</span>
           </div>
           <p class="text-sm text-zinc-400 line-clamp-3 break-words">{quoted.content}</p>
-          <MediaGrid media={quoted.media || []} linkUrl={quoted.url} onPhotoClick={setQuotedLightbox} />
-          {quoted.card && <LinkCard data={quoted.card} fallbackUrl={quoted.url} />}
+          <MediaGrid media={quoted.media || []} onPhotoClick={setQuotedLightbox} />
+          {quoted.card && <LinkCard data={quoted.card} fallbackUrl={quoted.url} tweetUrl={quoted.url} />}
         </div>
       )}
 
       {/* Link card — from API card data or OG fetch */}
       {card ? (
-        <LinkCard data={card} fallbackUrl={tweet.url} />
+        <LinkCard data={card} fallbackUrl={tweet.url} tweetUrl={tweet.url} />
       ) : (
         !quoted && media.length === 0 && <OgEmbed text={tweet.content} onLoaded={onOgLoaded} />
       )}
