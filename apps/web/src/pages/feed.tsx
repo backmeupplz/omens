@@ -1199,8 +1199,10 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 
   useEffect(() => {
     onRefreshRef?.(refresh)
-    return () => setScoringPolling(false)
   }, [refresh, onRefreshRef])
+
+  // Cleanup polling on unmount only
+  useEffect(() => () => setScoringPolling(false), [])
 
   const showNewPosts = () => {
     setNewReady(0)
