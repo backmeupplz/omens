@@ -3,12 +3,13 @@ import { useLocation } from 'wouter-preact'
 import { api, API_BASE } from '../helpers/api'
 import { Countdown } from '../helpers/components'
 import { useApi } from '../helpers/hooks'
+import { Spinner } from '../helpers/spinner'
 
 // === X Section ===
 
 function XSection({ onXChange }: { onXChange: () => void }) {
   const [, navigate] = useLocation()
-  const { data: session, refetch } = useApi<{
+  const { data: session, loading: sessionLoading, refetch } = useApi<{
     connected: boolean
     username?: string
     connectedAt?: string
@@ -54,6 +55,8 @@ function XSection({ onXChange }: { onXChange: () => void }) {
       setError(e instanceof Error ? e.message : 'Failed to disconnect')
     }
   }
+
+  if (sessionLoading) return <Spinner />
 
   if (session?.connected) {
     return (

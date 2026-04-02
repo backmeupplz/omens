@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { api } from '../helpers/api'
+import { Spinner } from '../helpers/spinner'
 import { TweetCard, renderReportContent, type Tweet } from './feed'
 
 interface SharedTweet {
@@ -35,7 +36,7 @@ export function SharePage({ handle, tweetId }: { handle: string; tweetId: string
   if (loading) {
     return (
       <div class="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <p class="text-zinc-500 text-sm">Loading...</p>
+        <Spinner />
       </div>
     )
   }
@@ -120,7 +121,7 @@ export function ReportSharePage({ id }: { id: string }) {
   if (loading) {
     return (
       <div class="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <p class="text-zinc-500 text-sm">Loading...</p>
+        <Spinner />
       </div>
     )
   }

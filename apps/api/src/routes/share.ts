@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { and, eq, inArray } from 'drizzle-orm'
 import { aiReports, getDb, tweets } from '@omens/db'
+import { serveStatic } from 'hono/bun'
 import env from '../env'
 import {
   extractReportSummary,
@@ -119,6 +120,8 @@ shareRouter.get('/:handle/status/:tweetId', async (c) => {
   }
 
   if (!env.WEB_DIR) return c.redirect(`http://localhost:5173/${handle}/status/${tweetId}`)
+
+  return serveStatic({ root: env.WEB_DIR, path: '/index.html' })(c, async () => {})
 })
 
 // Report OG
@@ -161,6 +164,8 @@ shareRouter.get('/report/:id', async (c) => {
   }
 
   if (!env.WEB_DIR) return c.redirect(`http://localhost:5173/report/${id}`)
+
+  return serveStatic({ root: env.WEB_DIR, path: '/index.html' })(c, async () => {})
 })
 
 export default shareRouter

@@ -4,6 +4,7 @@ import { Countdown } from '../helpers/components'
 import { fmt, safeParse, timeAgo } from '../helpers/format'
 import { useApi } from '../helpers/hooks'
 import { renderMarkdownLine } from '../helpers/markdown'
+import { Spinner } from '../helpers/spinner'
 import { AiSection } from './settings'
 
 function videoProxyUrl(url: string): string {
@@ -189,7 +190,7 @@ function RepliesModal({
           </button>
         </div>
         <div class="overflow-y-auto flex-1 p-4 scrollbar-dark">
-          {loading && <p class="text-zinc-500 text-sm py-8 text-center">Loading replies...</p>}
+          {loading && <Spinner />}
           {error && <p class="text-red-400 text-sm py-8 text-center">{error}</p>}
           {!loading && !error && replies.length === 0 && (
             <p class="text-zinc-500 text-sm py-8 text-center">No replies yet.</p>
@@ -312,7 +313,7 @@ function ThreadModal({
           </button>
         </div>
         <div class="overflow-y-auto flex-1 p-4 scrollbar-dark">
-          {loading && <p class="text-zinc-500 text-sm py-8 text-center">Loading thread...</p>}
+          {loading && <Spinner />}
           {error && <p class="text-red-400 text-sm py-8 text-center">{error}</p>}
           {!loading && !error && tweets.length === 0 && (
             <p class="text-zinc-500 text-sm py-8 text-center">No thread found.</p>
@@ -470,8 +471,20 @@ interface ArticleData {
   authorAvatar: string | null
 }
 
+/** Split text on \n and interleave <br> */
+function textWithBreaks(text: string): preact.ComponentChildren {
+  if (!text.includes('\n')) return text
+  const lines = text.split('\n')
+  const out: preact.ComponentChildren[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (i > 0) out.push(<br />)
+    if (lines[i]) out.push(lines[i])
+  }
+  return <>{out}</>
+}
+
 function applyFormat(text: string, format?: ArticleRichBlock['format']): preact.ComponentChildren {
-  if (!format || format.length === 0) return text
+  if (!format || format.length === 0) return textWithBreaks(text)
 
   // Collect all boundary points and the styles active at each segment
   const points = new Set<number>()
@@ -496,7 +509,7 @@ function applyFormat(text: string, format?: ArticleRichBlock['format']): preact.
     const bold = active.some((f) => f.type === 'bold')
     const italic = active.some((f) => f.type === 'italic')
 
-    let node: preact.ComponentChildren = segment
+    let node: preact.ComponentChildren = textWithBreaks(segment)
     if (bold) node = <strong class="font-semibold">{node}</strong>
     if (italic) node = <em>{node}</em>
     if (link) node = <a href={link.href} target="_blank" rel="noopener" class="text-blue-400 hover:underline">{node}</a>
@@ -534,7 +547,7 @@ function EmbeddedTweet({ tweetId }: { tweetId: string }) {
       .finally(() => setLoading(false))
   }, [tweetId])
 
-  if (loading) return <div class="my-3 rounded-xl border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-sm text-zinc-500 animate-pulse">Loading post...</div>
+  if (loading) return <div class="my-3"><Spinner class="py-3" /></div>
   if (!tweet) {
     return (
       <a href={`https://x.com/i/status/${tweetId}`} target="_blank" rel="noopener"
@@ -583,7 +596,7 @@ function isTweetUrl(text: string): string | null {
 
 /** Render plain text body with paragraph splitting, formatting, and embedded tweets */
 function ArticleBodyPlainText({ body }: { body: string }) {
-  const paragraphs = body.split(/\n\n+/)
+  const paragraphs = body.split(/\n/)
   return (
     <div>
       {paragraphs.map((p, i) => {
@@ -626,6 +639,7 @@ function ArticleModal({
   const [article, setArticle] = useState<ArticleData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
 
   useEffect(() => {
     api<{ article: ArticleData }>(`/x/article/${tweetId}`)
@@ -635,10 +649,12 @@ function ArticleModal({
   }, [tweetId])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (lightboxUrl) setLightboxUrl(null); else onClose() }
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, lightboxUrl])
 
   useEffect(() => {
     document.body.style.overflow = 'hidden'
@@ -654,7 +670,7 @@ function ArticleModal({
             ? <h4 key={i} class="text-base font-semibold text-zinc-200 mt-4 mb-1">{applyFormat(block.text || '', block.format)}</h4>
             : <h3 key={i} class="text-lg font-semibold text-zinc-100 mt-5 mb-1.5">{applyFormat(block.text || '', block.format)}</h3>
       case 'image':
-        return <img key={i} src={block.url} alt="" class="w-full rounded-lg my-4" loading="lazy" />
+        return <img key={i} src={block.url} alt="" class="w-full rounded-lg my-4 cursor-pointer" loading="lazy" onClick={() => setLightboxUrl(block.url!)} />
       case 'blockquote':
         return <blockquote key={i} class="border-l-2 border-zinc-600 pl-4 my-3 text-zinc-400 italic">{applyFormat(block.text || '', block.format)}</blockquote>
       case 'list': {
@@ -676,8 +692,8 @@ function ArticleModal({
 
   return (
     <div
-      class="fixed inset-0 z-50 flex items-start justify-center bg-black/80 overflow-y-auto py-8 px-3"
-      onClick={(e: Event) => { e.stopPropagation(); onClose() }}
+      class="fixed inset-0 z-50 flex items-start justify-center bg-black/80 overflow-y-auto py-8 px-3 cursor-default"
+      onClick={(e: Event) => { e.stopPropagation(); if (!lightboxUrl) onClose() }}
     >
       <div
         class="w-full max-w-2xl rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col overflow-hidden"
@@ -701,7 +717,7 @@ function ArticleModal({
 
         {/* Content */}
         <div class="overflow-y-auto flex-1 scrollbar-dark" style={{ maxHeight: 'calc(90vh - 56px)' }}>
-          {loading && <p class="text-zinc-500 text-sm py-12 text-center">Loading article...</p>}
+          {loading && <Spinner />}
           {error && (
             <div class="py-12 px-4 text-center">
               <p class="text-red-400 text-sm mb-3">{error}</p>
@@ -712,7 +728,8 @@ function ArticleModal({
             <div>
               {/* Cover image */}
               {(article.coverImage || cardData.thumbnail) && (
-                <img src={article.coverImage || cardData.thumbnail!} alt="" class="w-full" loading="lazy" />
+                <img src={article.coverImage || cardData.thumbnail!} alt="" class="w-full cursor-pointer" loading="lazy"
+                  onClick={() => setLightboxUrl(article.coverImage || cardData.thumbnail!)} />
               )}
               <div class="px-5 py-5">
                 {/* Author */}
@@ -742,6 +759,13 @@ function ArticleModal({
           )}
         </div>
       </div>
+      {lightboxUrl && (
+        <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80"
+          onClick={() => setLightboxUrl(null)}>
+          <img src={lightboxUrl} alt="" class="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
     </div>
   )
 }
@@ -1099,7 +1123,7 @@ function TweetDetailModal({
         {/* Replies section */}
         <div class="mt-2 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
           <h4 class="text-sm font-semibold text-zinc-300 mb-3">Replies</h4>
-          {repliesLoading && <p class="text-zinc-500 text-sm py-4 text-center">Loading replies...</p>}
+          {repliesLoading && <Spinner class="py-4" />}
           {repliesError && <p class="text-red-400 text-sm py-4 text-center">{repliesError}</p>}
           {!repliesLoading && !repliesError && replies.length === 0 && (
             <p class="text-zinc-600 text-sm py-4 text-center">No replies yet.</p>
@@ -1756,7 +1780,7 @@ function AiReportView() {
     setViewingReport(null)
   }
 
-  if (settingsLoading || loading) return <p class="text-zinc-500 py-8 text-center">Loading...</p>
+  if (settingsLoading || loading) return <Spinner />
   if (!settings?.configured) return <AiSection onSave={refetchSettings} />
 
   const activeReport = viewingReportId ? viewingReport : data?.report
@@ -2154,27 +2178,20 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
         </div>
       )}
 
-      {loading && <p class="text-zinc-500 py-8 text-center">Loading...</p>}
+      {loading && <Spinner />}
       {filterError && <p class="text-red-400 text-sm text-center mb-2">{filterError}</p>}
       {error && <p class="text-red-400 text-center">{error}</p>}
 
       {allTweets.length === 0 && !loading && pendingCount === 0 && (
-        <div class="flex flex-col items-center justify-center py-20">
-          <svg class="w-10 h-10 text-zinc-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
-            <path d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
-          </svg>
-          {!aiConfigured ? (
-            <AiSection onSave={() => window.location.reload()} />
-          ) : (
-            <>
-              <p class="text-zinc-400 mb-4">No posts to show yet. Fetch your feed first.</p>
-              <button type="button" onClick={refresh} disabled={fetchingPosts}
-                class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
-                {fetchingPosts ? 'Fetching...' : 'Fetch posts'}
-              </button>
-            </>
-          )}
-        </div>
+        !aiConfigured ? <AiSection onSave={() => window.location.reload()} /> : (
+          <div class="flex flex-col items-center justify-center py-20">
+            <p class="text-zinc-400 mb-4">No posts to show yet. Fetch your feed first.</p>
+            <button type="button" onClick={refresh} disabled={fetchingPosts}
+              class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
+              {fetchingPosts ? 'Fetching...' : 'Fetch posts'}
+            </button>
+          </div>
+        )
       )}
 
       <div class="flex flex-col gap-2">
@@ -2224,7 +2241,7 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
           {refreshCount !== null ? (refreshCount > 0 ? `+${refreshCount} posts` : 'Nothing new') : feedback}
         </div>
       )}
-      {loading && <p class="text-zinc-500 py-8 text-center">Loading...</p>}
+      {loading && <Spinner />}
       {refreshError && <p class="text-red-400 text-sm text-center mb-2">{refreshError}</p>}
       {error && <p class="text-red-400 text-center">{error}</p>}
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'preact/hooks'
 import { Link, Redirect, Route, Switch, useLocation } from 'wouter-preact'
 import { api } from './helpers/api'
+import { Spinner } from './helpers/spinner'
 import { AiReportPage, Feed, FilteredFeed } from './pages/feed'
 import { Login, Register } from './pages/login'
 import { Settings } from './pages/settings'
@@ -88,7 +89,7 @@ function AuthGuard({
   auth: AuthState
   children: preact.ComponentChildren
 }) {
-  if (!auth.checked) return <p class="text-zinc-500">Loading...</p>
+  if (!auth.checked) return <Spinner />
   if (auth.singleUser) return <>{children}</>
   if (!auth.loggedIn) return <Redirect to="/login" />
   return <>{children}</>
@@ -101,7 +102,7 @@ function XGuard({
   auth: AuthState
   children: preact.ComponentChildren
 }) {
-  if (!auth.xChecked) return <p class="text-zinc-500">Loading...</p>
+  if (!auth.xChecked) return <Spinner />
   if (!auth.xConnected) return <Redirect to="/settings" />
   return <>{children}</>
 }
