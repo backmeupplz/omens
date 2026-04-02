@@ -512,6 +512,8 @@ function AiTuningSection() {
   const hasPending = internals.pendingNudges.length > 0 || internals.pendingInstructions.length > 0
 
   return (
+    <>
+    <hr class="border-zinc-800" />
     <div class="space-y-4">
       <h3 class="font-medium">AI Tuning</h3>
 
@@ -736,6 +738,7 @@ function AiTuningSection() {
         )}
       </div>
     </div>
+    </>
   )
 }
 
@@ -867,7 +870,6 @@ export function Settings({
           <>
             <hr class="border-zinc-800" />
             <AiSection />
-            <hr class="border-zinc-800" />
             <AiTuningSection />
             <hr class="border-zinc-800" />
             <ApiKeysSection />
