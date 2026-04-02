@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { api } from '../helpers/api'
-import { renderMarkdown } from '../helpers/markdown'
-import { TweetCard, type Tweet } from './feed'
+import { TweetCard, renderReportContent, type Tweet } from './feed'
 
 interface SharedTweet {
   tweetId: string
@@ -101,6 +100,8 @@ interface SharedReport {
   content: string
   model: string
   tweetCount: number
+  tweetRefs: string[]
+  refTweets: Tweet[]
   createdAt: string
 }
 
@@ -137,17 +138,18 @@ export function ReportSharePage({ id }: { id: string }) {
     month: 'short', day: 'numeric', year: 'numeric',
   })
 
+  const refTweetMap = new Map<string, Tweet>()
+  for (const t of report.refTweets) refTweetMap.set(t.id, t)
+
   return (
     <div class="min-h-screen bg-zinc-950 text-zinc-100">
       <main class="max-w-2xl mx-auto px-4 py-8">
-        <article class="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-5">
-          <div class="flex items-center justify-between mb-4 pb-3 border-b border-zinc-800">
-            <div>
-              <span class="text-xs text-zinc-500">{date} &middot; {report.tweetCount} posts analyzed</span>
-            </div>
+        <article class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden">
+          <div class="flex items-center justify-between mb-3 pb-3 border-b border-zinc-800">
+            <span class="text-xs text-zinc-500">{date} &middot; {report.tweetCount} posts analyzed</span>
             <span class="text-xs font-medium text-emerald-500">Omens Report</span>
           </div>
-          <div>{renderMarkdown(report.content.replace(/\[\[tweet:[^\]]+\]\]/g, ''))}</div>
+          {renderReportContent(report.content, refTweetMap)}
         </article>
 
         <div class="mt-8 text-center">

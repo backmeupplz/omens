@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { aiReports, getDb, tweets } from '@omens/db'
 import env from '../env'
 import {
@@ -110,8 +110,12 @@ shareRouter.get('/report/:id/data', async (c) => {
   const db = getDb(env.DATABASE_URL)
   const [report] = await db.select().from(aiReports).where(eq(aiReports.id, id)).limit(1)
   if (!report) return c.json({ error: 'Report not found' }, 404)
+  const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
+  const refTweets = tweetRefIds.length > 0
+    ? await db.select().from(tweets).where(inArray(tweets.id, tweetRefIds))
+    : []
   return c.json({
-    report: { id: report.id, content: report.content, model: report.model, tweetCount: report.tweetCount, createdAt: report.createdAt },
+    report: { id: report.id, content: report.content, model: report.model, tweetCount: report.tweetCount, tweetRefs: tweetRefIds, refTweets, createdAt: report.createdAt },
   })
 })
 

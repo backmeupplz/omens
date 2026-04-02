@@ -1577,7 +1577,7 @@ interface AiReportData {
   createdAt: string
 }
 
-function renderReportContent(
+export function renderReportContent(
   text: string,
   refTweets: Map<string, Tweet>,
 ): preact.ComponentChildren[] {
@@ -1630,6 +1630,7 @@ function AiReportView() {
   refetchRef.current = refetch
 
   /** Connect to SSE stream and accumulate content */
+  const mountedRef = useRef(true)
   const connectStream = useCallback(() => {
     abortRef.current?.abort()
     const controller = new AbortController()
@@ -1679,13 +1680,14 @@ function AiReportView() {
           }
         }
         // Stream ended without [DONE] or [ERROR] — connection was cut short
-        if (!completed) {
+        if (!completed && !controller.signal.aborted && mountedRef.current) {
           setGenerating(false)
           setStreamContent('')
           setError('Connection lost during report generation')
         }
       })
       .catch((e) => {
+        if (controller.signal.aborted || !mountedRef.current) return
         if (e instanceof Error && e.name === 'AbortError') return
         setGenerating(false)
         setStreamContent('')
@@ -1707,7 +1709,7 @@ function AiReportView() {
         }
       })
       .catch(() => {})
-    return () => abortRef.current?.abort()
+    return () => { mountedRef.current = false; abortRef.current?.abort() }
   }, [])
 
   const generate = async () => {
