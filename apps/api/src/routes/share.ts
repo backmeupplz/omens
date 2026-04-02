@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
 import { eq, inArray } from 'drizzle-orm'
 import { aiReports, getDb, tweets } from '@omens/db'
-import { serveStatic } from 'hono/bun'
 import env from '../env'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import {
   extractReportSummary,
   generateReportOgPng,
@@ -19,20 +20,32 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + '\u2026' : s
 }
 
-const BOT_UA = /bot|crawl|spider|slurp|facebookexternalhit|Twitterbot|LinkedInBot|Discordbot|TelegramBot|WhatsApp|Slack|preview/i
-
-function isCrawler(ua: string): boolean { return BOT_UA.test(ua) }
-
 function origin(): string { return env.CORS_ORIGIN || 'https://omens.online' }
 
-function ogHtml(meta: { title: string; description: string; url: string; image?: string; largeImage?: boolean }): Response {
-  const img = meta.image ? `<meta property="og:image" content="${esc(meta.image)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:image" content="${esc(meta.image)}">` : ''
-  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-<meta property="og:title" content="${esc(meta.title)}"><meta property="og:description" content="${esc(meta.description)}">
+let _spaHtml: string | null = null
+function getSpaHtml(): string {
+  if (!_spaHtml && env.WEB_DIR) {
+    _spaHtml = readFileSync(join(env.WEB_DIR, 'index.html'), 'utf-8')
+  }
+  return _spaHtml || ''
+}
+
+function ogTags(meta: { title: string; description: string; url: string; image?: string; largeImage?: boolean }): string {
+  const img = meta.image
+    ? `<meta property="og:image" content="${esc(meta.image)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:image" content="${esc(meta.image)}">`
+    : ''
+  return `<meta property="og:title" content="${esc(meta.title)}"><meta property="og:description" content="${esc(meta.description)}">
 <meta property="og:type" content="article"><meta property="og:url" content="${esc(meta.url)}">${img}
 <meta name="twitter:card" content="${meta.largeImage ? 'summary_large_image' : 'summary'}">
-<meta name="twitter:title" content="${esc(meta.title)}"><meta name="twitter:description" content="${esc(meta.description)}">
-<title>${esc(meta.title)} — Omens</title></head><body><p>${esc(meta.description)}</p></body></html>`
+<meta name="twitter:title" content="${esc(meta.title)}"><meta name="twitter:description" content="${esc(meta.description)}">`
+}
+
+function spaWithOg(meta: { title: string; description: string; url: string; image?: string; largeImage?: boolean }): Response {
+  const tags = ogTags(meta)
+  const titleTag = `<title>${esc(meta.title)} — Omens</title>`
+  const html = getSpaHtml()
+    .replace(/<title>[^<]*<\/title>/, titleTag)
+    .replace('</head>', `${tags}\n</head>`)
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }
 
@@ -109,19 +122,17 @@ shareRouter.get('/:handle/status/:tweetId', async (c) => {
 
   if (!tweet) return c.html('<meta http-equiv="refresh" content="0;url=/">', 404)
 
-  if (isCrawler(c.req.header('user-agent') || '')) {
-    return ogHtml({
-      title: `${tweet.authorName} (@${tweet.authorHandle})`,
-      description: truncate(tweet.content, 200),
-      url: `${origin()}/${handle}/status/${tweetId}`,
-      image: `${origin()}/${handle}/status/${tweetId}/og.png`,
-      largeImage: true,
-    })
+  const meta = {
+    title: `${tweet.authorName} (@${tweet.authorHandle})`,
+    description: truncate(tweet.content, 200),
+    url: `${origin()}/${handle}/status/${tweetId}`,
+    image: `${origin()}/${handle}/status/${tweetId}/og.png`,
+    largeImage: true,
   }
 
   if (!env.WEB_DIR) return c.redirect(`http://localhost:5173/${handle}/status/${tweetId}`)
 
-  return serveStatic({ root: env.WEB_DIR, path: '/index.html' })(c, async () => {})
+  return spaWithOg(meta)
 })
 
 // Report OG
@@ -154,18 +165,16 @@ shareRouter.get('/report/:id', async (c) => {
 
   if (!report) return c.html('<meta http-equiv="refresh" content="0;url=/">', 404)
 
-  if (isCrawler(c.req.header('user-agent') || '')) {
-    const { title, bullets } = extractReportSummary(report.content)
-    const description = truncate(bullets.map((b) => `\u2022 ${b}`).join(' ') || report.content.replace(/[#*\n]+/g, ' ').trim(), 200)
-    return ogHtml({
-      title: `${title} — Omens Report`, description,
-      url: `${origin()}/report/${id}`, image: `${origin()}/report/${id}/og.png`, largeImage: true,
-    })
+  const { title, bullets } = extractReportSummary(report.content)
+  const description = truncate(bullets.map((b) => `\u2022 ${b}`).join(' ') || report.content.replace(/[#*\n]+/g, ' ').trim(), 200)
+  const meta = {
+    title: `${title} — Omens Report`, description,
+    url: `${origin()}/report/${id}`, image: `${origin()}/report/${id}/og.png`, largeImage: true,
   }
 
   if (!env.WEB_DIR) return c.redirect(`http://localhost:5173/report/${id}`)
 
-  return serveStatic({ root: env.WEB_DIR, path: '/index.html' })(c, async () => {})
+  return spaWithOg(meta)
 })
 
 export default shareRouter
