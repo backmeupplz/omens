@@ -503,19 +503,15 @@ function AiTuningSection() {
 
   const regenAbortRef = useRef<AbortController | null>(null)
 
-  const regenerate = async () => {
+  const connectToRegenStream = useCallback(() => {
+    regenAbortRef.current?.abort()
+    const controller = new AbortController()
+    regenAbortRef.current = controller
     setRegenerating(true)
-    setRegenStatus('Starting...')
-    setError('')
-    try {
-      await api('/ai/regenerate-prompt', { method: 'POST' })
-      // Connect to SSE for live status
-      regenAbortRef.current?.abort()
-      const controller = new AbortController()
-      regenAbortRef.current = controller
-      const res = await fetch(`${API_BASE}/ai/regenerate-stream`, { credentials: 'include', signal: controller.signal })
-      const reader = res.body?.getReader()
-      if (reader) {
+    fetch(`${API_BASE}/ai/regenerate-stream`, { credentials: 'include', signal: controller.signal })
+      .then(async (res) => {
+        const reader = res.body?.getReader()
+        if (!reader) return
         const decoder = new TextDecoder()
         let buf = ''
         while (true) {
@@ -532,10 +528,36 @@ function AiTuningSection() {
             try { const j = JSON.parse(data); if (j.status) setRegenStatus(j.status) } catch {}
           }
         }
-      }
-      setRegenerating(false)
-      setRegenStatus('')
-      refetch()
+        setRegenerating(false)
+        setRegenStatus('')
+        refetch()
+      })
+      .catch((e) => {
+        if (e instanceof Error && e.name === 'AbortError') return
+        setRegenerating(false)
+        setRegenStatus('')
+      })
+  }, [refetch])
+
+  // On mount, check if a regeneration is already in progress (e.g. after page reload)
+  useEffect(() => {
+    api<{ active: boolean; status: string | null }>('/ai/regenerate-status')
+      .then((s) => {
+        if (s.active) {
+          setRegenStatus(s.status || 'Applying...')
+          connectToRegenStream()
+        }
+      })
+      .catch(() => {})
+  }, [connectToRegenStream])
+
+  const regenerate = async () => {
+    setRegenerating(true)
+    setRegenStatus('Starting...')
+    setError('')
+    try {
+      await api('/ai/regenerate-prompt', { method: 'POST' })
+      connectToRegenStream()
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') return
       setError(e instanceof Error ? e.message : 'Failed to regenerate')

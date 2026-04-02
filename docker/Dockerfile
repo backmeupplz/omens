@@ -1,4 +1,4 @@
-FROM node:22-alpine AS deps
+FROM node:22-slim AS deps
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10 --activate
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -17,7 +17,8 @@ RUN cd apps/web && npx vite build
 
 # Build api (needs bun for bun build)
 FROM deps AS build-api
-RUN apk add --no-cache bash curl unzip && curl -fsSL https://bun.sh/install | bash
+RUN apt-get update && apt-get install -y --no-install-recommends curl unzip && \
+    rm -rf /var/lib/apt/lists/* && curl -fsSL https://bun.sh/install | bash
 COPY tsconfig.base.json ./
 COPY apps/api/ apps/api/
 COPY packages/shared/ packages/shared/
@@ -36,6 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build-api /app/apps/api/dist ./api/
+COPY --from=build-api /app/apps/api/assets ./api/assets/
 COPY --from=build-web /app/apps/web/dist ./web/
 COPY --from=deps /app/node_modules ./node_modules/
 COPY packages/db/ packages/db/

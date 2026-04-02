@@ -96,6 +96,19 @@ aiRouter.get('/settings', async (c) => {
     if (raw.length > 8) maskedKey = raw.slice(0, 4) + '••••' + raw.slice(-4)
   } catch {}
 
+  // Compute next auto-report time server-side (matches fetcher logic exactly)
+  let nextReportAt: number | null = null
+  if (settings.reportIntervalHours > 0) {
+    if (settings.reportIntervalHours >= 24) {
+      const now = new Date()
+      const todayTarget = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), settings.reportAtHour))
+      nextReportAt = todayTarget.getTime() <= Date.now() ? todayTarget.getTime() + 86_400_000 : todayTarget.getTime()
+    } else {
+      const lastReport = settings.lastAutoReportAt?.getTime() || 0
+      nextReportAt = lastReport + settings.reportIntervalHours * 3_600_000
+    }
+  }
+
   return c.json({
     configured: true,
     provider: settings.provider,
@@ -104,6 +117,7 @@ aiRouter.get('/settings', async (c) => {
     fetchIntervalMinutes: settings.fetchIntervalMinutes,
     reportIntervalHours: settings.reportIntervalHours,
     reportAtHour: settings.reportAtHour,
+    nextReportAt,
     baseUrl: settings.baseUrl || '',
     model: settings.model,
     systemPrompt: settings.systemPrompt || '',
