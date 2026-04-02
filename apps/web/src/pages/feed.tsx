@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { api } from '../helpers/api'
+import { api, API_BASE } from '../helpers/api'
 import { Countdown } from '../helpers/components'
 import { fmt, safeParse, timeAgo } from '../helpers/format'
 import { useApi } from '../helpers/hooks'
@@ -840,7 +840,7 @@ function AiReportView() {
     const controller = new AbortController()
     abortRef.current = controller
 
-    fetch('/api/ai/report-stream', { credentials: 'include', signal: controller.signal })
+    fetch(`${API_BASE}/ai/report-stream`, { credentials: 'include', signal: controller.signal })
       .then(async (res) => {
         const reader = res.body?.getReader()
         if (!reader) return

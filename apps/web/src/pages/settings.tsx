@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { useLocation } from 'wouter-preact'
-import { api } from '../helpers/api'
+import { api, API_BASE } from '../helpers/api'
 import { Countdown } from '../helpers/components'
 import { useApi } from '../helpers/hooks'
 
@@ -478,7 +478,7 @@ function AiTuningSection() {
       regenAbortRef.current?.abort()
       const controller = new AbortController()
       regenAbortRef.current = controller
-      const res = await fetch('/api/ai/regenerate-stream', { credentials: 'include', signal: controller.signal })
+      const res = await fetch(`${API_BASE}/ai/regenerate-stream`, { credentials: 'include', signal: controller.signal })
       const reader = res.body?.getReader()
       if (reader) {
         const decoder = new TextDecoder()

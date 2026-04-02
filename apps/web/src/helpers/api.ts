@@ -1,4 +1,5 @@
-const BASE = '/api'
+// In dev, Vite proxy rewrites /api → backend. In production, API is same-origin at root.
+export const API_BASE = window.location.port === '5173' ? '/api' : ''
 
 // Paths where 401 is expected and should NOT trigger a redirect
 const SILENT_401 = ['/auth/', '/x/session']
@@ -40,7 +41,7 @@ export async function api<T = unknown>(
 
   let res: Response
   try {
-    res = await fetch(`${BASE}${path}`, {
+    res = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers,
       credentials: 'include',
