@@ -4,7 +4,6 @@ import { Countdown } from '../helpers/components'
 import { fmt, safeParse, timeAgo } from '../helpers/format'
 import { useApi } from '../helpers/hooks'
 import { renderMarkdownLine } from '../helpers/markdown'
-import { usePolling } from '../helpers/usePolling'
 import { AiSection } from './settings'
 
 // === Lightbox ===
@@ -1128,38 +1127,45 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   const [fetchingPosts, setFetchingPosts] = useState(false)
   const [showScoringDetails, setShowScoringDetails] = useState(false)
   const [newReady, setNewReady] = useState(0)
-  const baselineRef = useRef<number | null>(null)
+  const [scoringPolling, setScoringPolling] = useState(false)
+  const [scoringData, setScoringData] = useState<ScoringStatus | null>(null)
+  const [scoringBaseline, setScoringBaseline] = useState<number | null>(null)
+  const [scoringWasActive, setScoringWasActive] = useState(false)
 
   interface ScoringStatus { total: number; scored: number; pending: number; aboveThreshold: number; active: boolean; batch: number; totalBatches: number; log: string[] }
 
-  const wasActiveRef = useRef(false)
-
-  const scoring = usePolling<ScoringStatus>(
-    () => api<ScoringStatus>('/ai/scoring-status'),
-    {
-      intervalMs: 2000,
-      shouldStop: (st) => {
-        console.log('[scoring poll]', { active: st.active, pending: st.pending, wasActive: wasActiveRef.current, batch: st.batch, totalBatches: st.totalBatches })
+  // Single effect drives the polling interval based on scoringPolling state
+  useEffect(() => {
+    if (!scoringPolling) return
+    const poll = () => {
+      api<ScoringStatus>('/ai/scoring-status').then((st) => {
+        setScoringData(st)
         if (st.active) {
-          wasActiveRef.current = true
-          if (baselineRef.current === null) baselineRef.current = st.aboveThreshold
-          return false
+          setScoringWasActive(true)
+          setScoringBaseline((prev) => prev ?? st.aboveThreshold)
+        } else if (st.pending === 0 || scoringWasActive) {
+          // Done — stop polling
+          setScoringPolling(false)
         }
-        if (wasActiveRef.current) return true
-        if (st.pending === 0) return true
-        return false
-      },
-      onStop: (st) => {
-        const newAbove = baselineRef.current !== null ? st.aboveThreshold - baselineRef.current : 0
-        if (newAbove > 0) setNewReady(newAbove)
-        baselineRef.current = null
-        wasActiveRef.current = false
-      },
-    },
-  )
+      }).catch(() => {})
+    }
+    poll() // immediate
+    const id = setInterval(poll, 2000)
+    return () => clearInterval(id)
+  }, [scoringPolling, scoringWasActive])
 
-  const st = scoring.data
-  const scoringActive = scoring.polling
+  // When polling stops with wasActive, compute new posts
+  useEffect(() => {
+    if (!scoringPolling && scoringWasActive && scoringData) {
+      const newAbove = scoringBaseline !== null ? scoringData.aboveThreshold - scoringBaseline : 0
+      if (newAbove > 0) setNewReady(newAbove)
+      setScoringBaseline(null)
+      setScoringWasActive(false)
+    }
+  }, [scoringPolling, scoringWasActive, scoringData, scoringBaseline])
+
+  const scoringActive = scoringPolling
+  const st = scoringData
   const pendingCount = st?.pending ?? 0
   const scoringBatch = st?.batch ?? 0
   const scoringTotalBatches = st?.totalBatches ?? 0
@@ -1173,20 +1179,17 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
       .then((s) => {
         if (s.active || s.pending > 0) {
           if (s.pending > 0 && !s.active) api('/ai/filter', { method: 'POST' }).catch(() => {})
-          scoring.start()
+          setScoringPolling(true)
         }
       })
       .catch(() => {})
-    return scoring.stop
   }, [aiConfigured])
 
   const refresh = useCallback(async () => {
-    console.log('[refresh] called, starting fetch')
     setFetchingPosts(true)
     try {
-      const res = await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
-      console.log('[refresh] done, count:', res.count, 'starting scoring poll')
-      scoring.start()
+      await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
+      setScoringPolling(true)
     } catch (e) {
       setFilterError(e instanceof Error ? e.message : 'Failed to refresh')
     } finally {
@@ -1196,12 +1199,12 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 
   useEffect(() => {
     onRefreshRef?.(refresh)
-    return scoring.stop
+    return () => setScoringPolling(false)
   }, [refresh, onRefreshRef])
 
   const showNewPosts = () => {
     setNewReady(0)
-    baselineRef.current = null
+    setScoringBaseline(null)
     setPage(1)
     setFeedKey((k) => k + 1)
   }
