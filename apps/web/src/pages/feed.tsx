@@ -1181,8 +1181,8 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   const refresh = useCallback(async () => {
     setFetchingPosts(true)
     try {
-      const res = await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
-      if (res.count === 0) return
+      await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
+      // Always start polling — auto-fetcher may have inserted tweets that need scoring
       scoring.start()
     } catch (e) {
       setFilterError(e instanceof Error ? e.message : 'Failed to refresh')
@@ -1213,9 +1213,8 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 
       {/* Scoring progress */}
       {scoringActive && (() => {
-        const total = scoringDetails?.total ?? 0
-        const scored = scoringDetails?.scored ?? 0
-        const pct = total > 0 ? (scored / total) * 100 : 0
+        // Progress based on batch completion, not total scored ratio
+        const pct = scoringTotalBatches > 0 ? ((scoringBatch - 1) / scoringTotalBatches) * 100 : 0
         return (
           <div class="mb-3 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-3">
             <div class="flex items-center justify-between text-sm mb-2">
