@@ -714,7 +714,8 @@ aiRouter.get('/report-status', async (c) => {
 })
 
 export async function generateReportForUser(userId: string): Promise<any> {
-  if (reportGenerating.has(userId)) return null
+  const existingProgress = reportGenerating.get(userId)
+  if (existingProgress && !existingProgress.done) return null
 
   const ai = await getAiConfig(userId)
   if (!ai) return null
@@ -742,7 +743,11 @@ export async function generateReportForUser(userId: string): Promise<any> {
       .then((rows) => rows.map((r) => r.tweet))
   }
 
-  if (tweetList.length === 0) return null
+  if (tweetList.length === 0) {
+    // Update lastAutoReportAt to prevent retry every 5 minutes
+    await db.update(aiSettings).set({ lastAutoReportAt: new Date() }).where(eq(aiSettings.userId, userId))
+    return null
+  }
 
   const emit = (event: string) => { for (const sub of progress.subscribers) sub(event) }
   const setStatus = (s: string) => { progress.status = s; emit(JSON.stringify({ status: s })) }
@@ -808,9 +813,12 @@ export async function generateReportForUser(userId: string): Promise<any> {
 aiRouter.post('/report', async (c) => {
   const user = c.get('user')
 
-  if (reportGenerating.has(user.id)) {
+  const existing = reportGenerating.get(user.id)
+  if (existing && !existing.done) {
     return c.json({ error: 'Report is already being generated. Please wait.' }, 409)
   }
+  // Clear errored/done entries so user can retry
+  if (existing) reportGenerating.delete(user.id)
 
   // Fire and forget — frontend connects to /report-stream for live content
   void generateReportForUser(user.id).catch((err) =>

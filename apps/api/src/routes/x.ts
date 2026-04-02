@@ -9,7 +9,7 @@ import type { AuthUser } from '../middleware/auth'
 import { xLogin } from '../x/auth'
 import { fetchForUser } from '../x/fetcher'
 import { decrypt } from '../helpers/crypto'
-import { getHomeTimeline, getTweetReplies } from '../x/graphql'
+import { getArticleContent, getHomeTimeline, getTweetReplies, getTweetThread } from '../x/graphql'
 
 const xRouter = new Hono<{ Variables: { user: AuthUser } }>()
 
@@ -145,6 +145,35 @@ xRouter.post('/refresh', async (c) => {
   }
 })
 
+xRouter.get('/thread/:tweetId', async (c) => {
+  const user = c.get('user')
+  const tweetId = c.req.param('tweetId')
+  if (!/^\d+$/.test(tweetId)) {
+    return c.json({ error: 'Invalid tweet ID' }, 400)
+  }
+  const db = getDb(env.DATABASE_URL)
+
+  const [session] = await db
+    .select()
+    .from(xSessions)
+    .where(eq(xSessions.userId, user.id))
+    .limit(1)
+
+  if (!session) {
+    return c.json({ error: 'X not connected' }, 400)
+  }
+
+  try {
+    const authToken = await decrypt(session.authToken)
+    const ct0 = await decrypt(session.ct0)
+    const result = await getTweetThread({ authToken, ct0 }, tweetId)
+    return c.json(result)
+  } catch (err) {
+    console.error(`[x] Thread fetch failed:`, err instanceof Error ? err.message : err)
+    return c.json({ error: 'Failed to fetch thread' }, 500)
+  }
+})
+
 xRouter.get('/replies/:tweetId', async (c) => {
   const user = c.get('user')
   const tweetId = c.req.param('tweetId')
@@ -172,6 +201,38 @@ xRouter.get('/replies/:tweetId', async (c) => {
   } catch (err) {
     console.error(`[x] Replies fetch failed:`, err instanceof Error ? err.message : err)
     return c.json({ error: 'Failed to fetch replies' }, 500)
+  }
+})
+
+xRouter.get('/article/:tweetId', async (c) => {
+  const user = c.get('user')
+  const tweetId = c.req.param('tweetId')
+  if (!/^\d+$/.test(tweetId)) {
+    return c.json({ error: 'Invalid tweet ID' }, 400)
+  }
+  const db = getDb(env.DATABASE_URL)
+
+  const [session] = await db
+    .select()
+    .from(xSessions)
+    .where(eq(xSessions.userId, user.id))
+    .limit(1)
+
+  if (!session) {
+    return c.json({ error: 'X not connected' }, 400)
+  }
+
+  try {
+    const authToken = await decrypt(session.authToken)
+    const ct0 = await decrypt(session.ct0)
+    const article = await getArticleContent({ authToken, ct0 }, tweetId)
+    if (!article) {
+      return c.json({ error: 'Article not found' }, 404)
+    }
+    return c.json({ article })
+  } catch (err) {
+    console.error(`[x] Article fetch failed:`, err instanceof Error ? err.message : err)
+    return c.json({ error: 'Failed to fetch article' }, 500)
   }
 })
 

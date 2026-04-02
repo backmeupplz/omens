@@ -108,7 +108,7 @@ export const aiSettings = pgTable('ai_settings', {
   minScore: integer('min_score').notNull().default(50),
   fetchIntervalMinutes: integer('fetch_interval_minutes').notNull().default(15), // 0 = manual only
   reportIntervalHours: integer('report_interval_hours').notNull().default(24), // 0 = manual only
-  reportAtHour: integer('report_at_hour').notNull().default(6), // 0-23, hour in user's timezone
+  reportAtHour: integer('report_at_hour').notNull().default(6), // 0-23 UTC (frontend converts local→UTC)
   promptLastRegenAt: timestamp('prompt_last_regen_at', { withTimezone: true }),
   lastAutoReportAt: timestamp('last_auto_report_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

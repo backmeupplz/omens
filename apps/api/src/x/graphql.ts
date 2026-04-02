@@ -470,6 +470,132 @@ export interface RepliesResult {
   cursor: string | null
 }
 
+export interface ThreadResult {
+  tweets: ParsedTweet[]
+}
+
+export async function getTweetThread(
+  session: Session,
+  tweetId: string,
+): Promise<ThreadResult> {
+  const variables: Record<string, unknown> = {
+    focalTweetId: tweetId,
+    referrer: 'tweet',
+    with_rux_injections: false,
+    includePromotedContent: false,
+    withCommunity: true,
+    withQuickPromoteEligibilityTweetFields: false,
+    withBirdwatchNotes: false,
+    withVoice: false,
+    withV2Timeline: true,
+  }
+
+  const fieldToggles = {
+    withArticleRichContentState: true,
+    withArticlePlainText: false,
+    withGrokAnalyze: false,
+    withDisallowedReplyControls: false,
+  }
+
+  const params = new URLSearchParams({
+    variables: JSON.stringify(variables),
+    features: JSON.stringify(GQL_FEATURES),
+    fieldToggles: JSON.stringify(fieldToggles),
+  })
+
+  const url = `${GRAPHQL_BASE}/${ENDPOINTS.TweetDetail}?${params}`
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: buildHeaders(session),
+  })
+
+  if (!res.ok) return { tweets: [] }
+
+  const data = await res.json()
+  const instructions =
+    data?.data?.threaded_conversation_with_injections_v2?.instructions || []
+
+  // Collect all tweets from the conversation
+  const allTweets: ParsedTweet[] = []
+
+  function tryExtract(obj: any): ParsedTweet | null {
+    if (!obj) return null
+    const itemContent = obj.itemContent || obj
+    let result = itemContent?.tweet_results?.result
+    if (!result) return null
+    return parseTweetData(result)
+  }
+
+  for (const instruction of instructions) {
+    const entries = instruction.entries || []
+    for (const entry of entries) {
+      if (entry.entryId?.startsWith('cursor-')) continue
+      const content = entry.content
+      if (!content) continue
+
+      if (content.items) {
+        for (const item of content.items) {
+          const tweet = tryExtract(item?.item)
+          if (tweet) allTweets.push(tweet)
+        }
+        continue
+      }
+
+      const tweet = tryExtract(content)
+      if (tweet) allTweets.push(tweet)
+    }
+  }
+
+  // Find the focal tweet to determine the thread author
+  const focalTweet = allTweets.find((t) => t.tweetId === tweetId)
+  if (!focalTweet) return { tweets: allTweets.length > 0 ? [allTweets[0]] : [] }
+
+  const authorHandle = focalTweet.authorHandle
+
+  // Filter to only same-author non-RT tweets
+  const authorTweets = allTweets.filter(
+    (t) => t.authorHandle === authorHandle && !t.isRetweet,
+  )
+
+  // Deduplicate by tweetId
+  const seen = new Set<string>()
+  const unique: ParsedTweet[] = []
+  for (const t of authorTweets) {
+    if (!seen.has(t.tweetId)) {
+      seen.add(t.tweetId)
+      unique.push(t)
+    }
+  }
+
+  // Build parent->child map for chain walking
+  const byId = new Map<string, ParsedTweet>()
+  const childOf = new Map<string, ParsedTweet>() // parentId -> child
+  for (const t of unique) {
+    byId.set(t.tweetId, t)
+    if (t.replyToTweetId && t.replyToHandle === authorHandle) {
+      childOf.set(t.replyToTweetId, t)
+    }
+  }
+
+  // Find root: walk up from focal tweet
+  let root = focalTweet
+  while (root.replyToTweetId && byId.has(root.replyToTweetId)) {
+    root = byId.get(root.replyToTweetId)!
+  }
+
+  // Walk down from root following self-reply chain
+  const chain: ParsedTweet[] = [root]
+  let current = root
+  while (true) {
+    const next = childOf.get(current.tweetId)
+    if (!next) break
+    chain.push(next)
+    current = next
+  }
+
+  return { tweets: chain }
+}
+
 export async function getTweetReplies(
   session: Session,
   tweetId: string,
@@ -585,4 +711,194 @@ export async function getTweetReplies(
   }
 
   return { replies, cursor: nextCursor }
+}
+
+// === Article Content ===
+
+export interface ArticleContent {
+  title: string
+  coverImage: string | null
+  body: string // plain text body
+  richContent: ArticleRichBlock[] | null
+  authorName: string
+  authorHandle: string
+  authorAvatar: string | null
+}
+
+export interface ArticleRichBlock {
+  type: 'paragraph' | 'heading' | 'image' | 'tweet' | 'list' | 'blockquote' | 'divider'
+  text?: string
+  level?: number // for headings
+  url?: string // for images
+  tweetId?: string // for embedded tweets
+  items?: string[] // for lists
+  format?: Array<{ start: number; end: number; type: string; href?: string }> // inline formatting
+}
+
+function parseRichText(contentState: any): ArticleRichBlock[] {
+  const blocks: ArticleRichBlock[] = []
+  if (!contentState?.blocks) return blocks
+
+  for (const block of contentState.blocks) {
+    const text: string = block.text || ''
+    const type: string = block.type || 'unstyled'
+
+    // Extract inline formatting (bold, italic, links)
+    const format: ArticleRichBlock['format'] = []
+    if (block.entityRanges && contentState.entityMap) {
+      for (const range of block.entityRanges) {
+        const entity = contentState.entityMap[String(range.key)]
+        if (entity) {
+          format.push({
+            start: range.offset,
+            end: range.offset + range.length,
+            type: entity.type?.toLowerCase() || 'link',
+            href: entity.data?.url || entity.data?.href,
+          })
+        }
+      }
+    }
+    if (block.inlineStyleRanges) {
+      for (const range of block.inlineStyleRanges) {
+        format.push({
+          start: range.offset,
+          end: range.offset + range.length,
+          type: range.style?.toLowerCase() || 'bold',
+        })
+      }
+    }
+
+    if (type === 'atomic') {
+      // Atomic blocks are typically media/embeds
+      const entityKey = block.entityRanges?.[0]?.key
+      const entity = entityKey != null ? contentState.entityMap?.[String(entityKey)] : null
+      if (entity?.type === 'IMAGE' || entity?.type === 'image') {
+        blocks.push({ type: 'image', url: entity.data?.src || entity.data?.url })
+      } else if (entity?.type === 'TWEET' || entity?.type === 'tweet' || entity?.type === 'EMBED') {
+        const tweetUrl = entity.data?.url || entity.data?.id || ''
+        const tweetIdMatch = String(tweetUrl).match(/status\/(\d+)/)
+        blocks.push({ type: 'tweet', tweetId: tweetIdMatch?.[1] || String(tweetUrl) })
+      } else if (entity?.type === 'DIVIDER' || entity?.type === 'divider') {
+        blocks.push({ type: 'divider' })
+      } else {
+        // Unknown atomic — render as paragraph if has text
+        if (text.trim()) blocks.push({ type: 'paragraph', text, format: format.length > 0 ? format : undefined })
+      }
+    } else if (type.startsWith('header-')) {
+      const level = Number.parseInt(type.replace('header-', '')) || 2
+      blocks.push({ type: 'heading', text, level, format: format.length > 0 ? format : undefined })
+    } else if (type === 'blockquote') {
+      blocks.push({ type: 'blockquote', text, format: format.length > 0 ? format : undefined })
+    } else if (type === 'unordered-list-item' || type === 'ordered-list-item') {
+      // Group consecutive list items
+      const last = blocks[blocks.length - 1]
+      if (last?.type === 'list') {
+        last.items!.push(text)
+      } else {
+        blocks.push({ type: 'list', items: [text] })
+      }
+    } else {
+      // unstyled → paragraph
+      if (text.trim()) {
+        blocks.push({ type: 'paragraph', text, format: format.length > 0 ? format : undefined })
+      }
+    }
+  }
+
+  return blocks
+}
+
+export async function getArticleContent(
+  session: Session,
+  tweetId: string,
+): Promise<ArticleContent | null> {
+  const variables: Record<string, unknown> = {
+    focalTweetId: tweetId,
+    referrer: 'tweet',
+    with_rux_injections: false,
+    includePromotedContent: false,
+    withCommunity: true,
+    withQuickPromoteEligibilityTweetFields: false,
+    withBirdwatchNotes: false,
+    withVoice: false,
+    withV2Timeline: true,
+  }
+
+  const fieldToggles = {
+    withArticleRichContentState: true,
+    withArticlePlainText: true,
+    withGrokAnalyze: false,
+    withDisallowedReplyControls: false,
+  }
+
+  const params = new URLSearchParams({
+    variables: JSON.stringify(variables),
+    features: JSON.stringify(GQL_FEATURES),
+    fieldToggles: JSON.stringify(fieldToggles),
+  })
+
+  const url = `${GRAPHQL_BASE}/${ENDPOINTS.TweetDetail}?${params}`
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: buildHeaders(session),
+  })
+
+  if (!res.ok) return null
+
+  const data = await res.json()
+  const instructions =
+    data?.data?.threaded_conversation_with_injections_v2?.instructions || []
+
+  // Find the focal tweet with article data
+  for (const instruction of instructions) {
+    const entries = instruction.entries || []
+    for (const entry of entries) {
+      const content = entry.content
+      if (!content) continue
+
+      const items = content.items ? content.items.map((i: any) => i?.item) : [content]
+      for (const item of items) {
+        const itemContent = item?.itemContent || item
+        let result = itemContent?.tweet_results?.result
+        if (!result) continue
+        if (result.__typename === 'TweetWithVisibilityResults') result = result.tweet
+        if (!result?.legacy || (result.legacy.id_str !== tweetId && result.rest_id !== tweetId)) continue
+
+        const article = result.article?.article_results?.result
+        if (!article) continue
+
+        const userResult = result.core?.user_results?.result
+        const userLegacy = userResult?.legacy
+        const userCore = userResult?.core
+
+        const title = article.title || article.preview_title || ''
+        const coverImg = article.cover_image?.media_info?.original_img_url ||
+          article.cover_image?.media?.media_info?.original_img_url || null
+
+        // Try rich content first
+        let richContent: ArticleRichBlock[] | null = null
+        const contentState = article.content_state || article.rich_text?.content_state
+        if (contentState) {
+          richContent = parseRichText(contentState)
+        }
+
+        // Plain text fallback
+        const body = article.plain_text || article.content_body || article.preview_body || ''
+
+        return {
+          title,
+          coverImage: coverImg,
+          body,
+          richContent: richContent && richContent.length > 0 ? richContent : null,
+          authorName: userCore?.name || userLegacy?.name || '',
+          authorHandle: userCore?.screen_name || userLegacy?.screen_name || '',
+          authorAvatar:
+            userResult?.avatar?.image_url?.replace('_normal', '_bigger') ||
+            userLegacy?.profile_image_url_https?.replace('_normal', '_bigger') || null,
+        }
+      }
+    }
+  }
+
+  return null
 }
