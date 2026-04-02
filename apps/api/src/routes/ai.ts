@@ -87,7 +87,7 @@ aiRouter.get('/settings', async (c) => {
     .limit(1)
 
   if (!settings) {
-    return c.json({ configured: false, defaultPrompt: DEFAULT_SYSTEM_PROMPT })
+    return c.json({ configured: false, defaultPrompt: DEFAULT_SYSTEM_PROMPT, fetchIntervalMinutes: 15 })
   }
 
   let maskedKey = '••••••••'
@@ -188,7 +188,12 @@ aiRouter.put('/settings/intervals', async (c) => {
     updates.reportAtHour = Math.max(0, Math.min(23, Math.round(body.reportAtHour)))
   }
   if (Object.keys(updates).length > 0) {
-    await db.update(aiSettings).set(updates).where(eq(aiSettings.userId, user.id))
+    const existing = await db.select({ id: aiSettings.id }).from(aiSettings).where(eq(aiSettings.userId, user.id)).limit(1)
+    if (existing.length > 0) {
+      await db.update(aiSettings).set(updates).where(eq(aiSettings.userId, user.id))
+    } else {
+      await db.insert(aiSettings).values({ userId: user.id, provider: '', apiKey: '', model: '', ...updates })
+    }
   }
   return c.json({ ok: true })
 })
