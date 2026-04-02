@@ -23,7 +23,7 @@ async function securityHeaders(c: Context, next: Next) {
   c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
   c.header(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src *; connect-src 'self' https:; font-src 'self' data:",
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src *; connect-src 'self'",
   )
 }
 

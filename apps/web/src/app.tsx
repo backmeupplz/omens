@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'preact/hooks'
 import { Link, Redirect, Route, Switch, useLocation } from 'wouter-preact'
 import { api } from './helpers/api'
 import { AiReportPage, Feed, FilteredFeed } from './pages/feed'
-import { Login } from './pages/login'
+import { Login, Register } from './pages/login'
 import { Settings } from './pages/settings'
 import { ReportSharePage, SharePage } from './pages/share'
 
@@ -259,6 +259,7 @@ export function App() {
       <main class="mx-auto max-w-xl w-full px-3 sm:px-4 py-4 pb-16 overflow-hidden">
         <Switch>
           <Route path="/login" component={Login} />
+          <Route path="/register" component={Register} />
           <Route path="/">
             <AuthGuard auth={auth}>
               <XGuard auth={auth}>

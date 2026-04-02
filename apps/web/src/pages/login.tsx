@@ -1,18 +1,15 @@
 import { useState } from 'preact/hooks'
-import { Redirect, useLocation } from 'wouter-preact'
+import { Link, Redirect, useLocation } from 'wouter-preact'
 import { api, API_BASE } from '../helpers/api'
 import { useApi } from '../helpers/hooks'
 
-export function Login() {
+function AuthForm({ isRegister }: { isRegister: boolean }) {
   const [, navigate] = useLocation()
-  const [isRegister, setIsRegister] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
 
   const { data: mode } = useApi<{ singleUser: boolean }>('/auth/mode')
-
-  // In single-user mode, no login needed
   if (mode?.singleUser) return <Redirect to="/" />
 
   const submit = async (e: Event) => {
@@ -24,8 +21,6 @@ export function Login() {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       })
-      navigate('/')
-      // Force reload to update auth state
       window.location.href = '/'
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
@@ -37,7 +32,7 @@ export function Login() {
       <h1 class="text-2xl font-bold mb-6 text-center">
         {isRegister ? 'Create account' : 'Sign in'}
       </h1>
-      <form onSubmit={submit} class="space-y-4">
+      <form onSubmit={submit} class="space-y-4" autoComplete={isRegister ? 'off' : 'on'}>
         {error && (
           <p class="text-sm text-red-400 rounded bg-red-900/20 px-3 py-2">
             {error}
@@ -45,6 +40,8 @@ export function Login() {
         )}
         <input
           type="email"
+          name="email"
+          id="email"
           placeholder="Email"
           autoComplete="email"
           class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
@@ -54,6 +51,8 @@ export function Login() {
         />
         <input
           type="password"
+          name={isRegister ? 'new-password' : 'password'}
+          id={isRegister ? 'new-password' : 'password'}
           placeholder={isRegister ? 'Password (min 8 chars, upper + lower + number)' : 'Password'}
           autoComplete={isRegister ? 'new-password' : 'current-password'}
           class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
@@ -68,19 +67,27 @@ export function Login() {
         >
           {isRegister ? 'Register' : 'Login'}
         </button>
-        <button
-          type="button"
-          onClick={() => setIsRegister(!isRegister)}
-          class="w-full text-sm text-zinc-400 hover:text-zinc-200"
-        >
-          {isRegister
-            ? 'Already have an account? Sign in'
-            : "Don't have an account? Register"}
-        </button>
+        {isRegister ? (
+          <Link href="/login" class="block w-full text-sm text-zinc-400 hover:text-zinc-200 text-center">
+            Already have an account? Sign in
+          </Link>
+        ) : (
+          <Link href="/register" class="block w-full text-sm text-zinc-400 hover:text-zinc-200 text-center">
+            Don't have an account? Register
+          </Link>
+        )}
       </form>
       <VersionFooter />
     </div>
   )
+}
+
+export function Login() {
+  return <AuthForm isRegister={false} />
+}
+
+export function Register() {
+  return <AuthForm isRegister={true} />
 }
 
 function VersionFooter() {
