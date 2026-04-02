@@ -68,6 +68,7 @@ export function createApp() {
   app.use('/api-keys/*', authMiddleware)
   app.use('/ai/*', authMiddleware)
   app.use('/og/*', authMiddleware)
+  app.use('/media/*', authMiddleware)
 
   // Rate limit AI endpoints
   app.post('/ai/report', rateLimiter({ windowMs: 60_000, max: 3, keyPrefix: 'ai-report' }))
@@ -107,6 +108,44 @@ export function createApp() {
     const data = await fetchOg(url)
     if (!data) return c.json(null)
     return c.json(data)
+  })
+
+  // Video proxy — streams Twitter video through the server
+  app.get('/media/video', async (c) => {
+    const url = c.req.query('url')
+    if (!url) return c.json({ error: 'url required' }, 400)
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      return c.json({ error: 'invalid url' }, 400)
+    }
+    if (parsed.hostname !== 'video.twimg.com') {
+      return c.json({ error: 'only video.twimg.com allowed' }, 400)
+    }
+
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+      Referer: 'https://x.com/',
+    }
+    const range = c.req.header('Range')
+    if (range) headers['Range'] = range
+
+    const upstream = await fetch(url, { headers })
+    const ct = upstream.headers.get('Content-Type') || 'video/mp4'
+    const cl = upstream.headers.get('Content-Length')
+    const cr = upstream.headers.get('Content-Range')
+    const ar = upstream.headers.get('Accept-Ranges')
+
+    const resHeaders: Record<string, string> = { 'Content-Type': ct }
+    if (cl) resHeaders['Content-Length'] = cl
+    if (cr) resHeaders['Content-Range'] = cr
+    if (ar) resHeaders['Accept-Ranges'] = ar
+
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: resHeaders,
+    })
   })
 
   app.route('/feed', feedRouter)

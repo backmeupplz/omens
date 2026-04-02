@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import { api } from '../helpers/api'
-import { fmt, safeParse } from '../helpers/format'
 import { renderMarkdown } from '../helpers/markdown'
+import { TweetCard, type Tweet } from './feed'
 
 interface SharedTweet {
   tweetId: string
@@ -20,9 +20,6 @@ interface SharedTweet {
   views: number
   publishedAt: string | null
 }
-
-interface MediaItem { url: string; type: string; thumbnailUrl?: string }
-interface QuotedTweet { authorName: string; authorHandle: string; authorAvatar?: string; content: string; media?: MediaItem[]; url: string; card?: { title: string; description: string | null; thumbnail: string | null; domain: string; url: string } }
 
 export function SharePage({ handle, tweetId }: { handle: string; tweetId: string }) {
   const [tweet, setTweet] = useState<SharedTweet | null>(null)
@@ -53,105 +50,38 @@ export function SharePage({ handle, tweetId }: { handle: string; tweetId: string
     )
   }
 
-  const media: MediaItem[] = safeParse<MediaItem[]>(tweet.mediaUrls) ?? []
-  const quoted = safeParse<QuotedTweet>(tweet.quotedTweet)
-  const cardRaw = safeParse<{ title: string; description: string | null; thumbnail: string | null; domain: string; url: string }>(tweet.card)
-  const card = cardRaw?.title ? cardRaw : null
-  const photos = media.filter((m) => m.type === 'photo')
-  const videos = media.filter((m) => m.type === 'video' || m.type === 'animated_gif')
+  const tweetObj: Tweet = {
+    id: tweet.tweetId,
+    tweetId: tweet.tweetId,
+    authorName: tweet.authorName,
+    authorHandle: tweet.authorHandle,
+    authorAvatar: tweet.authorAvatar,
+    authorFollowers: tweet.authorFollowers,
+    authorBio: null,
+    content: tweet.content,
+    mediaUrls: tweet.mediaUrls,
+    isRetweet: null,
+    card: tweet.card,
+    quotedTweet: tweet.quotedTweet,
+    replyToHandle: null,
+    replyToTweetId: null,
+    parentTweet: null,
+    url: tweet.url,
+    likes: tweet.likes,
+    retweets: tweet.retweets,
+    replies: tweet.replies,
+    views: tweet.views,
+    publishedAt: tweet.publishedAt || '',
+  }
 
   return (
     <div class="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
       <main class="flex-1 flex flex-col items-center justify-center px-4 py-8">
-        {/* Tweet card */}
-        <a
-          href={tweet.url}
-          target="_blank"
-          rel="noopener"
-          class="block max-w-lg w-full rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-4 no-underline hover:border-zinc-700 transition-colors"
-        >
-          {/* Author */}
-          <div class="flex items-center gap-3 mb-3">
-            {tweet.authorAvatar ? (
-              <img src={tweet.authorAvatar} alt="" class="w-10 h-10 rounded-full bg-zinc-700" />
-            ) : (
-              <div class="w-10 h-10 rounded-full bg-zinc-700 flex items-center justify-center text-sm font-bold text-zinc-300">
-                {tweet.authorName.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div>
-              <div class="font-semibold text-sm text-zinc-100">{tweet.authorName}</div>
-              <div class="text-xs text-zinc-500">@{tweet.authorHandle}</div>
-            </div>
-            {tweet.publishedAt && (
-              <span class="ml-auto text-xs text-zinc-600">
-                {new Date(tweet.publishedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-              </span>
-            )}
-          </div>
-
-          {/* Content */}
-          <p class="text-[15px] leading-relaxed text-zinc-200 whitespace-pre-wrap">{tweet.content}</p>
-
-          {/* Photos */}
-          {photos.length > 0 && (
-            <div class={`grid gap-1 mt-3 rounded-xl overflow-hidden ${photos.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-              {photos.map((p) => (
-                <img key={p.url} src={p.url} alt="" class="w-full object-cover" loading="lazy" />
-              ))}
-            </div>
-          )}
-
-          {/* Videos */}
-          {videos.map((v) => (
-            <video
-              key={v.url}
-              src={v.url}
-              poster={v.thumbnailUrl}
-              controls
-              preload="none"
-              class="w-full rounded-xl mt-3"
-              onClick={(e) => e.preventDefault()}
-            />
-          ))}
-
-          {/* Quoted tweet */}
-          {quoted && (
-            <div class="mt-3 rounded-xl border border-zinc-700 p-3">
-              <div class="flex items-center gap-2 mb-1">
-                {quoted.authorAvatar && <img src={quoted.authorAvatar} alt="" class="w-4 h-4 rounded-full" />}
-                <span class="text-sm font-semibold text-zinc-200">{quoted.authorName}</span>
-                <span class="text-xs text-zinc-500">@{quoted.authorHandle}</span>
-              </div>
-              <p class="text-sm text-zinc-400 line-clamp-3">{quoted.content}</p>
-            </div>
-          )}
-
-          {/* Card */}
-          {card && (
-            <div class="mt-3 rounded-xl border border-zinc-700 overflow-hidden">
-              {card.thumbnail && <img src={card.thumbnail} alt="" class="w-full" loading="lazy" />}
-              <div class="p-2.5">
-                <p class="text-sm font-medium text-zinc-200 line-clamp-2">{card.title}</p>
-                {card.description && <p class="text-xs text-zinc-400 mt-0.5 line-clamp-2">{card.description}</p>}
-                <p class="text-xs text-zinc-500 mt-0.5">{card.domain}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Engagement — compact */}
-          {(tweet.likes > 0 || tweet.retweets > 0 || tweet.views > 0) && (
-            <div class="flex items-center gap-4 mt-3 text-xs text-zinc-500">
-              {tweet.likes > 0 && <span>{fmt(tweet.likes)} likes</span>}
-              {tweet.retweets > 0 && <span>{fmt(tweet.retweets)} reposts</span>}
-              {tweet.views > 0 && <span>{fmt(tweet.views)} views</span>}
-            </div>
-          )}
-        </a>
-
-        {/* Omens CTA */}
+        <div class="max-w-lg w-full">
+          <TweetCard tweet={tweetObj} embedded />
+        </div>
         <div class="mt-8 text-center">
-          <p class="text-sm text-zinc-500 mb-4">AI-filtered X feed. Signal from noise.</p>
+          <p class="text-sm text-zinc-500 mb-4">Your algorithm, your feed.</p>
           <a
             href="/"
             class="inline-block rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 no-underline transition-colors"
@@ -221,7 +151,7 @@ export function ReportSharePage({ id }: { id: string }) {
         </article>
 
         <div class="mt-8 text-center">
-          <p class="text-sm text-zinc-500 mb-4">AI-filtered X feed. Signal from noise.</p>
+          <p class="text-sm text-zinc-500 mb-4">Your algorithm, your feed.</p>
           <a
             href="/"
             class="inline-block rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 no-underline transition-colors"

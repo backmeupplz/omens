@@ -143,7 +143,7 @@ async function graphqlRequest(
 }
 
 interface MediaItem {
-  type: 'photo' | 'video'
+  type: 'photo' | 'video' | 'gif'
   url: string // image URL or video URL
   thumbnail: string // preview image
 }
@@ -163,7 +163,7 @@ function extractMedia(legacy: any): MediaItem[] | null {
       const videoUrl = mp4s[0]?.url || variants[0]?.url
       if (videoUrl) {
         items.push({
-          type: 'video',
+          type: m.type === 'animated_gif' ? 'gif' : 'video',
           url: videoUrl,
           thumbnail: m.media_url_https || m.media_url,
         })
@@ -199,17 +199,40 @@ function getFullText(tweetResult: any, legacy: any): string {
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
 }
 
+function findCoverImageUrl(coverImage: any): string | null {
+  if (!coverImage) return null
+  // Try all known paths for cover image URL
+  return coverImage.media_info?.original_img_url
+    || coverImage.media?.media_info?.original_img_url
+    || coverImage.media_url_https
+    || coverImage.url
+    // Deep search: look for any string value that looks like an image URL
+    || findImageUrl(coverImage)
+    || null
+}
+
+function findImageUrl(obj: any, depth = 0): string | null {
+  if (!obj || depth > 4) return null
+  if (typeof obj === 'string' && /^https?:\/\/.*\.(jpg|jpeg|png|webp)/i.test(obj)) return obj
+  if (typeof obj === 'string' && /pbs\.twimg\.com/.test(obj)) return obj
+  if (typeof obj !== 'object') return null
+  for (const val of Object.values(obj)) {
+    const found = findImageUrl(val, depth + 1)
+    if (found) return found
+  }
+  return null
+}
+
 function extractCard(tweetResult: any, tweetUrl?: string): ParsedTweet['card'] {
   // Check for X article data
   const article = tweetResult.article?.article_results?.result
   if (article) {
     const title = article.title || article.preview_title
     if (title) {
-      const coverImg = article.cover_image?.media_info?.original_img_url ||
-        article.cover_image?.media?.media_info?.original_img_url
+      const coverImg = findCoverImageUrl(article.cover_media) || findCoverImageUrl(article.cover_image)
       return {
         title,
-        description: article.preview_body || article.subtitle || null,
+        description: article.preview_body || article.preview_text || article.subtitle || null,
         thumbnail: coverImg || null,
         domain: 'x.com',
         url: article.url || tweetUrl || '',
@@ -729,8 +752,34 @@ export interface ArticleRichBlock {
   level?: number // for headings
   url?: string // for images
   tweetId?: string // for embedded tweets
-  items?: string[] // for lists
+  ordered?: boolean // for lists
+  items?: Array<{ text: string; format?: ArticleRichBlock['format'] }> // for lists
   format?: Array<{ start: number; end: number; type: string; href?: string }> // inline formatting
+}
+
+/**
+ * Resolve entity from X article's content_state entityMap.
+ * X uses a nested format: { key: "N", value: { type: "LINK", data: {...}, mutability: "..." } }
+ * but sometimes also a flat format: { type: "LINK", data: {...} }
+ */
+function resolveEntity(raw: any): { type: string; data: any } | null {
+  if (!raw) return null
+  // Nested format: raw.value.type
+  if (raw.value?.type) return { type: raw.value.type, data: raw.value.data || {} }
+  // Flat format: raw.type
+  if (raw.type) return { type: raw.type, data: raw.data || {} }
+  return null
+}
+
+/** Filter out ad/tracking URLs that X injects into article atomic blocks */
+function isAdUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname
+    // Known ad/tracking domains that appear as standalone atomic links
+    return /^(li\.fi|t\.co|ads\.|track\.|click\.)/.test(host)
+  } catch {
+    return false
+  }
 }
 
 function parseRichText(contentState: any, mediaMap?: Record<string, string>): ArticleRichBlock[] {
@@ -745,9 +794,9 @@ function parseRichText(contentState: any, mediaMap?: Record<string, string>): Ar
     const format: ArticleRichBlock['format'] = []
     if (block.entityRanges && contentState.entityMap) {
       for (const range of block.entityRanges) {
-        const entity = contentState.entityMap[String(range.key)]
+        const entity = resolveEntity(contentState.entityMap[String(range.key)])
         if (!entity) continue
-        const eType = (entity.type || '').toUpperCase()
+        const eType = entity.type.toUpperCase()
         if (eType === 'LINK' || eType === 'URL') {
           format.push({
             start: range.offset,
@@ -769,29 +818,39 @@ function parseRichText(contentState: any, mediaMap?: Record<string, string>): Ar
     }
 
     if (type === 'atomic') {
-      // Atomic blocks are typically media/embeds
+      // Atomic blocks: media, embeds, links, dividers
       const entityKey = block.entityRanges?.[0]?.key
-      const entity = entityKey != null ? contentState.entityMap?.[String(entityKey)] : null
+      const entity = resolveEntity(entityKey != null ? contentState.entityMap?.[String(entityKey)] : null)
       const eType = (entity?.type || '').toUpperCase()
 
       if (eType === 'IMAGE' || eType === 'PHOTO') {
-        blocks.push({ type: 'image', url: entity.data?.src || entity.data?.url || entity.data?.media_url_https })
+        blocks.push({ type: 'image', url: entity!.data?.src || entity!.data?.url || entity!.data?.media_url_https })
       } else if (eType === 'MEDIA') {
-        // Media entity — look up in the article's media_entities map
-        const mediaId = entity.data?.mediaId || entity.data?.id || entity.data?.media_key
-        const mediaUrl = (mediaId && mediaMap?.[mediaId]) || entity.data?.src || entity.data?.url || entity.data?.media_url_https
+        // Media entity — look up mediaId in the article's media_entities map
+        const mediaItems = entity!.data?.mediaItems || []
+        const mediaId = mediaItems[0]?.mediaId || entity!.data?.mediaId || entity!.data?.id
+        const mediaUrl = (mediaId && mediaMap?.[String(mediaId)]) || entity!.data?.src || entity!.data?.url
         if (mediaUrl) {
           blocks.push({ type: 'image', url: mediaUrl })
         }
       } else if (eType === 'TWEET' || eType === 'EMBED' || eType === 'EMBEDDED_TWEET') {
-        const tweetUrl = entity.data?.url || entity.data?.id || entity.data?.tweetId || ''
+        const tweetUrl = entity!.data?.url || entity!.data?.id || entity!.data?.tweetId || ''
         const tweetIdMatch = String(tweetUrl).match(/(?:status\/)?(\d{10,})/)
         blocks.push({ type: 'tweet', tweetId: tweetIdMatch?.[1] || String(tweetUrl) })
+      } else if (eType === 'LINK' || eType === 'URL') {
+        const href = entity!.data?.url || entity!.data?.href || ''
+        // Check if it's a tweet URL — render as embedded tweet
+        const tweetMatch = href.match(/(?:x\.com|twitter\.com)\/\w+\/status\/(\d+)/)
+        if (tweetMatch) {
+          blocks.push({ type: 'tweet', tweetId: tweetMatch[1] })
+        } else if (href && !isAdUrl(href)) {
+          // Legit standalone link
+          blocks.push({ type: 'paragraph', text: href, format: [{ start: 0, end: href.length, type: 'link', href }] })
+        }
+        // Skip ad/tracking links silently
       } else if (eType === 'DIVIDER' || eType === 'HR') {
         blocks.push({ type: 'divider' })
       } else {
-        // Unknown atomic — log for debugging and render as paragraph
-        if (entity) console.log('[article] Unknown atomic entity type:', entity.type, 'data keys:', Object.keys(entity.data || {}))
         if (text.trim()) blocks.push({ type: 'paragraph', text, format: format.length > 0 ? format : undefined })
       }
     } else if (type.startsWith('header-')) {
@@ -800,12 +859,13 @@ function parseRichText(contentState: any, mediaMap?: Record<string, string>): Ar
     } else if (type === 'blockquote') {
       blocks.push({ type: 'blockquote', text, format: format.length > 0 ? format : undefined })
     } else if (type === 'unordered-list-item' || type === 'ordered-list-item') {
-      // Group consecutive list items
+      const isOrdered = type === 'ordered-list-item'
       const last = blocks[blocks.length - 1]
-      if (last?.type === 'list') {
-        last.items!.push(text)
+      const itemData = { text, format: format.length > 0 ? format : undefined }
+      if (last?.type === 'list' && last.ordered === isOrdered) {
+        last.items!.push(itemData)
       } else {
-        blocks.push({ type: 'list', items: [text] })
+        blocks.push({ type: 'list', ordered: isOrdered, items: [itemData] })
       }
     } else {
       // unstyled → paragraph
@@ -877,40 +937,22 @@ export async function getArticleContent(
         const article = result.article?.article_results?.result
         if (!article) continue
 
-        // Debug: log the article structure to understand available fields
-        console.log('[article] Top-level keys:', Object.keys(article))
-        if (article.cover_image) console.log('[article] cover_image keys:', Object.keys(article.cover_image))
-        if (article.media_entities) console.log('[article] media_entities count:', Object.keys(article.media_entities).length)
-        if (article.content_state) console.log('[article] Has content_state, blocks:', article.content_state?.blocks?.length, 'entityMap keys:', Object.keys(article.content_state?.entityMap || {}))
-        if (article.rich_text) console.log('[article] Has rich_text, keys:', Object.keys(article.rich_text))
-        // Log a sample of entity types if rich content exists
-        const cs = article.content_state || article.rich_text?.content_state
-        if (cs?.entityMap) {
-          const entityTypes = Object.values(cs.entityMap).map((e: any) => `${e.type}(${Object.keys(e.data || {}).join(',')})`).slice(0, 10)
-          console.log('[article] Entity types sample:', entityTypes)
-        }
-
         const userResult = result.core?.user_results?.result
         const userLegacy = userResult?.legacy
         const userCore = userResult?.core
 
         const title = article.title || article.preview_title || ''
-        // Try multiple paths for cover image
-        const coverImg = article.cover_image?.media_info?.original_img_url ||
-          article.cover_image?.media?.media_info?.original_img_url ||
-          article.cover_image?.media_url_https ||
-          article.cover_image?.url ||
-          null
-        if (!coverImg && article.cover_image) {
-          console.log('[article] cover_image structure:', JSON.stringify(article.cover_image).slice(0, 500))
-        }
+        // Cover image: field is called cover_media (not cover_image)
+        const coverImg = findCoverImageUrl(article.cover_media) || findCoverImageUrl(article.cover_image)
 
-        // Build media map for inline images (articles store media separately)
+        // Build media map: media_entities is an array-like object indexed by number
+        // Each entry has media_id and media_info.original_img_url
         const mediaMap: Record<string, string> = {}
         if (article.media_entities) {
-          for (const [id, media] of Object.entries(article.media_entities as Record<string, any>)) {
+          for (const media of Object.values(article.media_entities as Record<string, any>)) {
             const url = media.media_info?.original_img_url || media.media_url_https || media.url
-            if (url) mediaMap[id] = url
+            const id = media.media_id || media.id
+            if (url && id) mediaMap[String(id)] = url
           }
         }
 
@@ -940,4 +982,87 @@ export async function getArticleContent(
   }
 
   return null
+}
+
+/** Debug: return raw article object from X API for inspection */
+export async function getArticleRaw(
+  session: Session,
+  tweetId: string,
+): Promise<any> {
+  const variables: Record<string, unknown> = {
+    focalTweetId: tweetId,
+    referrer: 'tweet',
+    with_rux_injections: false,
+    includePromotedContent: false,
+    withCommunity: true,
+    withQuickPromoteEligibilityTweetFields: false,
+    withBirdwatchNotes: false,
+    withVoice: false,
+    withV2Timeline: true,
+  }
+
+  const fieldToggles = {
+    withArticleRichContentState: true,
+    withArticlePlainText: true,
+    withGrokAnalyze: false,
+    withDisallowedReplyControls: false,
+  }
+
+  const params = new URLSearchParams({
+    variables: JSON.stringify(variables),
+    features: JSON.stringify(GQL_FEATURES),
+    fieldToggles: JSON.stringify(fieldToggles),
+  })
+
+  const url = `${GRAPHQL_BASE}/${ENDPOINTS.TweetDetail}?${params}`
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: buildHeaders(session),
+  })
+
+  if (!res.ok) return { error: `HTTP ${res.status}` }
+
+  const data = await res.json()
+  const instructions =
+    data?.data?.threaded_conversation_with_injections_v2?.instructions || []
+
+  for (const instruction of instructions) {
+    const entries = instruction.entries || []
+    for (const entry of entries) {
+      const content = entry.content
+      if (!content) continue
+      const items = content.items ? content.items.map((i: any) => i?.item) : [content]
+      for (const item of items) {
+        const itemContent = item?.itemContent || item
+        let result = itemContent?.tweet_results?.result
+        if (!result) continue
+        if (result.__typename === 'TweetWithVisibilityResults') result = result.tweet
+        if (!result?.legacy || (result.legacy.id_str !== tweetId && result.rest_id !== tweetId)) continue
+        const article = result.article?.article_results?.result
+        if (!article) continue
+        // Return raw article object (trimmed for sanity)
+        return {
+          articleKeys: Object.keys(article),
+          title: article.title,
+          coverImage: article.cover_image,
+          mediaEntities: article.media_entities ? Object.fromEntries(
+            Object.entries(article.media_entities).map(([k, v]: [string, any]) => [k, { keys: Object.keys(v), media_info: v.media_info, media_url_https: v.media_url_https, url: v.url }])
+          ) : null,
+          contentStateKeys: article.content_state ? {
+            hasBlocks: !!article.content_state.blocks,
+            blockCount: article.content_state.blocks?.length,
+            sampleBlockTypes: article.content_state.blocks?.slice(0, 20).map((b: any) => ({ type: b.type, textLen: b.text?.length, entityRanges: b.entityRanges?.length, inlineStyleRanges: b.inlineStyleRanges?.length })),
+            entityMapKeys: Object.keys(article.content_state.entityMap || {}),
+            sampleEntities: Object.entries(article.content_state.entityMap || {}).slice(0, 10).map(([k, v]: [string, any]) => ({ key: k, type: v.type, mutability: v.mutability, dataKeys: Object.keys(v.data || {}), data: v.data })),
+          } : null,
+          richTextKeys: article.rich_text ? Object.keys(article.rich_text) : null,
+          plainTextLength: article.plain_text?.length,
+          previewBody: article.preview_body?.slice(0, 200),
+          allTopLevelKeys: Object.keys(article),
+        }
+      }
+    }
+  }
+
+  return { error: 'Article not found in response' }
 }

@@ -47,7 +47,7 @@ function Lightbox({
   return (
     <div
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-      onClick={onClose}
+      onClick={(e: Event) => { e.stopPropagation(); onClose() }}
     >
       {items.length > 1 && (
         <button
@@ -172,7 +172,7 @@ function RepliesModal({
   return (
     <div
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-      onClick={onClose}
+      onClick={(e: Event) => { e.stopPropagation(); onClose() }}
     >
       <div
         class="w-full max-w-lg max-h-[80vh] rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col overflow-hidden mx-3"
@@ -295,7 +295,7 @@ function ThreadModal({
   return (
     <div
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-      onClick={onClose}
+      onClick={(e: Event) => { e.stopPropagation(); onClose() }}
     >
       <div
         class="w-full max-w-lg max-h-[80vh] rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col overflow-hidden mx-3"
@@ -455,7 +455,8 @@ interface ArticleRichBlock {
   level?: number
   url?: string
   tweetId?: string
-  items?: string[]
+  ordered?: boolean
+  items?: Array<{ text: string; format?: ArticleRichBlock['format'] }>
   format?: Array<{ start: number; end: number; type: string; href?: string }>
 }
 
@@ -471,70 +472,78 @@ interface ArticleData {
 
 function applyFormat(text: string, format?: ArticleRichBlock['format']): preact.ComponentChildren {
   if (!format || format.length === 0) return text
-  // Sort by start position
-  const sorted = [...format].sort((a, b) => a.start - b.start)
-  const parts: preact.ComponentChildren[] = []
-  let cursor = 0
-  for (const f of sorted) {
-    if (f.start > cursor) parts.push(text.slice(cursor, f.start))
-    const segment = text.slice(f.start, f.end)
-    if (f.type === 'link' && f.href) {
-      parts.push(<a href={f.href} target="_blank" rel="noopener" class="text-blue-400 hover:underline">{segment}</a>)
-    } else if (f.type === 'bold') {
-      parts.push(<strong class="font-semibold">{segment}</strong>)
-    } else if (f.type === 'italic') {
-      parts.push(<em>{segment}</em>)
-    } else {
-      parts.push(segment)
-    }
-    cursor = f.end
+
+  // Collect all boundary points and the styles active at each segment
+  const points = new Set<number>()
+  points.add(0)
+  points.add(text.length)
+  for (const f of format) {
+    points.add(Math.max(0, f.start))
+    points.add(Math.min(text.length, f.end))
   }
-  if (cursor < text.length) parts.push(text.slice(cursor))
+  const sorted = [...points].sort((a, b) => a - b)
+
+  const parts: preact.ComponentChildren[] = []
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const start = sorted[i]
+    const end = sorted[i + 1]
+    if (start >= end) continue
+    const segment = text.slice(start, end)
+
+    // Find all formats active over this segment
+    const active = format.filter((f) => f.start <= start && f.end >= end)
+    const link = active.find((f) => f.type === 'link' && f.href)
+    const bold = active.some((f) => f.type === 'bold')
+    const italic = active.some((f) => f.type === 'italic')
+
+    let node: preact.ComponentChildren = segment
+    if (bold) node = <strong class="font-semibold">{node}</strong>
+    if (italic) node = <em>{node}</em>
+    if (link) node = <a href={link.href} target="_blank" rel="noopener" class="text-blue-400 hover:underline">{node}</a>
+
+    parts.push(node)
+  }
   return <>{parts}</>
 }
 
-/** Render embedded tweet by fetching its data */
+/** Render embedded tweet using the full TweetCard from the feed */
 function EmbeddedTweet({ tweetId }: { tweetId: string }) {
-  const [tweet, setTweet] = useState<{ authorName: string; authorHandle: string; authorAvatar: string | null; content: string; url: string } | null>(null)
+  const [tweet, setTweet] = useState<Tweet | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Try to fetch from the replies/thread endpoint which returns tweet data
     api<{ tweets: Array<any> }>(`/x/thread/${tweetId}`)
       .then((r) => {
         const t = r.tweets?.[0]
-        if (t) setTweet({ authorName: t.authorName, authorHandle: t.authorHandle, authorAvatar: t.authorAvatar, content: t.content, url: t.url })
+        if (t) {
+          setTweet({
+            id: t.tweetId, tweetId: t.tweetId,
+            authorName: t.authorName, authorHandle: t.authorHandle,
+            authorAvatar: t.authorAvatar, authorFollowers: t.authorFollowers || 0,
+            authorBio: null, content: t.content,
+            mediaUrls: t.media ? JSON.stringify(t.media) : null,
+            isRetweet: null, card: t.card ? JSON.stringify(t.card) : null,
+            quotedTweet: t.quotedTweet ? JSON.stringify(t.quotedTweet) : null,
+            replyToHandle: null, replyToTweetId: null, parentTweet: null,
+            url: t.url, likes: t.likes || 0, retweets: t.retweets || 0,
+            replies: t.replies || 0, views: 0, publishedAt: t.publishedAt || '',
+          })
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [tweetId])
 
-  if (loading) {
-    return <div class="my-3 rounded-xl border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-sm text-zinc-500 animate-pulse">Loading embedded post...</div>
-  }
-
+  if (loading) return <div class="my-3 rounded-xl border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-sm text-zinc-500 animate-pulse">Loading post...</div>
   if (!tweet) {
     return (
       <a href={`https://x.com/i/status/${tweetId}`} target="_blank" rel="noopener"
         class="my-3 block rounded-xl border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-sm text-zinc-400 hover:border-zinc-500 transition-colors">
-        View embedded post on X
+        View post on X
       </a>
     )
   }
-
-  return (
-    <a href={tweet.url} target="_blank" rel="noopener"
-      class="my-3 block rounded-xl border border-zinc-700 bg-zinc-800/50 overflow-hidden hover:border-zinc-500 transition-colors">
-      <div class="px-4 py-3">
-        <div class="flex items-center gap-2 mb-1.5">
-          {tweet.authorAvatar && <img src={tweet.authorAvatar} alt="" class="w-5 h-5 rounded-full" />}
-          <span class="text-sm font-semibold text-zinc-200">{tweet.authorName}</span>
-          <span class="text-xs text-zinc-500">@{tweet.authorHandle}</span>
-        </div>
-        <p class="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed break-words line-clamp-6">{tweet.content}</p>
-      </div>
-    </a>
-  )
+  return <div class="my-3"><TweetCard tweet={tweet} /></div>
 }
 
 /** Rich-format plain text: URLs become links, _italic_, **bold**, and x.com tweet URLs become embedded tweets */
@@ -648,12 +657,14 @@ function ArticleModal({
         return <img key={i} src={block.url} alt="" class="w-full rounded-lg my-4" loading="lazy" />
       case 'blockquote':
         return <blockquote key={i} class="border-l-2 border-zinc-600 pl-4 my-3 text-zinc-400 italic">{applyFormat(block.text || '', block.format)}</blockquote>
-      case 'list':
+      case 'list': {
+        const Tag = block.ordered ? 'ol' : 'ul'
         return (
-          <ul key={i} class="list-disc list-inside my-3 space-y-1 text-zinc-300">
-            {block.items?.map((item, j) => <li key={j}>{item}</li>)}
-          </ul>
+          <Tag key={i} class={`${block.ordered ? 'list-decimal' : 'list-disc'} list-inside my-3 space-y-1.5 text-zinc-300`}>
+            {block.items?.map((item, j) => <li key={j}>{applyFormat(item.text, item.format)}</li>)}
+          </Tag>
         )
+      }
       case 'divider':
         return <hr key={i} class="border-zinc-700 my-6" />
       case 'tweet':
@@ -666,7 +677,7 @@ function ArticleModal({
   return (
     <div
       class="fixed inset-0 z-50 flex items-start justify-center bg-black/80 overflow-y-auto py-8 px-3"
-      onClick={onClose}
+      onClick={(e: Event) => { e.stopPropagation(); onClose() }}
     >
       <div
         class="w-full max-w-2xl rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col overflow-hidden"
@@ -827,11 +838,21 @@ function OgEmbed({
 function InlineVideo({ item, sizeClass, fit }: { item: MediaItem; sizeClass: string; fit: string }) {
   const isGif = item.type === 'gif'
   const [playing, setPlaying] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    const v = videoRef.current
+    if (v && isGif) {
+      v.muted = true
+      v.play().catch(() => {})
+    }
+  }, [isGif])
 
   if (playing || isGif) {
     return (
       <div class="relative overflow-hidden rounded-lg border border-zinc-700 bg-black">
         <video
+          ref={isGif ? videoRef : undefined}
           src={videoProxyUrl(item.url)}
           poster={`${item.thumbnail}?name=medium`}
           controls={!isGif}
@@ -1070,7 +1091,7 @@ function TweetDetailModal({
   return (
     <div
       class="fixed inset-0 z-50 flex items-start justify-center bg-black/80 overflow-y-auto py-8 px-3"
-      onClick={onClose}
+      onClick={(e: Event) => { e.stopPropagation(); onClose() }}
     >
       <div class="w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
         <TweetCard tweet={tweet} nudge={nudge} onNudge={onNudge} score={score} minScore={minScore} embedded />
@@ -1168,12 +1189,14 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
             <span class="font-medium text-zinc-400">{tweet.parentTweet.authorName}</span>
             {' '}@{tweet.parentTweet.authorHandle}
           </span>
-          <p class="text-xs text-zinc-500 line-clamp-2 mt-0.5 break-words">{tweet.parentTweet.content}</p>
+          <div class="text-xs text-zinc-500 mt-0.5">
+            <TweetContent text={tweet.parentTweet.content} />
+          </div>
         </div>
       </div>
     )}
     <div
-      class={`${tweet.parentTweet && !isThread ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} border border-zinc-800 bg-zinc-900 px-3 sm:px-4 py-3 hover:border-zinc-700 transition-colors overflow-hidden${embedded ? '' : ' cursor-pointer'}`}
+      class={`${tweet.parentTweet && !isThread ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} border border-zinc-800 bg-zinc-900 px-3 sm:px-4 py-3 hover:border-zinc-700 transition-colors${embedded ? '' : ' cursor-pointer'}`}
       onClick={embedded ? undefined : () => {
         if (lightbox !== null || quotedLightbox !== null || parentLightbox !== null || showReplies || showThread) return
         setShowDetail(true)
@@ -1368,7 +1391,9 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
             <span class="text-sm font-semibold text-zinc-200">{quoted.authorName}</span>
             <span class="text-xs text-zinc-500">@{quoted.authorHandle}</span>
           </div>
-          <p class="text-sm text-zinc-400 line-clamp-3 break-words">{quoted.content}</p>
+          <div class="text-sm text-zinc-400">
+            <TweetContent text={quoted.content} hideUrls={!!quoted.card} />
+          </div>
           <MediaGrid media={quoted.media || []} onPhotoClick={setQuotedLightbox} />
           {quoted.card && <LinkCard data={quoted.card} fallbackUrl={quoted.url} tweetUrl={quoted.url} />}
         </div>
@@ -1861,17 +1886,84 @@ function AiReportView() {
   )
 }
 
-// === Pagination ===
+// === Load More + End of Feed ===
 
-function Pagination({ page, totalPages, onPage }: { page: number; totalPages: number; onPage: (p: number) => void }) {
-  if (totalPages <= 1) return null
+const FEED_LIMIT = 50
+
+function usePaginatedFeed(url: string, resetKey: number) {
+  const [allTweets, setAllTweets] = useState<Tweet[]>([])
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const loadPage = useCallback(async (p: number, reset: boolean) => {
+    if (reset) { setLoading(true); setError(null) }
+    else setLoadingMore(true)
+    try {
+      const res = await api<FeedResponse>(`${url}${url.includes('?') ? '&' : '?'}limit=${FEED_LIMIT}&page=${p}`)
+      setAllTweets(prev => {
+        if (reset) return res.data
+        const ids = new Set(prev.map(t => t.id))
+        return [...prev, ...res.data.filter(t => !ids.has(t.id))]
+      })
+      setTotal(res.pagination.total)
+      setPage(p)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load')
+    } finally {
+      setLoading(false)
+      setLoadingMore(false)
+    }
+  }, [url])
+
+  useEffect(() => { loadPage(1, true) }, [resetKey, loadPage])
+
+  const remaining = Math.max(0, total - allTweets.length)
+  const loadMore = useCallback(() => loadPage(page + 1, false), [loadPage, page])
+
+  return { allTweets, loading, loadingMore, error, remaining, loadMore }
+}
+
+function LoadMore({ remaining, loading, onLoad }: { remaining: number; loading: boolean; onLoad: () => void }) {
+  if (remaining <= 0) return null
   return (
-    <div class="mt-6 flex items-center justify-center gap-2 sm:gap-4">
-      <button type="button" onClick={() => onPage(Math.max(1, page - 1))} disabled={page <= 1}
-        class="rounded bg-zinc-800 px-2 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm hover:bg-zinc-700 disabled:opacity-50 whitespace-nowrap">Previous</button>
-      <span class="text-xs sm:text-sm text-zinc-500 whitespace-nowrap">Page {page} of {totalPages}</span>
-      <button type="button" onClick={() => onPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages}
-        class="rounded bg-zinc-800 px-2 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm hover:bg-zinc-700 disabled:opacity-50 whitespace-nowrap">Next</button>
+    <div class="mt-6 flex justify-center">
+      <button
+        type="button"
+        onClick={onLoad}
+        disabled={loading}
+        class="rounded-lg bg-zinc-800 border border-zinc-700 px-5 py-2.5 text-sm text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 disabled:opacity-50 transition-colors"
+      >
+        {loading ? (
+          <span class="flex items-center gap-2">
+            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.219-8.56" /></svg>
+            Loading...
+          </span>
+        ) : (
+          `Load more (${remaining} remaining)`
+        )}
+      </button>
+    </div>
+  )
+}
+
+function EndOfFeed() {
+  return (
+    <div class="mt-10 mb-6 flex flex-col items-center select-none">
+      <pre class="text-zinc-700 text-[10px] leading-tight font-mono">{`
+        .  *  .  *  .
+     *                *
+    .    _________    .
+    *   /         \\   *
+    .  |  () _ ()  |  .
+    *  |    (_)    |  *
+    .   \\_________/   .
+     *                *
+        .  *  .  *  .
+      `}</pre>
+      <p class="text-zinc-600 text-xs mt-2">You've seen all the omens.</p>
     </div>
   )
 }
@@ -1890,9 +1982,8 @@ function useAiSettings(): { minScore: number; configured: boolean } {
 export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
   const { nudges, onNudge, feedback } = useNudges()
   const { minScore, configured: aiConfigured } = useAiSettings()
-  const [page, setPage] = useState(1)
   const [feedKey, setFeedKey] = useState(0) // bump to re-fetch feed
-  const { data, loading, error } = useApi<FeedResponse>(`/ai/filtered-feed?limit=50&page=${page}&_=${feedKey}`)
+  const { allTweets, loading, loadingMore, error, remaining, loadMore } = usePaginatedFeed('/ai/filtered-feed', feedKey)
   const [filterError, setFilterError] = useState<string | null>(null)
   const [fetchingPosts, setFetchingPosts] = useState(false)
   const [showScoringDetails, setShowScoringDetails] = useState(false)
@@ -1977,7 +2068,6 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   const showNewPosts = () => {
     setNewReady(0)
     setScoringBaseline(null)
-    setPage(1)
     setFeedKey((k) => k + 1)
   }
 
@@ -2069,7 +2159,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
       {filterError && <p class="text-red-400 text-sm text-center mb-2">{filterError}</p>}
       {error && <p class="text-red-400 text-center">{error}</p>}
 
-      {data?.data.length === 0 && !loading && pendingCount === 0 && (
+      {allTweets.length === 0 && !loading && pendingCount === 0 && (
         <div class="flex flex-col items-center justify-center py-20">
           <svg class="w-10 h-10 text-zinc-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
             <path d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
@@ -2089,11 +2179,12 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
       )}
 
       <div class="flex flex-col gap-2">
-        {data && dedupThreads(data.data).map((tweet: any) => (
+        {allTweets.length > 0 && dedupThreads(allTweets).map((tweet: any) => (
           <TweetCard key={tweet.id} tweet={tweet} nudge={nudges.get(tweet.id) || null} onNudge={onNudge} score={tweet.score} minScore={minScore} />
         ))}
       </div>
-      {data?.pagination && <Pagination page={page} totalPages={data.pagination.totalPages} onPage={setPage} />}
+      <LoadMore remaining={remaining} loading={loadingMore} onLoad={loadMore} />
+      {remaining === 0 && allTweets.length > 0 && !loading && <EndOfFeed />}
     </div>
   )
 }
@@ -2101,11 +2192,11 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
   const { nudges, onNudge, feedback } = useNudges()
   const { minScore } = useAiSettings()
-  const [page, setPage] = useState(1)
+  const [feedKey, setFeedKey] = useState(0)
+  const { allTweets, loading, loadingMore, error, remaining, loadMore } = usePaginatedFeed('/feed', feedKey)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const [refreshCount, setRefreshCount] = useState<number | null>(null)
-  const { data, loading, error, refetch } = useApi<FeedResponse>(`/feed?limit=50&page=${page}`)
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
@@ -2114,14 +2205,14 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
     try {
       const res = await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
       setRefreshCount(res.count)
-      refetch()
+      setFeedKey((k) => k + 1)
       setTimeout(() => setRefreshCount(null), 4000)
     } catch (e) {
       setRefreshError(e instanceof Error ? e.message : 'Failed to refresh feed')
     } finally {
       setRefreshing(false)
     }
-  }, [refetch])
+  }, [])
 
   useEffect(() => {
     onRefreshRef?.(refresh)
@@ -2138,7 +2229,7 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
       {refreshError && <p class="text-red-400 text-sm text-center mb-2">{refreshError}</p>}
       {error && <p class="text-red-400 text-center">{error}</p>}
 
-      {data?.data.length === 0 && !loading && (
+      {allTweets.length === 0 && !loading && (
         <div class="flex flex-col items-center justify-center py-20">
           <svg class="w-10 h-10 text-zinc-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
             <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
@@ -2152,11 +2243,12 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
       )}
 
       <div class="flex flex-col gap-2">
-        {data && dedupThreads(data.data).map((tweet) => (
+        {allTweets.length > 0 && dedupThreads(allTweets).map((tweet) => (
           <TweetCard key={tweet.id} tweet={tweet} nudge={nudges.get(tweet.id) || null} onNudge={onNudge} score={(tweet as any).score} minScore={minScore} />
         ))}
       </div>
-      {data?.pagination && <Pagination page={page} totalPages={data.pagination.totalPages} onPage={setPage} />}
+      <LoadMore remaining={remaining} loading={loadingMore} onLoad={loadMore} />
+      {remaining === 0 && allTweets.length > 0 && !loading && <EndOfFeed />}
     </div>
   )
 }

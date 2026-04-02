@@ -236,4 +236,26 @@ xRouter.get('/article/:tweetId', async (c) => {
   }
 })
 
+// Temporary debug endpoint — returns raw article structure from X API
+xRouter.get('/article-debug/:tweetId', async (c) => {
+  const user = c.get('user')
+  const tweetId = c.req.param('tweetId')
+  if (!/^\d+$/.test(tweetId)) {
+    return c.json({ error: 'Invalid tweet ID' }, 400)
+  }
+  const db = getDb(env.DATABASE_URL)
+  const [session] = await db.select().from(xSessions).where(eq(xSessions.userId, user.id)).limit(1)
+  if (!session) return c.json({ error: 'X not connected' }, 400)
+
+  try {
+    const authToken = await decrypt(session.authToken)
+    const ct0 = await decrypt(session.ct0)
+    const { getArticleRaw } = await import('../x/graphql')
+    const raw = await getArticleRaw({ authToken, ct0 }, tweetId)
+    return c.json(raw)
+  } catch (err) {
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
 export default xRouter
