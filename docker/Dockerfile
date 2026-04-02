@@ -17,7 +17,7 @@ RUN cd apps/web && npx vite build
 
 # Build api (needs bun for bun build)
 FROM deps AS build-api
-RUN apt-get update && apt-get install -y --no-install-recommends curl unzip && \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip && \
     rm -rf /var/lib/apt/lists/* && curl -fsSL https://bun.sh/install | bash
 COPY tsconfig.base.json ./
 COPY apps/api/ apps/api/
