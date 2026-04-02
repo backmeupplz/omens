@@ -779,7 +779,7 @@ export async function generateReportForUser(userId: string): Promise<any> {
     const tweetText = formatTweetsForAI(tweetList)
     const userContent = `Here are ${tweetList.length} posts from the last 24 hours (pre-filtered by relevance). Analyze and create a report:\n\n${tweetText}`
 
-    setStatus(`Waiting for AI response...`)
+    setStatus(`Waiting for AI response (${tweetList.length} posts)...`)
 
     // Stream content from AI provider
     let firstChunk = true

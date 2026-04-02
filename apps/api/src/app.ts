@@ -11,7 +11,7 @@ import apiKeysRouter from './routes/apikeys'
 import authRoutes from './routes/auth'
 import feedRouter from './routes/feed'
 import xRouter from './routes/x'
-import shareRouter from './routes/share'
+import shareRouter, { shareDataRouter } from './routes/share'
 import { fetchOg } from './x/og'
 
 async function securityHeaders(c: Context, next: Next) {
@@ -43,43 +43,46 @@ export function createApp() {
   let appVersion = 'dev'
   try { appVersion = require('/app/package.json').version || 'dev' } catch { try { appVersion = require('../../package.json').version || 'dev' } catch {} }
   app.get('/health', (c) => c.json({ ok: true, version: appVersion }))
-  app.get('/version', (c) => c.json({ version: appVersion }))
+  app.get('/api/health', (c) => c.json({ ok: true, version: appVersion }))
+  app.get('/api/version', (c) => c.json({ version: appVersion }))
+
+  // --- All API routes under /api prefix ---
+  const apiApp = new Hono()
 
   // Rate limit only login/register, not /auth/mode or /auth/me
-  app.post(
+  apiApp.post(
     '/auth/login',
     rateLimiter({ windowMs: 60_000, max: 10, keyPrefix: 'auth-login' }),
   )
-  app.post(
+  apiApp.post(
     '/auth/register',
     rateLimiter({ windowMs: 60_000, max: 5, keyPrefix: 'auth-register' }),
   )
-  app.use(
+  apiApp.use(
     '/x/login',
     rateLimiter({ windowMs: 60_000, max: 5, keyPrefix: 'x-login' }),
   )
 
   // Auth routes
-  app.route('/auth', authRoutes)
+  apiApp.route('/auth', authRoutes)
 
   // Protected routes
-  app.use('/feed/*', authMiddleware)
-  app.use('/x/*', authMiddleware)
-  app.use('/api-keys/*', authMiddleware)
-  app.use('/ai/*', authMiddleware)
-  app.use('/og/*', authMiddleware)
-  app.use('/media/*', authMiddleware)
+  apiApp.use('/feed/*', authMiddleware)
+  apiApp.use('/x/*', authMiddleware)
+  apiApp.use('/api-keys/*', authMiddleware)
+  apiApp.use('/ai/*', authMiddleware)
+  apiApp.use('/og/*', authMiddleware)
+  apiApp.use('/media/*', authMiddleware)
 
   // Rate limit AI endpoints
-  app.post('/ai/report', rateLimiter({ windowMs: 60_000, max: 3, keyPrefix: 'ai-report' }))
-  app.post('/ai/filter', rateLimiter({ windowMs: 60_000, max: 3, keyPrefix: 'ai-filter' }))
-  app.post('/ai/regenerate-prompt', rateLimiter({ windowMs: 60_000, max: 5, keyPrefix: 'ai-regen' }))
+  apiApp.post('/ai/report', rateLimiter({ windowMs: 60_000, max: 3, keyPrefix: 'ai-report' }))
+  apiApp.post('/ai/filter', rateLimiter({ windowMs: 60_000, max: 3, keyPrefix: 'ai-filter' }))
+  apiApp.post('/ai/regenerate-prompt', rateLimiter({ windowMs: 60_000, max: 5, keyPrefix: 'ai-regen' }))
 
   // OG metadata proxy (cached)
-  app.get('/og', async (c) => {
+  apiApp.get('/og', async (c) => {
     const url = c.req.query('url')
     if (!url) return c.json({ error: 'url required' }, 400)
-    // Validate URL scheme to prevent SSRF
     let parsed: URL
     try {
       parsed = new URL(url)
@@ -89,7 +92,6 @@ export function createApp() {
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return c.json({ error: 'invalid url scheme' }, 400)
     }
-    // Block private/internal IPs
     const host = parsed.hostname
     if (
       host === 'localhost' ||
@@ -110,8 +112,8 @@ export function createApp() {
     return c.json(data)
   })
 
-  // Video proxy — streams Twitter video through the server
-  app.get('/media/video', async (c) => {
+  // Video proxy
+  apiApp.get('/media/video', async (c) => {
     const url = c.req.query('url')
     if (!url) return c.json({ error: 'url required' }, 400)
     let parsed: URL
@@ -148,10 +150,16 @@ export function createApp() {
     })
   })
 
-  app.route('/feed', feedRouter)
-  app.route('/x', xRouter)
-  app.route('/api-keys', apiKeysRouter)
-  app.route('/ai', aiRouter)
+  apiApp.route('/feed', feedRouter)
+  apiApp.route('/x', xRouter)
+  apiApp.route('/api-keys', apiKeysRouter)
+  apiApp.route('/ai', aiRouter)
+
+  // Share data endpoints (public JSON, no auth)
+  apiApp.route('/', shareDataRouter)
+
+  // Mount all API routes under /api
+  app.route('/api', apiApp)
 
   // Public share routes (no auth) — must be before static fallback
   app.route('/', shareRouter)

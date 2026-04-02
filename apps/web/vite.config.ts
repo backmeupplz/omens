@@ -9,7 +9,6 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
-        rewrite: (path) => path.replace(/^\/api/, ''),
         // Disable response buffering for SSE streams
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes) => {

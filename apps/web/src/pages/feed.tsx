@@ -1630,7 +1630,12 @@ function AiReportView() {
   refetchRef.current = refetch
 
   /** Connect to SSE stream and accumulate content */
-  const mountedRef = useRef(true)
+  const unmountingRef = useRef(false)
+  useEffect(() => {
+    const onUnload = () => { unmountingRef.current = true; abortRef.current?.abort() }
+    window.addEventListener('beforeunload', onUnload)
+    return () => window.removeEventListener('beforeunload', onUnload)
+  }, [])
   const connectStream = useCallback(() => {
     abortRef.current?.abort()
     const controller = new AbortController()
@@ -1680,14 +1685,14 @@ function AiReportView() {
           }
         }
         // Stream ended without [DONE] or [ERROR] — connection was cut short
-        if (!completed && !controller.signal.aborted && mountedRef.current) {
+        if (!completed && !controller.signal.aborted && !unmountingRef.current) {
           setGenerating(false)
           setStreamContent('')
           setError('Connection lost during report generation')
         }
       })
       .catch((e) => {
-        if (controller.signal.aborted || !mountedRef.current) return
+        if (controller.signal.aborted || unmountingRef.current) return
         if (e instanceof Error && e.name === 'AbortError') return
         setGenerating(false)
         setStreamContent('')
@@ -1709,7 +1714,7 @@ function AiReportView() {
         }
       })
       .catch(() => {})
-    return () => { mountedRef.current = false; abortRef.current?.abort() }
+    return () => { unmountingRef.current = true; abortRef.current?.abort() }
   }, [])
 
   const generate = async () => {

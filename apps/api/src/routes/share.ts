@@ -8,8 +8,6 @@ import {
   generateTweetOgPng,
 } from '../helpers/og-image'
 
-const shareRouter = new Hono()
-
 // --- Helpers ---
 
 function esc(s: string): string {
@@ -37,9 +35,11 @@ function ogHtml(meta: { title: string; description: string; url: string; image?:
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }
 
-// --- Tweet sharing ---
+// === JSON data endpoints (mounted under /api) ===
 
-shareRouter.get('/tweet/:handle/:tweetId', async (c) => {
+export const shareDataRouter = new Hono()
+
+shareDataRouter.get('/tweet/:handle/:tweetId', async (c) => {
   const { handle, tweetId } = c.req.param()
   const db = getDb(env.DATABASE_URL)
   const [tweet] = await db.select().from(tweets)
@@ -55,6 +55,24 @@ shareRouter.get('/tweet/:handle/:tweetId', async (c) => {
     },
   })
 })
+
+shareDataRouter.get('/report/:id/data', async (c) => {
+  const id = c.req.param('id')
+  const db = getDb(env.DATABASE_URL)
+  const [report] = await db.select().from(aiReports).where(eq(aiReports.id, id)).limit(1)
+  if (!report) return c.json({ error: 'Report not found' }, 404)
+  const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
+  const refTweets = tweetRefIds.length > 0
+    ? await db.select().from(tweets).where(inArray(tweets.id, tweetRefIds))
+    : []
+  return c.json({
+    report: { id: report.id, content: report.content, model: report.model, tweetCount: report.tweetCount, tweetRefs: tweetRefIds, refTweets, createdAt: report.createdAt },
+  })
+})
+
+// === Public HTML/OG routes (mounted at root) ===
+
+const shareRouter = new Hono()
 
 // OG image for shared tweets (PNG)
 shareRouter.get('/:handle/status/:tweetId/og.png', async (c) => {
@@ -77,7 +95,7 @@ shareRouter.get('/:handle/status/:tweetId/og.png', async (c) => {
   return new Response(Buffer.from(png), {
     headers: {
       'Content-Type': 'image/png',
-      'Cache-Control': 'public, max-age=604800', // 7 days — tweet content rarely changes
+      'Cache-Control': 'public, max-age=604800',
     },
   })
 })
@@ -100,26 +118,10 @@ shareRouter.get('/:handle/status/:tweetId', async (c) => {
     })
   }
 
-  // In dev (no WEB_DIR), redirect to Vite dev server; in prod the static fallback serves index.html
   if (!env.WEB_DIR) return c.redirect(`http://localhost:5173/${handle}/status/${tweetId}`)
 })
 
-// --- Report sharing ---
-
-shareRouter.get('/report/:id/data', async (c) => {
-  const id = c.req.param('id')
-  const db = getDb(env.DATABASE_URL)
-  const [report] = await db.select().from(aiReports).where(eq(aiReports.id, id)).limit(1)
-  if (!report) return c.json({ error: 'Report not found' }, 404)
-  const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
-  const refTweets = tweetRefIds.length > 0
-    ? await db.select().from(tweets).where(inArray(tweets.id, tweetRefIds))
-    : []
-  return c.json({
-    report: { id: report.id, content: report.content, model: report.model, tweetCount: report.tweetCount, tweetRefs: tweetRefIds, refTweets, createdAt: report.createdAt },
-  })
-})
-
+// Report OG
 shareRouter.get('/report/:id/og.png', async (c) => {
   const id = c.req.param('id')
   const db = getDb(env.DATABASE_URL)
@@ -137,7 +139,7 @@ shareRouter.get('/report/:id/og.png', async (c) => {
   return new Response(Buffer.from(png), {
     headers: {
       'Content-Type': 'image/png',
-      'Cache-Control': 'public, max-age=86400', // 24 hours
+      'Cache-Control': 'public, max-age=86400',
     },
   })
 })

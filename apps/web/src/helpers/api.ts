@@ -1,5 +1,4 @@
-// In dev, Vite proxy rewrites /api → backend. In production, API is same-origin at root.
-export const API_BASE = window.location.port === '5173' ? '/api' : ''
+export const API_BASE = '/api'
 
 // Paths where 401 is expected and should NOT trigger a redirect
 const SILENT_401 = ['/auth/', '/x/session']
