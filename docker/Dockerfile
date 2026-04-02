@@ -37,6 +37,7 @@ COPY packages/shared/ packages/shared/
 # __dirname in bundle is /app/api, join('..', 'drizzle') = /app/drizzle
 RUN ln -s /app/packages/db/drizzle /app/drizzle
 
+COPY package.json /app/package.json
 ENV NODE_ENV=production
 ENV WEB_DIR=/app/web
 EXPOSE 3000

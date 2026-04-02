@@ -888,7 +888,14 @@ export function Settings({
             </div>
           </>
         )}
+        <VersionInfo />
       </div>
     </div>
   )
+}
+
+function VersionInfo() {
+  const { data } = useApi<{ version: string }>('/version')
+  if (!data) return null
+  return <p class="text-xs text-zinc-700 text-center">Omens v{data.version}</p>
 }

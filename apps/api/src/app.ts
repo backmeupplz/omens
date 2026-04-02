@@ -40,7 +40,10 @@ export function createApp() {
     }),
   )
 
-  app.get('/health', (c) => c.json({ ok: true }))
+  let appVersion = 'dev'
+  try { appVersion = require('/app/package.json').version || 'dev' } catch { try { appVersion = require('../../package.json').version || 'dev' } catch {} }
+  app.get('/health', (c) => c.json({ ok: true, version: appVersion }))
+  app.get('/version', (c) => c.json({ version: appVersion }))
 
   // Rate limit only login/register, not /auth/mode or /auth/me
   app.post(
