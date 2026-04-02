@@ -100,7 +100,8 @@ shareRouter.get('/:handle/status/:tweetId', async (c) => {
     })
   }
 
-  if (process.env.NODE_ENV !== 'production') return c.redirect(`http://localhost:5173/${handle}/status/${tweetId}`)
+  // In dev (no WEB_DIR), redirect to Vite dev server; in prod the static fallback serves index.html
+  if (!env.WEB_DIR) return c.redirect(`http://localhost:5173/${handle}/status/${tweetId}`)
 })
 
 // --- Report sharing ---
@@ -157,7 +158,7 @@ shareRouter.get('/report/:id', async (c) => {
     })
   }
 
-  if (process.env.NODE_ENV !== 'production') return c.redirect(`http://localhost:5173/report/${id}`)
+  if (!env.WEB_DIR) return c.redirect(`http://localhost:5173/report/${id}`)
 })
 
 export default shareRouter
