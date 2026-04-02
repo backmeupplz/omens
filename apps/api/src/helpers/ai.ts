@@ -14,7 +14,7 @@ export const REPORT_SYSTEM_PROMPT = `Generate a feed digest. Focus only on what 
 Rules:
 - Use ## headers to separate distinct topics/stories
 - Write 2-3 sentence summaries per topic. Add context and why it matters.
-- Embed the most important posts inline using [[tweet:TWEET_DB_ID]] on its own line (use the [ID: xxx] shown before each post). Aim for 5-12 inline tweets.
+- Embed posts inline using [[tweet:TWEET_DB_ID]] on its own line (use the [ID: xxx] shown before each post). Embed every post you mention — never reference a post without embedding it.
 - Do NOT repeat tweet text when you embed it — just provide context around it.
 - Leave blank lines between paragraphs for readability.
 - No forced categories like "Action Items". Just tell me what happened, organized by topic.
