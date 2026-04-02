@@ -47,6 +47,8 @@ COPY packages/shared/ packages/shared/
 RUN ln -s /app/packages/db/drizzle /app/drizzle
 
 COPY package.json /app/package.json
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
 ENV NODE_ENV=production
 ENV WEB_DIR=/app/web
 EXPOSE 3000

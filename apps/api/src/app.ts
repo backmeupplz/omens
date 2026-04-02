@@ -40,8 +40,8 @@ export function createApp() {
     }),
   )
 
-  let appVersion = 'dev'
-  try { appVersion = require('/app/package.json').version || 'dev' } catch { try { appVersion = require('../../package.json').version || 'dev' } catch {} }
+  let appVersion = process.env.APP_VERSION || 'dev'
+  if (appVersion === 'dev') { try { appVersion = require('/app/package.json').version || 'dev' } catch { try { appVersion = require('../../package.json').version || 'dev' } catch {} } }
   app.get('/health', (c) => c.json({ ok: true, version: appVersion }))
   app.get('/api/health', (c) => c.json({ ok: true, version: appVersion }))
   app.get('/api/version', (c) => c.json({ version: appVersion }))
