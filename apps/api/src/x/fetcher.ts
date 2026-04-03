@@ -245,7 +245,7 @@ async function checkAutoReports() {
 
     activeReports.add(s.userId)
     tasks.push(
-      generateReportForUser(s.userId)
+      generateReportForUser(s.userId, true)
         .catch((err: any) => console.error(`[auto-report] Error for ${s.userId}:`, err))
         .finally(() => activeReports.delete(s.userId)),
     )

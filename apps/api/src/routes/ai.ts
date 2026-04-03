@@ -730,7 +730,7 @@ aiRouter.get('/report-status', async (c) => {
   })
 })
 
-export async function generateReportForUser(userId: string): Promise<any> {
+export async function generateReportForUser(userId: string, isAuto = false): Promise<any> {
   const existingProgress = reportGenerating.get(userId)
   if (existingProgress && !existingProgress.done) return null
 
@@ -771,8 +771,8 @@ export async function generateReportForUser(userId: string): Promise<any> {
   }
 
   if (tweetList.length === 0) {
-    // Update lastAutoReportAt to prevent retry every 5 minutes
-    await db.update(aiSettings).set({ lastAutoReportAt: new Date() }).where(eq(aiSettings.userId, userId))
+    // Update lastAutoReportAt to prevent retry every 5 minutes (only for auto)
+    if (isAuto) await db.update(aiSettings).set({ lastAutoReportAt: new Date() }).where(eq(aiSettings.userId, userId))
     reportGenerating.delete(userId)
     return null
   }
@@ -810,7 +810,7 @@ export async function generateReportForUser(userId: string): Promise<any> {
       tweetRefs: tweetRefIds.length > 0 ? JSON.stringify(tweetRefIds) : null,
     }).returning()
 
-    await db.update(aiSettings).set({ lastAutoReportAt: new Date() }).where(eq(aiSettings.userId, userId))
+    if (isAuto) await db.update(aiSettings).set({ lastAutoReportAt: new Date() }).where(eq(aiSettings.userId, userId))
 
     progress.done = true
     for (const sub of progress.subscribers) sub('[DONE]')
