@@ -1,11 +1,10 @@
 /**
  * Background prompt regeneration batcher.
- * Checks every 60 seconds, but only processes changes that are >= 5 minutes old.
- * This ensures the frontend countdown (earliest pending + 5min) matches reality.
+ * Checks every 60 seconds, processes any unconsumed changes.
  */
 
 import { getDb, aiSettings, nudges, promptChanges } from '@omens/db'
-import { and, eq, lte } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import env from '../env'
 import { regeneratePromptForUser } from '../routes/ai'
 
@@ -14,20 +13,17 @@ let intervalHandle: ReturnType<typeof setInterval> | null = null
 async function processAll() {
   const db = getDb(env.DATABASE_URL)
 
-  // Fix 7: Only select nudges/instructions where createdAt <= now() - 5 minutes
-  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
-
-  // Find users with pending nudges that are old enough
+  // Find users with any pending nudges
   const usersWithNudges = await db
     .selectDistinct({ userId: nudges.userId })
     .from(nudges)
-    .where(and(eq(nudges.consumed, false), lte(nudges.createdAt, fiveMinutesAgo)))
+    .where(eq(nudges.consumed, false))
 
-  // Find users with pending instructions that are old enough
+  // Find users with any pending instructions
   const usersWithInstructions = await db
     .selectDistinct({ userId: promptChanges.userId })
     .from(promptChanges)
-    .where(and(eq(promptChanges.consumed, false), lte(promptChanges.createdAt, fiveMinutesAgo)))
+    .where(eq(promptChanges.consumed, false))
 
   // Combine unique user IDs
   const userIds = new Set([
@@ -56,7 +52,7 @@ async function processAll() {
 }
 
 export function initPromptBatcher() {
-  console.log('[promptBatch] Starting prompt batcher (every 60s, processes changes >= 5m old)')
+  console.log('[promptBatch] Starting prompt batcher (every 60s)')
 
   // First run after 30 seconds
   setTimeout(() => void processAll(), 30_000)

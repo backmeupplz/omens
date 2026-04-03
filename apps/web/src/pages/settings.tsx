@@ -393,6 +393,7 @@ interface InternalsData {
   pendingInstructions: Array<{ id: string; instruction: string }>
   lastRegenAt: string | null
   autoApplyAt: number | null
+  isApplying: boolean
 }
 
 function FetchIntervalSection() {
@@ -673,7 +674,9 @@ function AiTuningSection() {
           <div class="flex items-center justify-between">
             <span class="text-xs text-zinc-400">
               Pending changes ({internals.pendingNudges.length + internals.pendingInstructions.length})
-              {!regenerating && internals.autoApplyAt && <Countdown targetMs={internals.autoApplyAt} prefix=" · auto-applies in " expiredLabel=" · applying soon..." />}
+              {!regenerating && (internals.isApplying
+                ? <span> · applying now...</span>
+                : internals.autoApplyAt && <Countdown targetMs={internals.autoApplyAt} prefix=" · auto-applies in " expiredLabel=" · applying soon..." />)}
             </span>
             <button type="button" onClick={regenerate} disabled={regenerating}
               class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium hover:bg-emerald-500 disabled:opacity-50 whitespace-nowrap">

@@ -327,13 +327,15 @@ aiRouter.get('/internals', async (c) => {
     .where(and(eq(promptChanges.userId, user.id), eq(promptChanges.consumed, false)))
     .orderBy(desc(promptChanges.createdAt))
 
-  // Compute auto-apply target as epoch ms (avoids client/server timezone mismatch)
+  // Compute auto-apply target as epoch ms (batcher runs every 60s)
   const allCreatedAts = [
     ...pendingNudgeRows.map((n) => n.createdAt?.getTime() || 0),
     ...pendingInstructions.map((p) => p.createdAt?.getTime() || 0),
   ].filter((t) => t > 0)
   const earliestPending = allCreatedAts.length > 0 ? Math.min(...allCreatedAts) : null
-  const autoApplyAt = earliestPending ? earliestPending + 5 * 60_000 : null
+  const autoApplyAt = earliestPending ? earliestPending + 60_000 : null
+
+  const isApplying = regenProgress.has(user.id) && !regenProgress.get(user.id)!.done
 
   return c.json({
     currentPrompt: settings?.systemPrompt || '',
@@ -351,6 +353,7 @@ aiRouter.get('/internals', async (c) => {
     })),
     lastRegenAt: settings?.promptLastRegenAt || null,
     autoApplyAt,
+    isApplying,
   })
 })
 
