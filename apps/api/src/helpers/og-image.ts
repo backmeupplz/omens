@@ -122,6 +122,19 @@ function svgToPng(svg: string): Uint8Array {
 
 // --- Tweet OG Image ---
 
+interface CardItem {
+  title?: string
+  description?: string
+  thumbnail?: string
+  domain?: string
+  url?: string
+}
+
+function parseCard(card: string | null): CardItem | null {
+  if (!card) return null
+  try { return JSON.parse(card) } catch { return null }
+}
+
 export interface TweetOgInput {
   tweetId: string
   authorName: string
@@ -129,6 +142,7 @@ export interface TweetOgInput {
   authorAvatar: string | null
   content: string
   mediaUrls: string | null
+  card: string | null
   publishedAt: Date | string | null
 }
 
@@ -140,13 +154,19 @@ export async function generateTweetOgPng(t: TweetOgInput): Promise<Uint8Array> {
   const F = FONT
   const L = 40
 
-  // Parse media and try to fetch first image
+  // Parse card and media
+  const card = parseCard(t.card)
+
+  // Parse media and try to fetch first image (card thumbnail as fallback)
   const media = parseMedia(t.mediaUrls)
   const firstMedia = media.find((m) => m.type === 'photo') || media[0]
   let mediaDataUri: string | null = null
   if (firstMedia) {
     const url = firstMedia.type === 'photo' ? firstMedia.url : firstMedia.thumbnail
     if (url) mediaDataUri = await fetchImageDataUri(url)
+  }
+  if (!mediaDataUri && card?.thumbnail) {
+    mediaDataUri = await fetchImageDataUri(card.thumbnail)
   }
 
   // Fetch avatar
@@ -155,8 +175,15 @@ export async function generateTweetOgPng(t: TweetOgInput): Promise<Uint8Array> {
     avatarDataUri = await fetchImageDataUri(t.authorAvatar)
   }
 
+  // Use card title/description as fallback content when tweet text is empty
   const hasMedia = !!mediaDataUri
-  const strippedContent = stripEmoji(t.content).trim()
+  let strippedContent = stripEmoji(t.content).trim()
+  if (!strippedContent && card) {
+    const parts: string[] = []
+    if (card.title) parts.push(card.title)
+    if (card.description) parts.push(card.description)
+    strippedContent = stripEmoji(parts.join(' — ')).trim()
+  }
   const isMediaOnly = hasMedia && strippedContent.length === 0
 
   // When media-only: full-width media with overlay

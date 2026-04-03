@@ -132,6 +132,7 @@ shareRouter.get('/:handle/status/:tweetId/og.png', async (c) => {
     authorAvatar: tweet.authorAvatar,
     content: tweet.content,
     mediaUrls: tweet.mediaUrls,
+    card: tweet.card,
     publishedAt: tweet.publishedAt,
   })
 
@@ -153,7 +154,7 @@ shareRouter.get('/:handle/status/:tweetId', async (c) => {
 
   const meta = {
     title: `${tweet.authorName} (@${tweet.authorHandle})`,
-    description: truncate(tweet.content, 200),
+    description: truncate(tweet.content || (() => { try { const c = tweet.card ? JSON.parse(tweet.card) : null; return [c?.title, c?.description].filter(Boolean).join(' — ') } catch { return '' } })(), 200),
     url: `${origin()}/${handle}/status/${tweetId}`,
     image: `${origin()}/${handle}/status/${tweetId}/og.png`,
     largeImage: true,
