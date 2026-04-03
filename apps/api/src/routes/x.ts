@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator'
-import { getDb, nudges, promptChanges, tweets, tweetScores, userTweets, xSessions } from '@omens/db'
+import { articles, getDb, nudges, promptChanges, tweets, tweetScores, userTweets, xSessions } from '@omens/db'
 import { xLoginSchema } from '@omens/shared'
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -229,6 +229,33 @@ xRouter.get('/article/:tweetId', async (c) => {
     if (!article) {
       return c.json({ error: 'Article not found' }, 404)
     }
+    // Cache article in DB for public access
+    void db
+      .insert(articles)
+      .values({
+        tweetId,
+        title: article.title,
+        coverImage: article.coverImage,
+        body: article.body,
+        richContent: article.richContent ? JSON.stringify(article.richContent) : null,
+        authorName: article.authorName,
+        authorHandle: article.authorHandle,
+        authorAvatar: article.authorAvatar,
+      })
+      .onConflictDoUpdate({
+        target: articles.tweetId,
+        set: {
+          title: article.title,
+          coverImage: article.coverImage,
+          body: article.body,
+          richContent: article.richContent ? JSON.stringify(article.richContent) : null,
+          authorName: article.authorName,
+          authorHandle: article.authorHandle,
+          authorAvatar: article.authorAvatar,
+          fetchedAt: new Date(),
+        },
+      })
+      .catch((e) => console.error('[x] Article cache save failed:', e))
     return c.json({ article })
   } catch (err) {
     console.error(`[x] Article fetch failed:`, err instanceof Error ? err.message : err)

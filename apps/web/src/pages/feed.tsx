@@ -648,7 +648,9 @@ function ArticleModal({
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    api<{ article: ArticleData }>(`/x/article/${tweetId}`)
+    // Try public cached article first, fall back to authenticated X fetch
+    api<{ article: ArticleData }>(`/article/${tweetId}`)
+      .catch(() => api<{ article: ArticleData }>(`/x/article/${tweetId}`))
       .then((r) => setArticle(r.article))
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load article'))
       .finally(() => setLoading(false))

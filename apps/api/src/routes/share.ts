@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { eq, inArray } from 'drizzle-orm'
-import { aiReports, getDb, tweets } from '@omens/db'
+import { aiReports, articles, getDb, tweets } from '@omens/db'
 import env from '../env'
 import { readFileSync } from 'fs'
 import { join } from 'path'
@@ -95,6 +95,25 @@ shareDataRouter.get('/tweet/:handle/:tweetId', async (c) => {
       mediaUrls: tweet.mediaUrls, quotedTweet: tweet.quotedTweet, card: tweet.card, url: tweet.url,
       likes: tweet.likes, retweets: tweet.retweets, replies: tweet.replies, views: tweet.views,
       publishedAt: tweet.publishedAt?.toISOString() || null,
+    },
+  })
+})
+
+shareDataRouter.get('/article/:tweetId', async (c) => {
+  const tweetId = c.req.param('tweetId')
+  if (!/^\d+$/.test(tweetId)) return c.json({ error: 'Invalid tweet ID' }, 400)
+  const db = getDb(env.DATABASE_URL)
+  const [article] = await db.select().from(articles).where(eq(articles.tweetId, tweetId)).limit(1)
+  if (!article) return c.json({ error: 'Article not found' }, 404)
+  return c.json({
+    article: {
+      title: article.title,
+      coverImage: article.coverImage,
+      body: article.body,
+      richContent: article.richContent ? JSON.parse(article.richContent) : null,
+      authorName: article.authorName,
+      authorHandle: article.authorHandle,
+      authorAvatar: article.authorAvatar,
     },
   })
 })

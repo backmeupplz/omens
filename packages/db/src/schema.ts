@@ -182,6 +182,27 @@ export const tweetScores = pgTable(
   ],
 )
 
+export const articles = pgTable(
+  'articles',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    tweetId: text('tweet_id').notNull(),
+    title: text('title').notNull(),
+    coverImage: text('cover_image'),
+    body: text('body').notNull(), // plain text
+    richContent: text('rich_content'), // JSON array of ArticleRichBlock
+    authorName: text('author_name').notNull(),
+    authorHandle: text('author_handle').notNull(),
+    authorAvatar: text('author_avatar'),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('articles_tweet_id_idx').on(table.tweetId),
+  ],
+)
+
 export const apiKeys = pgTable('api_keys', {
   id: text('id')
     .primaryKey()
