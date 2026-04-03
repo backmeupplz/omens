@@ -11,7 +11,9 @@ function videoProxyUrl(url: string): string {
   return `${API_BASE}/video?url=${encodeURIComponent(url)}`
 }
 
-function avatarUrl(url: string | null): string | undefined {
+function imgProxy(url: string): string
+function imgProxy(url: string | null): string | undefined
+function imgProxy(url: string | null): string | undefined {
   if (!url) return undefined
   if (url.includes('pbs.twimg.com')) return `${API_BASE}/avatar?url=${encodeURIComponent(url)}`
   return url
@@ -79,7 +81,7 @@ function Lightbox({
         />
       ) : (
         <img
-          src={`${item.url}?name=large`}
+          src={imgProxy(`${item.url}?name=large`)}
           alt=""
           class="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
           onClick={(e) => e.stopPropagation()}
@@ -205,7 +207,7 @@ function RepliesModal({
             {replies.map((r, i) => (
               <div key={i} class="flex gap-2.5">
                 {r.authorAvatar ? (
-                  <img src={avatarUrl(r.authorAvatar)} alt="" class="w-8 h-8 rounded-full shrink-0 bg-zinc-700" />
+                  <img src={imgProxy(r.authorAvatar)} alt="" class="w-8 h-8 rounded-full shrink-0 bg-zinc-700" />
                 ) : (
                   <div class="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">
                     {(r.authorName || '?').charAt(0).toUpperCase()}
@@ -342,7 +344,7 @@ function ThreadTweetItem({ tweet, isLast }: { tweet: ThreadTweet; isLast: boolea
       {/* Vertical thread line */}
       <div class="flex flex-col items-center shrink-0">
         {tweet.authorAvatar ? (
-          <img src={avatarUrl(tweet.authorAvatar)} alt="" class="w-8 h-8 rounded-full bg-zinc-700" loading="lazy" />
+          <img src={imgProxy(tweet.authorAvatar)} alt="" class="w-8 h-8 rounded-full bg-zinc-700" loading="lazy" />
         ) : (
           <div class="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400">
             {(tweet.authorName || '?').charAt(0).toUpperCase()}
@@ -375,7 +377,7 @@ function ThreadTweetItem({ tweet, isLast }: { tweet: ThreadTweet; isLast: boolea
           <div class="mt-2 rounded-xl border border-zinc-700 overflow-hidden p-2.5">
             <div class="flex items-center gap-2 mb-1">
               {tweet.quotedTweet.authorAvatar && (
-                <img src={avatarUrl(tweet.quotedTweet.authorAvatar)} alt="" class="w-4 h-4 rounded-full" />
+                <img src={imgProxy(tweet.quotedTweet.authorAvatar)} alt="" class="w-4 h-4 rounded-full" />
               )}
               <span class="text-xs font-semibold text-zinc-300">{tweet.quotedTweet.authorName}</span>
               <span class="text-xs text-zinc-500">@{tweet.quotedTweet.authorHandle}</span>
@@ -678,7 +680,7 @@ function ArticleModal({
             ? <h4 key={i} class="text-base font-semibold text-zinc-200 mt-4 mb-1">{applyFormat(block.text || '', block.format)}</h4>
             : <h3 key={i} class="text-lg font-semibold text-zinc-100 mt-5 mb-1.5">{applyFormat(block.text || '', block.format)}</h3>
       case 'image':
-        return <img key={i} src={block.url} alt="" class="w-full rounded-lg my-4 cursor-pointer" loading="lazy" onClick={() => setLightboxUrl(block.url!)} />
+        return <img key={i} src={imgProxy(block.url!)} alt="" class="w-full rounded-lg my-4 cursor-pointer" loading="lazy" onClick={() => setLightboxUrl(imgProxy(block.url!))} />
       case 'blockquote':
         return <blockquote key={i} class="border-l-2 border-zinc-600 pl-4 my-3 text-zinc-400 italic">{applyFormat(block.text || '', block.format)}</blockquote>
       case 'list': {
@@ -736,14 +738,14 @@ function ArticleModal({
             <div>
               {/* Cover image */}
               {(article.coverImage || cardData.thumbnail) && (
-                <img src={article.coverImage || cardData.thumbnail!} alt="" class="w-full cursor-pointer" loading="lazy"
-                  onClick={() => setLightboxUrl(article.coverImage || cardData.thumbnail!)} />
+                <img src={imgProxy(article.coverImage || cardData.thumbnail!)} alt="" class="w-full cursor-pointer" loading="lazy"
+                  onClick={() => setLightboxUrl(imgProxy(article.coverImage || cardData.thumbnail!))} />
               )}
               <div class="px-5 py-5">
                 {/* Author */}
                 <div class="flex items-center gap-2.5 mb-4">
                   {article.authorAvatar && (
-                    <img src={avatarUrl(article.authorAvatar)} alt="" class="w-8 h-8 rounded-full" />
+                    <img src={imgProxy(article.authorAvatar)} alt="" class="w-8 h-8 rounded-full" />
                   )}
                   <div>
                     <span class="text-sm font-semibold text-zinc-200">{article.authorName}</span>
@@ -803,7 +805,7 @@ function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl
           onClick={(e) => { e.stopPropagation(); setShowArticle(true) }}
         >
           {data.thumbnail && (
-            <img src={data.thumbnail} alt="" class="w-full max-w-full rounded-t-xl" loading="lazy" />
+            <img src={imgProxy(data.thumbnail!)} alt="" class="w-full max-w-full rounded-t-xl" loading="lazy" />
           )}
           <div class="p-2.5">
             <p class="text-sm font-medium text-zinc-200 line-clamp-2">{data.title}</p>
@@ -826,7 +828,7 @@ function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl
       onClick={(e) => e.stopPropagation()}
     >
       {data.thumbnail && (
-        <img src={data.thumbnail} alt="" class="w-full max-w-full rounded-t-xl" loading="lazy" />
+        <img src={imgProxy(data.thumbnail!)} alt="" class="w-full max-w-full rounded-t-xl" loading="lazy" />
       )}
       <div class="p-2.5">
         <p class="text-sm font-medium text-zinc-200 line-clamp-2">{data.title}</p>
@@ -911,7 +913,7 @@ function InlineVideo({ item, sizeClass, fit }: { item: MediaItem; sizeClass: str
       onClick={(e) => { e.stopPropagation(); setPlaying(true) }}
     >
       <img
-        src={`${item.thumbnail}?name=medium`}
+        src={imgProxy(`${item.thumbnail}?name=medium`)}
         alt=""
         class={`${fit} ${sizeClass}`}
         loading="lazy"
@@ -949,7 +951,7 @@ function MediaGrid({
             onClick={(e) => { e.stopPropagation(); onPhotoClick?.(i) }}
           >
             <img
-              src={`${item.thumbnail}?name=medium`}
+              src={imgProxy(`${item.thumbnail}?name=medium`)}
               alt=""
               class={`${fit} ${sizeClass}`}
               loading="lazy"
@@ -1140,7 +1142,7 @@ function TweetDetailModal({
             {replies.map((r, i) => (
               <div key={i} class="flex gap-2.5">
                 {r.authorAvatar ? (
-                  <img src={avatarUrl(r.authorAvatar)} alt="" class="w-7 h-7 rounded-full shrink-0 bg-zinc-700" />
+                  <img src={imgProxy(r.authorAvatar)} alt="" class="w-7 h-7 rounded-full shrink-0 bg-zinc-700" />
                 ) : (
                   <div class="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">
                     {(r.authorName || '?').charAt(0).toUpperCase()}
@@ -1214,7 +1216,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
     {tweet.parentTweet && !isThread && (
       <div class="rounded-t-xl border border-b-0 border-zinc-800 bg-zinc-950 px-3 sm:px-4 py-2.5 flex items-start gap-2.5 overflow-hidden">
         {tweet.parentTweet.authorAvatar && (
-          <img src={avatarUrl(tweet.parentTweet.authorAvatar)} alt="" class="w-5 h-5 rounded-full mt-0.5 shrink-0" />
+          <img src={imgProxy(tweet.parentTweet.authorAvatar)} alt="" class="w-5 h-5 rounded-full mt-0.5 shrink-0" />
         )}
         <div class="min-w-0">
           <span class="text-xs text-zinc-500">
@@ -1275,7 +1277,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
         <div class="pb-2 mb-2 border-b border-zinc-800">
           <div class="flex items-center gap-2 mb-1">
             {tweet.parentTweet.authorAvatar ? (
-              <img src={avatarUrl(tweet.parentTweet.authorAvatar)} alt="" class="w-5 h-5 rounded-full bg-zinc-700" loading="lazy" />
+              <img src={imgProxy(tweet.parentTweet.authorAvatar)} alt="" class="w-5 h-5 rounded-full bg-zinc-700" loading="lazy" />
             ) : (
               <div class="w-5 h-5 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-400">
                 {(tweet.parentTweet.authorName || '?').charAt(0).toUpperCase()}
@@ -1292,7 +1294,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
           {parentQuoted && (
             <div class="mt-2 rounded-xl border border-zinc-700 overflow-hidden p-2.5 cursor-default" onClick={(e) => e.stopPropagation()}>
               <div class="flex items-center gap-2 mb-1">
-                {parentQuoted.authorAvatar && <img src={avatarUrl(parentQuoted.authorAvatar)} alt="" class="w-4 h-4 rounded-full" />}
+                {parentQuoted.authorAvatar && <img src={imgProxy(parentQuoted.authorAvatar)} alt="" class="w-4 h-4 rounded-full" />}
                 <span class="text-xs font-semibold text-zinc-300">{parentQuoted.authorName}</span>
                 <span class="text-xs text-zinc-500">@{parentQuoted.authorHandle}</span>
               </div>
@@ -1350,7 +1352,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
       <div class={`flex gap-2.5 mb-1 group/author relative ${tweet.isRetweet ? '' : 'items-center'}`}>
         {tweet.authorAvatar ? (
           <img
-            src={avatarUrl(tweet.authorAvatar)}
+            src={imgProxy(tweet.authorAvatar)}
             alt=""
             class="w-9 h-9 rounded-full shrink-0 bg-zinc-700"
             loading="lazy"
@@ -1418,7 +1420,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
         >
           <div class="flex items-center gap-2 mb-1">
             {quoted.authorAvatar && (
-              <img src={avatarUrl(quoted.authorAvatar)} alt="" class="w-5 h-5 rounded-full" />
+              <img src={imgProxy(quoted.authorAvatar)} alt="" class="w-5 h-5 rounded-full" />
             )}
             <span class="text-sm font-semibold text-zinc-200">{quoted.authorName}</span>
             <span class="text-xs text-zinc-500">@{quoted.authorHandle}</span>
