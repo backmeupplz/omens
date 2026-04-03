@@ -156,7 +156,11 @@ export async function generateTweetOgPng(t: TweetOgInput): Promise<Uint8Array> {
   }
 
   const hasMedia = !!mediaDataUri
-  // When media present: text on left 58%, image on right 42%
+  const strippedContent = stripEmoji(t.content).trim()
+  const isMediaOnly = hasMedia && strippedContent.length === 0
+
+  // When media-only: full-width media with overlay
+  // When media + text: text on left 58%, image on right 42%
   const textR = hasMedia ? 670 : 1160
   const maxChars = hasMedia ? 46 : 80
 
@@ -173,7 +177,7 @@ export async function generateTweetOgPng(t: TweetOgInput): Promise<Uint8Array> {
     nameX = avatarCx + avatarR + 16
   }
 
-  const contentLines = wrapText(stripEmoji(t.content), maxChars, hasMedia ? 7 : 8)
+  const contentLines = isMediaOnly ? [] : wrapText(strippedContent, maxChars, hasMedia ? 7 : 8)
   const date = t.publishedAt
     ? new Date(t.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : ''
@@ -182,9 +186,17 @@ export async function generateTweetOgPng(t: TweetOgInput): Promise<Uint8Array> {
   const contentY0 = sepY + 32
   const lineH = 38
 
-  // Media: right side, full height minus footer
+  // Media layout
   let mediaSvg = ''
-  if (hasMedia) {
+  if (isMediaOnly) {
+    // Full-width media with bottom gradient for footer readability
+    const mh = 580
+    mediaSvg = `<clipPath id="mclip"><rect x="0" y="3" width="1200" height="${mh}"/></clipPath>
+    <image x="0" y="3" width="1200" height="${mh}" href="${mediaDataUri}" clip-path="url(#mclip)" preserveAspectRatio="xMidYMid slice"/>
+    <rect x="0" y="3" width="1200" height="${mh}" fill="url(#mbottom)" opacity="1"/>
+    <rect x="0" y="3" width="1200" height="${mh}" fill="url(#mtop)" opacity="1"/>`
+  } else if (hasMedia) {
+    // Right-side media
     const mx = 690
     const mw = 1200 - mx
     const mh = 570
@@ -198,6 +210,12 @@ export async function generateTweetOgPng(t: TweetOgInput): Promise<Uint8Array> {
     <linearGradient id="medge" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#0d0d0f" stop-opacity="0.9"/><stop offset="15%" stop-color="#0d0d0f" stop-opacity="0"/>
     </linearGradient>
+    <linearGradient id="mbottom" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d0d0f" stop-opacity="0"/><stop offset="80%" stop-color="#0d0d0f" stop-opacity="0"/><stop offset="100%" stop-color="#0d0d0f" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="mtop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d0d0f" stop-opacity="0.85"/><stop offset="20%" stop-color="#0d0d0f" stop-opacity="0"/>
+    </linearGradient>
   </defs>
   <rect width="1200" height="630" fill="#0d0d0f"/>
   <rect width="1200" height="3" fill="#10b981"/>
@@ -206,9 +224,9 @@ export async function generateTweetOgPng(t: TweetOgInput): Promise<Uint8Array> {
   ${avatarSvg}
 
   <text x="${nameX}" y="${avatarDataUri ? avatarCy - 6 : 50}" font-family="${F}" font-size="28" font-weight="700" fill="#ffffff">${esc(truncate(stripEmoji(t.authorName), hasMedia ? 22 : 35))}</text>
-  <text x="${nameX}" y="${avatarDataUri ? avatarCy + 18 : 76}" font-family="${F}" font-size="19" fill="#71717a">@${esc(t.authorHandle)}</text>
+  <text x="${nameX}" y="${avatarDataUri ? avatarCy + 18 : 76}" font-family="${F}" font-size="19" fill="${isMediaOnly ? '#a1a1aa' : '#71717a'}">@${esc(t.authorHandle)}</text>
 
-  <line x1="${L}" y1="${sepY}" x2="${textR}" y2="${sepY}" stroke="#1e1e22" stroke-width="1"/>
+  ${isMediaOnly ? '' : `<line x1="${L}" y1="${sepY}" x2="${textR}" y2="${sepY}" stroke="#1e1e22" stroke-width="1"/>`}
 
   ${contentLines.map((line, i) => `<text x="${L}" y="${contentY0 + i * lineH}" font-family="${F}" font-size="24" fill="#e4e4e7">${esc(line)}</text>`).join('\n  ')}
 
