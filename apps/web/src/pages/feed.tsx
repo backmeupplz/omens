@@ -11,6 +11,12 @@ function videoProxyUrl(url: string): string {
   return `${API_BASE}/media/video?url=${encodeURIComponent(url)}`
 }
 
+function avatarUrl(url: string | null): string | undefined {
+  if (!url) return undefined
+  if (url.includes('pbs.twimg.com')) return `${API_BASE}/avatar?url=${encodeURIComponent(url)}`
+  return url
+}
+
 // === Lightbox ===
 
 function Lightbox({
@@ -199,7 +205,7 @@ function RepliesModal({
             {replies.map((r, i) => (
               <div key={i} class="flex gap-2.5">
                 {r.authorAvatar ? (
-                  <img src={r.authorAvatar} alt="" class="w-8 h-8 rounded-full shrink-0 bg-zinc-700" />
+                  <img src={avatarUrl(r.authorAvatar)} alt="" class="w-8 h-8 rounded-full shrink-0 bg-zinc-700" />
                 ) : (
                   <div class="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">
                     {(r.authorName || '?').charAt(0).toUpperCase()}
@@ -336,7 +342,7 @@ function ThreadTweetItem({ tweet, isLast }: { tweet: ThreadTweet; isLast: boolea
       {/* Vertical thread line */}
       <div class="flex flex-col items-center shrink-0">
         {tweet.authorAvatar ? (
-          <img src={tweet.authorAvatar} alt="" class="w-8 h-8 rounded-full bg-zinc-700" loading="lazy" />
+          <img src={avatarUrl(tweet.authorAvatar)} alt="" class="w-8 h-8 rounded-full bg-zinc-700" loading="lazy" />
         ) : (
           <div class="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400">
             {(tweet.authorName || '?').charAt(0).toUpperCase()}
@@ -369,7 +375,7 @@ function ThreadTweetItem({ tweet, isLast }: { tweet: ThreadTweet; isLast: boolea
           <div class="mt-2 rounded-xl border border-zinc-700 overflow-hidden p-2.5">
             <div class="flex items-center gap-2 mb-1">
               {tweet.quotedTweet.authorAvatar && (
-                <img src={tweet.quotedTweet.authorAvatar} alt="" class="w-4 h-4 rounded-full" />
+                <img src={avatarUrl(tweet.quotedTweet.authorAvatar)} alt="" class="w-4 h-4 rounded-full" />
               )}
               <span class="text-xs font-semibold text-zinc-300">{tweet.quotedTweet.authorName}</span>
               <span class="text-xs text-zinc-500">@{tweet.quotedTweet.authorHandle}</span>
@@ -735,7 +741,7 @@ function ArticleModal({
                 {/* Author */}
                 <div class="flex items-center gap-2.5 mb-4">
                   {article.authorAvatar && (
-                    <img src={article.authorAvatar} alt="" class="w-8 h-8 rounded-full" />
+                    <img src={avatarUrl(article.authorAvatar)} alt="" class="w-8 h-8 rounded-full" />
                   )}
                   <div>
                     <span class="text-sm font-semibold text-zinc-200">{article.authorName}</span>
@@ -1132,7 +1138,7 @@ function TweetDetailModal({
             {replies.map((r, i) => (
               <div key={i} class="flex gap-2.5">
                 {r.authorAvatar ? (
-                  <img src={r.authorAvatar} alt="" class="w-7 h-7 rounded-full shrink-0 bg-zinc-700" />
+                  <img src={avatarUrl(r.authorAvatar)} alt="" class="w-7 h-7 rounded-full shrink-0 bg-zinc-700" />
                 ) : (
                   <div class="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">
                     {(r.authorName || '?').charAt(0).toUpperCase()}
@@ -1206,7 +1212,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
     {tweet.parentTweet && !isThread && (
       <div class="rounded-t-xl border border-b-0 border-zinc-800 bg-zinc-950 px-3 sm:px-4 py-2.5 flex items-start gap-2.5 overflow-hidden">
         {tweet.parentTweet.authorAvatar && (
-          <img src={tweet.parentTweet.authorAvatar} alt="" class="w-5 h-5 rounded-full mt-0.5 shrink-0" />
+          <img src={avatarUrl(tweet.parentTweet.authorAvatar)} alt="" class="w-5 h-5 rounded-full mt-0.5 shrink-0" />
         )}
         <div class="min-w-0">
           <span class="text-xs text-zinc-500">
@@ -1267,7 +1273,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
         <div class="pb-2 mb-2 border-b border-zinc-800">
           <div class="flex items-center gap-2 mb-1">
             {tweet.parentTweet.authorAvatar ? (
-              <img src={tweet.parentTweet.authorAvatar} alt="" class="w-5 h-5 rounded-full bg-zinc-700" loading="lazy" />
+              <img src={avatarUrl(tweet.parentTweet.authorAvatar)} alt="" class="w-5 h-5 rounded-full bg-zinc-700" loading="lazy" />
             ) : (
               <div class="w-5 h-5 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-400">
                 {(tweet.parentTweet.authorName || '?').charAt(0).toUpperCase()}
@@ -1284,7 +1290,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
           {parentQuoted && (
             <div class="mt-2 rounded-xl border border-zinc-700 overflow-hidden p-2.5 cursor-default" onClick={(e) => e.stopPropagation()}>
               <div class="flex items-center gap-2 mb-1">
-                {parentQuoted.authorAvatar && <img src={parentQuoted.authorAvatar} alt="" class="w-4 h-4 rounded-full" />}
+                {parentQuoted.authorAvatar && <img src={avatarUrl(parentQuoted.authorAvatar)} alt="" class="w-4 h-4 rounded-full" />}
                 <span class="text-xs font-semibold text-zinc-300">{parentQuoted.authorName}</span>
                 <span class="text-xs text-zinc-500">@{parentQuoted.authorHandle}</span>
               </div>
@@ -1342,7 +1348,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
       <div class={`flex gap-2.5 mb-1 group/author relative ${tweet.isRetweet ? '' : 'items-center'}`}>
         {tweet.authorAvatar ? (
           <img
-            src={tweet.authorAvatar}
+            src={avatarUrl(tweet.authorAvatar)}
             alt=""
             class="w-9 h-9 rounded-full shrink-0 bg-zinc-700"
             loading="lazy"
@@ -1410,7 +1416,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
         >
           <div class="flex items-center gap-2 mb-1">
             {quoted.authorAvatar && (
-              <img src={quoted.authorAvatar} alt="" class="w-5 h-5 rounded-full" />
+              <img src={avatarUrl(quoted.authorAvatar)} alt="" class="w-5 h-5 rounded-full" />
             )}
             <span class="text-sm font-semibold text-zinc-200">{quoted.authorName}</span>
             <span class="text-xs text-zinc-500">@{quoted.authorHandle}</span>

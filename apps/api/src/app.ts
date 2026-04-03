@@ -150,6 +150,40 @@ export function createApp() {
     })
   })
 
+  // Avatar proxy (public — used on share pages too)
+  apiApp.get('/avatar', async (c) => {
+    const url = c.req.query('url')
+    if (!url) return c.json({ error: 'url required' }, 400)
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      return c.json({ error: 'invalid url' }, 400)
+    }
+    if (parsed.hostname !== 'pbs.twimg.com') {
+      return c.json({ error: 'only pbs.twimg.com allowed' }, 400)
+    }
+
+    const upstream = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        Referer: 'https://x.com/',
+      },
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!upstream.ok) return new Response(null, { status: upstream.status })
+
+    const ct = upstream.headers.get('Content-Type') || 'image/jpeg'
+    const cl = upstream.headers.get('Content-Length')
+    const resHeaders: Record<string, string> = {
+      'Content-Type': ct,
+      'Cache-Control': 'public, max-age=604800',
+    }
+    if (cl) resHeaders['Content-Length'] = cl
+
+    return new Response(upstream.body, { status: 200, headers: resHeaders })
+  })
+
   apiApp.route('/feed', feedRouter)
   apiApp.route('/x', xRouter)
   apiApp.route('/api-keys', apiKeysRouter)
