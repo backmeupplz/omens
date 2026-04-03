@@ -32,7 +32,7 @@ function getSpaHtml(): string {
 
 function ogTags(meta: { title: string; description: string; url: string; image?: string; largeImage?: boolean }): string {
   const img = meta.image
-    ? `<meta property="og:image" content="${esc(meta.image)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:image" content="${esc(meta.image)}">`
+    ? `<meta property="og:image" itemprop="image" content="${esc(meta.image)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:type" content="image/png"><meta name="twitter:image" content="${esc(meta.image)}">`
     : ''
   return `<meta property="og:title" content="${esc(meta.title)}"><meta property="og:description" content="${esc(meta.description)}">
 <meta property="og:type" content="article"><meta property="og:url" content="${esc(meta.url)}">${img}
@@ -173,7 +173,12 @@ shareRouter.get('/:handle/status/:tweetId', async (c) => {
 
   const meta = {
     title: `${tweet.authorName} (@${tweet.authorHandle})`,
-    description: truncate(tweet.content || (() => { try { const c = tweet.card ? JSON.parse(tweet.card) : null; return [c?.title, c?.description].filter(Boolean).join(' — ') } catch { return '' } })(), 200),
+    description: truncate((() => {
+      let text = tweet.content || ''
+      if (!text) { try { const c = tweet.card ? JSON.parse(tweet.card) : null; text = [c?.title, c?.description].filter(Boolean).join(' — ') } catch {} }
+      if (tweet.quotedTweet) { try { const qt = JSON.parse(tweet.quotedTweet); if (qt.content) text += ` | QT @${qt.authorHandle}: ${qt.content}` } catch {} }
+      return text
+    })(), 200),
     url: `${origin()}/${handle}/status/${tweetId}`,
     image: `${origin()}/${handle}/status/${tweetId}/og.png`,
     largeImage: true,
