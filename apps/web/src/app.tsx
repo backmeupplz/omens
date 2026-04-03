@@ -265,10 +265,10 @@ export function App() {
         </div>
       </nav>
       <main class="mx-auto max-w-xl w-full px-3 sm:px-4 py-4 pb-16 overflow-hidden">
-        {isDemo && (
+        {isDemo && location !== '/login' && location !== '/register' && (
           <div class="mb-4 rounded-lg border border-emerald-900/50 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300 flex items-center justify-between gap-3">
             <span>You're viewing a demo feed.</span>
-            <Link href="/login" class="shrink-0 rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500 transition-colors">
+            <Link href="/register" class="shrink-0 rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500 transition-colors">
               Sign up for your own
             </Link>
           </div>
