@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#09090b"/>
+  <radialGradient id="glow" cx="50%" cy="50%" r="40%">
+    <stop offset="0%" stop-color="#10b981" stop-opacity="0.15"/>
+    <stop offset="100%" stop-color="#10b981" stop-opacity="0"/>
+  </radialGradient>
+  <circle cx="256" cy="256" r="200" fill="url(#glow)"/>
+  <circle cx="256" cy="256" r="140" fill="none" stroke="#10b981" stroke-width="36"/>
+</svg>
