@@ -11,6 +11,7 @@ interface AuthState {
   checked: boolean
   loggedIn: boolean
   singleUser: boolean
+  demoMode: boolean
   xChecked: boolean
   xConnected: boolean
 }
@@ -20,6 +21,7 @@ function useAuth(): AuthState & { logout: () => void; recheckX: () => void } {
     checked: false,
     loggedIn: false,
     singleUser: false,
+    demoMode: false,
     xChecked: false,
     xConnected: false,
   })
@@ -33,21 +35,23 @@ function useAuth(): AuthState & { logout: () => void; recheckX: () => void } {
   }, [])
 
   useEffect(() => {
-    api<{ singleUser: boolean }>('/auth/mode')
+    api<{ singleUser: boolean; demoMode?: boolean }>('/auth/mode')
       .then((mode) => {
+        const demoMode = !!mode.demoMode
         if (mode.singleUser) {
           setState((prev) => ({
             ...prev,
             checked: true,
             loggedIn: true,
             singleUser: true,
+            demoMode,
           }))
           checkXSession()
           return
         }
         return api('/auth/me')
           .then(() => {
-            setState((prev) => ({ ...prev, checked: true, loggedIn: true, singleUser: false }))
+            setState((prev) => ({ ...prev, checked: true, loggedIn: true, singleUser: false, demoMode }))
             checkXSession()
           })
           .catch(() =>
@@ -56,6 +60,7 @@ function useAuth(): AuthState & { logout: () => void; recheckX: () => void } {
               checked: true,
               loggedIn: false,
               singleUser: false,
+              demoMode,
               xChecked: true,
             })),
           )
@@ -145,7 +150,8 @@ export function App() {
     }
   }
 
-  const showFeed = auth.loggedIn && auth.xConnected
+  const isDemo = auth.demoMode && !auth.loggedIn
+  const showFeed = (auth.loggedIn && auth.xConnected) || isDemo
 
   // Share pages get their own layout — no navbar
   const shareMatch = location.match(/^\/([^/]+)\/status\/(\d+)$/)
@@ -165,7 +171,7 @@ export function App() {
             <Link href="/" class="text-lg font-bold tracking-tight">
               Omens
             </Link>
-            {showFeed && (location === '/feed' || location === '/filtered') && (
+            {showFeed && !isDemo && (location === '/feed' || location === '/filtered') && (
               <button
                 type="button"
                 onClick={handleRefresh}
@@ -258,29 +264,49 @@ export function App() {
         </div>
       </nav>
       <main class="mx-auto max-w-xl w-full px-3 sm:px-4 py-4 pb-16 overflow-hidden">
+        {isDemo && (
+          <div class="mb-4 rounded-lg border border-emerald-900/50 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300 flex items-center justify-between gap-3">
+            <span>You're viewing a demo feed.</span>
+            <Link href="/login" class="shrink-0 rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500 transition-colors">
+              Sign up for your own
+            </Link>
+          </div>
+        )}
         <Switch>
           <Route path="/login" component={Login} />
           <Route path="/register" component={Register} />
           <Route path="/">
-            <AuthGuard auth={auth}>
-              <XGuard auth={auth}>
-                <AiReportPage />
-              </XGuard>
-            </AuthGuard>
+            {isDemo ? (
+              <AiReportPage demo />
+            ) : (
+              <AuthGuard auth={auth}>
+                <XGuard auth={auth}>
+                  <AiReportPage />
+                </XGuard>
+              </AuthGuard>
+            )}
           </Route>
           <Route path="/filtered">
-            <AuthGuard auth={auth}>
-              <XGuard auth={auth}>
-                <FilteredFeed onRefreshRef={(fn) => setRefreshFn(() => fn)} />
-              </XGuard>
-            </AuthGuard>
+            {isDemo ? (
+              <FilteredFeed demo />
+            ) : (
+              <AuthGuard auth={auth}>
+                <XGuard auth={auth}>
+                  <FilteredFeed onRefreshRef={(fn) => setRefreshFn(() => fn)} />
+                </XGuard>
+              </AuthGuard>
+            )}
           </Route>
           <Route path="/feed">
-            <AuthGuard auth={auth}>
-              <XGuard auth={auth}>
-                <Feed onRefreshRef={(fn) => setRefreshFn(() => fn)} />
-              </XGuard>
-            </AuthGuard>
+            {isDemo ? (
+              <Feed demo />
+            ) : (
+              <AuthGuard auth={auth}>
+                <XGuard auth={auth}>
+                  <Feed onRefreshRef={(fn) => setRefreshFn(() => fn)} />
+                </XGuard>
+              </AuthGuard>
+            )}
           </Route>
           <Route path="/settings">
             <AuthGuard auth={auth}>

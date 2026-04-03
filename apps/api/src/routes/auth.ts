@@ -15,7 +15,7 @@ const auth = new Hono<AppEnv>()
 
 const isProd = process.env.NODE_ENV === 'production'
 
-auth.get('/mode', (c) => c.json({ singleUser: env.SINGLE_USER_MODE }))
+auth.get('/mode', (c) => c.json({ singleUser: env.SINGLE_USER_MODE, demoMode: !!env.DEMO_USER_EMAIL }))
 
 auth.get('/me', authMiddleware, (c) => {
   const user = c.get('user')

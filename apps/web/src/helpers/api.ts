@@ -1,7 +1,7 @@
 export const API_BASE = '/api'
 
 // Paths where 401 is expected and should NOT trigger a redirect
-const SILENT_401 = ['/auth/', '/x/session']
+const SILENT_401 = ['/auth/', '/x/session', '/demo/']
 
 const STATUS_MESSAGES: Record<number, string> = {
   400: 'Invalid request',

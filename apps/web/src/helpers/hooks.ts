@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { api } from './api'
 
-export function useApi<T>(path: string) {
+export function useApi<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!!path)
   const [error, setError] = useState<string | null>(null)
   const hasData = useRef(false)
 
   const refetch = useCallback(() => {
+    if (!path) return
     // Only show loading spinner on initial load, not on refetch
     if (!hasData.current) setLoading(true)
     setError(null)

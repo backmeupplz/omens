@@ -1549,11 +1549,12 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
 
 // === Nudge Hook ===
 
-function useNudges() {
+function useNudges(demo?: boolean) {
   const [nudges, setNudges] = useState<Map<string, 'up' | 'down'>>(new Map())
   const [feedback, setFeedback] = useState<string | null>(null)
 
   useEffect(() => {
+    if (demo) return
     api<{ nudges: Array<{ tweetId: string; direction: 'up' | 'down' }> }>('/ai/nudges')
       .then((r) => {
         const map = new Map<string, 'up' | 'down'>()
@@ -1561,7 +1562,7 @@ function useNudges() {
         setNudges(map)
       })
       .catch(() => {})
-  }, [])
+  }, [demo])
 
   const onNudge = useCallback((tweetId: string, direction: 'up' | 'down') => {
     setNudges((prev) => {
@@ -1644,10 +1645,11 @@ function ElapsedTime({ since }: { since: number }) {
   return <span class="text-xs text-zinc-600 tabular-nums">{Math.floor(s / 60)}:{(s % 60).toString().padStart(2, '0')}</span>
 }
 
-function AiReportView() {
-  const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number; reportAtHour?: number; nextReportAt?: number | null }>('/ai/settings')
-  const { data, loading, refetch } = useApi<{ report: AiReportData | null }>('/ai/report')
-  const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>('/ai/reports')
+function AiReportView({ demo }: { demo?: boolean } = {}) {
+  const prefix = demo ? '/demo' : '/ai'
+  const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number; reportAtHour?: number; nextReportAt?: number | null }>(demo ? null : '/ai/settings')
+  const { data, loading, refetch } = useApi<{ report: AiReportData | null }>(`${prefix}/report`)
+  const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>(`${prefix}/reports`)
   const [generating, setGenerating] = useState(false)
   const [streamContent, setStreamContent] = useState('')
   const [streamTweets, setStreamTweets] = useState<Map<string, Tweet>>(new Map())
@@ -1736,6 +1738,7 @@ function AiReportView() {
 
   // Check if report is already generating on mount
   useEffect(() => {
+    if (demo) return
     api<{ generating: boolean; tweetCount: number; status: string | null; startedAt: string | null; error: string | null }>('/ai/report-status')
       .then((s) => {
         if (s.error) { setError(s.error); return }
@@ -1749,7 +1752,7 @@ function AiReportView() {
       })
       .catch(() => {})
     return () => { unmountingRef.current = true; abortRef.current?.abort() }
-  }, [])
+  }, [demo])
 
   const generate = async () => {
     setGenerating(true)
@@ -1776,7 +1779,7 @@ function AiReportView() {
       return
     }
     try {
-      const res = await api<{ report: AiReportData }>(`/ai/report/${id}`)
+      const res = await api<{ report: AiReportData }>(`${prefix}/report/${id}`)
       setViewingReport(res.report)
       setViewingReportId(id)
       setShowPastReports(false)
@@ -1790,8 +1793,8 @@ function AiReportView() {
     setViewingReport(null)
   }
 
-  if (settingsLoading || loading) return <Spinner />
-  if (!settings?.configured) return <AiSection onSave={refetchSettings} />
+  if ((!demo && settingsLoading) || loading) return <Spinner />
+  if (!demo && !settings?.configured) return <AiSection onSave={refetchSettings} />
 
   const activeReport = viewingReportId ? viewingReport : data?.report
   const refTweetMap = new Map<string, Tweet>()
@@ -1881,7 +1884,7 @@ function AiReportView() {
                     </svg>
                   </button>
                 )}
-                <button
+                {!demo && <button
                   type="button"
                   onClick={generate}
                   disabled={generating}
@@ -1891,7 +1894,7 @@ function AiReportView() {
                   <svg class={`w-3.5 h-3.5 ${generating ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                </button>
+                </button>}
               </span>
             </div>
             {renderReportContent(activeReport.content, refTweetMap)}
@@ -1904,15 +1907,21 @@ function AiReportView() {
           <svg class="w-12 h-12 text-zinc-700 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
             <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
           </svg>
-          <p class="text-zinc-400 mb-4">Generate an AI report from your last 24 hours of posts</p>
-          <button
-            type="button"
-            onClick={generate}
-            disabled={generating}
-            class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
-          >
-            Generate report
-          </button>
+          {demo ? (
+            <p class="text-zinc-400">No reports available yet.</p>
+          ) : (
+            <>
+              <p class="text-zinc-400 mb-4">Generate an AI report from your last 24 hours of posts</p>
+              <button
+                type="button"
+                onClick={generate}
+                disabled={generating}
+                class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+              >
+                Generate report
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -2003,20 +2012,21 @@ function EndOfFeed() {
 
 // === Exported Pages ===
 
-export function AiReportPage() {
-  return <AiReportView />
+export function AiReportPage({ demo }: { demo?: boolean } = {}) {
+  return <AiReportView demo={demo} />
 }
 
-function useAiSettings(): { minScore: number; configured: boolean } {
-  const { data } = useApi<{ configured: boolean; minScore?: number }>('/ai/settings')
+function useAiSettings(demo?: boolean): { minScore: number; configured: boolean } {
+  const { data } = useApi<{ configured: boolean; minScore?: number }>(demo ? null : '/ai/settings')
+  if (demo) return { minScore: 50, configured: true }
   return { minScore: data?.minScore ?? 50, configured: data?.configured ?? false }
 }
 
-export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
-  const { nudges, onNudge, feedback } = useNudges()
-  const { minScore, configured: aiConfigured } = useAiSettings()
+export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise<void>) => void; demo?: boolean }) {
+  const { nudges, onNudge, feedback } = useNudges(demo)
+  const { minScore, configured: aiConfigured } = useAiSettings(demo)
   const [feedKey, setFeedKey] = useState(0) // bump to re-fetch feed
-  const { allTweets, loading, loadingMore, error, remaining, loadMore } = usePaginatedFeed('/ai/filtered-feed', feedKey)
+  const { allTweets, loading, loadingMore, error, remaining, loadMore } = usePaginatedFeed(demo ? '/demo/filtered-feed' : '/ai/filtered-feed', feedKey)
   const [filterError, setFilterError] = useState<string | null>(null)
   const [fetchingPosts, setFetchingPosts] = useState(false)
   const [showScoringDetails, setShowScoringDetails] = useState(false)
@@ -2068,7 +2078,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 
   // Check initial scoring status on mount
   useEffect(() => {
-    if (!aiConfigured) return
+    if (!aiConfigured || demo) return
     api<ScoringStatus>('/ai/scoring-status')
       .then((s) => {
         if (s.active || s.pending > 0) {
@@ -2077,7 +2087,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
         }
       })
       .catch(() => {})
-  }, [aiConfigured])
+  }, [aiConfigured, demo])
 
   const refresh = useCallback(async () => {
     setFetchingPosts(true)
@@ -2193,7 +2203,9 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
       {error && <p class="text-red-400 text-center">{error}</p>}
 
       {allTweets.length === 0 && !loading && pendingCount === 0 && (
-        !aiConfigured ? <AiSection onSave={() => window.location.reload()} /> : (
+        demo ? (
+          <p class="text-zinc-400 text-center py-20">No filtered posts available yet.</p>
+        ) : !aiConfigured ? <AiSection onSave={() => window.location.reload()} /> : (
           <div class="flex flex-col items-center justify-center py-20">
             <p class="text-zinc-400 mb-4">No posts to show yet. Fetch your feed first.</p>
             <button type="button" onClick={refresh} disabled={fetchingPosts}
@@ -2206,7 +2218,7 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
 
       <div class="flex flex-col gap-2">
         {allTweets.length > 0 && dedupThreads(allTweets).map((tweet: any) => (
-          <TweetCard key={tweet.id} tweet={tweet} nudge={nudges.get(tweet.id) || null} onNudge={onNudge} score={tweet.score} minScore={minScore} />
+          <TweetCard key={tweet.id} tweet={tweet} nudge={demo ? undefined : nudges.get(tweet.id) || null} onNudge={demo ? undefined : onNudge} score={tweet.score} minScore={minScore} />
         ))}
       </div>
       <LoadMore remaining={remaining} loading={loadingMore} onLoad={loadMore} />
@@ -2215,11 +2227,11 @@ export function FilteredFeed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promi
   )
 }
 
-export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>) => void }) {
-  const { nudges, onNudge, feedback } = useNudges()
-  const { minScore } = useAiSettings()
+export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise<void>) => void; demo?: boolean }) {
+  const { nudges, onNudge, feedback } = useNudges(demo)
+  const { minScore } = useAiSettings(demo)
   const [feedKey, setFeedKey] = useState(0)
-  const { allTweets, loading, loadingMore, error, remaining, loadMore } = usePaginatedFeed('/feed', feedKey)
+  const { allTweets, loading, loadingMore, error, remaining, loadMore } = usePaginatedFeed(demo ? '/demo/feed' : '/feed', feedKey)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const [refreshCount, setRefreshCount] = useState<number | null>(null)
@@ -2270,7 +2282,7 @@ export function Feed({ onRefreshRef }: { onRefreshRef?: (fn: () => Promise<void>
 
       <div class="flex flex-col gap-2">
         {allTweets.length > 0 && dedupThreads(allTweets).map((tweet) => (
-          <TweetCard key={tweet.id} tweet={tweet} nudge={nudges.get(tweet.id) || null} onNudge={onNudge} score={(tweet as any).score} minScore={minScore} />
+          <TweetCard key={tweet.id} tweet={tweet} nudge={demo ? undefined : nudges.get(tweet.id) || null} onNudge={demo ? undefined : onNudge} score={(tweet as any).score} minScore={minScore} />
         ))}
       </div>
       <LoadMore remaining={remaining} loading={loadingMore} onLoad={loadMore} />

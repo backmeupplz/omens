@@ -11,6 +11,7 @@ import apiKeysRouter from './routes/apikeys'
 import authRoutes from './routes/auth'
 import feedRouter from './routes/feed'
 import xRouter from './routes/x'
+import demoRouter from './routes/demo'
 import shareRouter, { shareDataRouter } from './routes/share'
 import { fetchOg } from './x/og'
 
@@ -188,6 +189,9 @@ export function createApp() {
   apiApp.route('/x', xRouter)
   apiApp.route('/api-keys', apiKeysRouter)
   apiApp.route('/ai', aiRouter)
+
+  // Public demo endpoints (read-only, no auth)
+  apiApp.route('/demo', demoRouter)
 
   // Share data endpoints (public JSON, no auth)
   apiApp.route('/', shareDataRouter)
