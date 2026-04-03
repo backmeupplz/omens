@@ -261,7 +261,7 @@ function extractReportSummary(content: string) {
   const title = lines.find((l) => l.startsWith('# '))?.replace(/^#+\s*/, '') || 'AI Report'
   const bullets: string[] = []
   for (const line of lines) {
-    if (bullets.length >= 5) break
+    if (bullets.length >= 9) break
     if (line.match(/^[-*]\s/) || line.match(/^\d+\.\s/)) {
       const clean = stripTweetRefs(line.replace(/^[-*\d.]+\s*/, '').replace(/\*\*/g, ''))
       if (clean.length > 5) bullets.push(truncate(clean, 75))
@@ -269,7 +269,7 @@ function extractReportSummary(content: string) {
   }
   if (bullets.length === 0) {
     for (const line of lines) {
-      if (bullets.length >= 4) break
+      if (bullets.length >= 9) break
       if (!line.startsWith('#') && line.trim().length > 20) {
         const clean = stripTweetRefs(line.replace(/\*\*/g, ''))
         if (clean.length > 5) bullets.push(truncate(clean, 75))
@@ -293,14 +293,16 @@ export function generateReportOgPng(r: ReportOgInput): Uint8Array {
   const date = new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
   const bulletY0 = 150
-  const bulletH = 48
+  const bulletH = 45
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <rect width="1200" height="630" fill="#0d0d0f"/>
   <rect width="1200" height="3" fill="#10b981"/>
 
   <text x="${L}" y="50" font-family="${F}" font-size="16" font-weight="700" fill="#10b981" letter-spacing="1.5">OMENS REPORT</text>
-  <text x="${L}" y="100" font-family="${F}" font-size="42" font-weight="700" fill="#ffffff">${esc(truncate(title, 45))}</text>
+  <text x="${L}" y="100" font-family="${F}" font-size="42" font-weight="700" fill="#ffffff">${esc(truncate(title, 35))}${' '}
+    <tspan font-size="28" fill="#71717a">\u2014 ${esc(date)}</tspan>
+  </text>
 
   <line x1="${L}" y1="118" x2="${R}" y2="118" stroke="#1e1e22" stroke-width="1"/>
 
