@@ -872,6 +872,7 @@ function OgEmbed({
 function InlineVideo({ item, sizeClass, fit }: { item: MediaItem; sizeClass: string; fit: string }) {
   const isGif = item.type === 'gif'
   const [playing, setPlaying] = useState(false)
+  const [loaded, setLoaded] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
@@ -883,19 +884,28 @@ function InlineVideo({ item, sizeClass, fit }: { item: MediaItem; sizeClass: str
   }, [isGif])
 
   if (playing || isGif) {
+    const posterUrl = imgProxy(`${item.thumbnail}?name=medium`)
     return (
-      <div class="relative overflow-hidden rounded-lg border border-zinc-700 bg-black">
+      <div
+        class="relative overflow-hidden rounded-lg border border-zinc-700 bg-black"
+        style={!loaded ? { backgroundImage: `url(${posterUrl})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } : undefined}
+      >
+        {/* Hidden thumbnail to hold layout dimensions until video loads */}
+        {!loaded && (
+          <img src={posterUrl} alt="" class={`${fit} ${sizeClass} invisible`} />
+        )}
         <video
           ref={isGif ? videoRef : undefined}
           src={videoProxyUrl(item.url)}
-          poster={`${item.thumbnail}?name=medium`}
+          poster={posterUrl}
           controls={!isGif}
           autoPlay
           loop={isGif}
           muted={isGif}
           playsinline
-          class={`${fit} ${sizeClass}`}
+          class={`${fit} ${sizeClass}${!loaded ? ' absolute inset-0 w-full h-full' : ''}`}
           onClick={(e) => e.stopPropagation()}
+          onLoadedData={() => setLoaded(true)}
         />
         {isGif && (
           <span class="absolute bottom-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-white">
