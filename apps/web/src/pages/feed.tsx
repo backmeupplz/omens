@@ -8,7 +8,7 @@ import { Spinner } from '../helpers/spinner'
 import { AiSection } from './settings'
 
 function videoProxyUrl(url: string): string {
-  return `${API_BASE}/media/video?url=${encodeURIComponent(url)}`
+  return `${API_BASE}/video?url=${encodeURIComponent(url)}`
 }
 
 function avatarUrl(url: string | null): string | undefined {

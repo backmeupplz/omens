@@ -112,8 +112,8 @@ export function createApp() {
     return c.json(data)
   })
 
-  // Video proxy
-  apiApp.get('/media/video', async (c) => {
+  // Video proxy (public — used on share pages too)
+  apiApp.get('/video', async (c) => {
     const url = c.req.query('url')
     if (!url) return c.json({ error: 'url required' }, 400)
     let parsed: URL
