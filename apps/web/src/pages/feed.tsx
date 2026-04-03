@@ -2268,16 +2268,20 @@ export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise
       {error && <p class="text-red-400 text-center">{error}</p>}
 
       {allTweets.length === 0 && !loading && (
-        <div class="flex flex-col items-center justify-center py-20">
-          <svg class="w-10 h-10 text-zinc-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
-            <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
-          </svg>
-          <p class="text-zinc-400 mb-4">No posts yet. Fetch your X feed to get started.</p>
-          <button type="button" onClick={refresh} disabled={refreshing}
-            class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
-            {refreshing ? 'Fetching...' : 'Fetch posts'}
-          </button>
-        </div>
+        demo ? (
+          <p class="text-zinc-400 text-center py-20">No posts available yet.</p>
+        ) : (
+          <div class="flex flex-col items-center justify-center py-20">
+            <svg class="w-10 h-10 text-zinc-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+              <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
+            </svg>
+            <p class="text-zinc-400 mb-4">No posts yet. Fetch your X feed to get started.</p>
+            <button type="button" onClick={refresh} disabled={refreshing}
+              class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
+              {refreshing ? 'Fetching...' : 'Fetch posts'}
+            </button>
+          </div>
+        )
       )}
 
       <div class="flex flex-col gap-2">
