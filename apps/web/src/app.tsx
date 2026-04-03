@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'preact/hooks'
 import { Link, Redirect, Route, Switch, useLocation } from 'wouter-preact'
-import { api } from './helpers/api'
+import { api, setDemoMode } from './helpers/api'
 import { Spinner } from './helpers/spinner'
 import { AiReportPage, Feed, FilteredFeed } from './pages/feed'
 import { Login, Register } from './pages/login'
@@ -38,6 +38,7 @@ function useAuth(): AuthState & { logout: () => void; recheckX: () => void } {
     api<{ singleUser: boolean; demoMode?: boolean }>('/auth/mode')
       .then((mode) => {
         const demoMode = !!mode.demoMode
+        if (demoMode) setDemoMode(true)
         if (mode.singleUser) {
           setState((prev) => ({
             ...prev,

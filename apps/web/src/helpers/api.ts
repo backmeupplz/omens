@@ -1,5 +1,9 @@
 export const API_BASE = '/api'
 
+// When true, 401s never redirect to /login (demo visitors aren't logged in)
+let _demoMode = false
+export function setDemoMode(v: boolean) { _demoMode = v }
+
 // Paths where 401 is expected and should NOT trigger a redirect
 const SILENT_401 = ['/auth/', '/x/session', '/demo/']
 
@@ -49,7 +53,7 @@ export async function api<T = unknown>(
     throw new Error('Cannot connect to server')
   }
 
-  if (res.status === 401 && !SILENT_401.some((p) => path.startsWith(p))) {
+  if (res.status === 401 && !_demoMode && !SILENT_401.some((p) => path.startsWith(p))) {
     window.location.href = '/login'
     throw new Error('Unauthorized')
   }
