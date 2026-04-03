@@ -74,6 +74,7 @@ function spaWithOg(meta: { title: string; description: string; url: string; imag
   const titleTag = `<title>${esc(meta.title)} — Omens</title>`
   const html = getSpaHtml()
     .replace(/<title>[^<]*<\/title>/, titleTag)
+    .replace(/<meta\s+(property="og:|name="twitter:)[^>]*>\s*/g, '')
     .replace('</head>', `${tags}\n</head>`)
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }
