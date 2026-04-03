@@ -233,6 +233,11 @@ export interface ReportOgInput {
   createdAt: Date | string
 }
 
+/** Strip [[tweet:ID]] references from text */
+function stripTweetRefs(s: string): string {
+  return s.replace(/\[\[tweet:[^\]]+\]\]/g, '').replace(/\s{2,}/g, ' ').trim()
+}
+
 function extractReportSummary(content: string) {
   const lines = content.split('\n').filter((l) => l.trim())
   const title = lines.find((l) => l.startsWith('# '))?.replace(/^#+\s*/, '') || 'AI Report'
@@ -240,14 +245,16 @@ function extractReportSummary(content: string) {
   for (const line of lines) {
     if (bullets.length >= 5) break
     if (line.match(/^[-*]\s/) || line.match(/^\d+\.\s/)) {
-      bullets.push(truncate(line.replace(/^[-*\d.]+\s*/, '').replace(/\*\*/g, ''), 75))
+      const clean = stripTweetRefs(line.replace(/^[-*\d.]+\s*/, '').replace(/\*\*/g, ''))
+      if (clean.length > 5) bullets.push(truncate(clean, 75))
     }
   }
   if (bullets.length === 0) {
     for (const line of lines) {
       if (bullets.length >= 4) break
       if (!line.startsWith('#') && line.trim().length > 20) {
-        bullets.push(truncate(line.replace(/\*\*/g, ''), 75))
+        const clean = stripTweetRefs(line.replace(/\*\*/g, ''))
+        if (clean.length > 5) bullets.push(truncate(clean, 75))
       }
     }
   }

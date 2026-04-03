@@ -195,7 +195,7 @@ shareRouter.get('/report/:id', async (c) => {
   if (!report) return notFoundHtml()
 
   const { title, bullets } = extractReportSummary(report.content)
-  const description = truncate(bullets.map((b) => `\u2022 ${b}`).join(' ') || report.content.replace(/[#*\n]+/g, ' ').trim(), 200)
+  const description = truncate(bullets.map((b) => `\u2022 ${b}`).join(' ') || report.content.replace(/\[\[tweet:[^\]]+\]\]/g, '').replace(/[#*\n]+/g, ' ').trim(), 200)
   const meta = {
     title: `${title} — Omens Report`, description,
     url: `${origin()}/report/${id}`, image: `${origin()}/report/${id}/og.png`, largeImage: true,

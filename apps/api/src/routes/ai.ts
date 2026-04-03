@@ -731,8 +731,18 @@ export async function generateReportForUser(userId: string): Promise<any> {
   const existingProgress = reportGenerating.get(userId)
   if (existingProgress && !existingProgress.done) return null
 
+  // Register progress immediately so /report-stream can find it before async work completes
+  const progress: ReportProgress = {
+    startedAt: new Date(), tweetCount: 0, status: 'Preparing...',
+    content: '', done: false, tweets: [], subscribers: new Set(),
+  }
+  reportGenerating.set(userId, progress)
+
+  const emit = (event: string) => { for (const sub of progress.subscribers) sub(event) }
+  const setStatus = (s: string) => { progress.status = s; emit(JSON.stringify({ status: s })) }
+
   const ai = await getAiConfig(userId)
-  if (!ai) return null
+  if (!ai) { reportGenerating.delete(userId); return null }
   const db = getDb(env.DATABASE_URL)
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
@@ -760,17 +770,12 @@ export async function generateReportForUser(userId: string): Promise<any> {
   if (tweetList.length === 0) {
     // Update lastAutoReportAt to prevent retry every 5 minutes
     await db.update(aiSettings).set({ lastAutoReportAt: new Date() }).where(eq(aiSettings.userId, userId))
+    reportGenerating.delete(userId)
     return null
   }
 
-  const emit = (event: string) => { for (const sub of progress.subscribers) sub(event) }
-  const setStatus = (s: string) => { progress.status = s; emit(JSON.stringify({ status: s })) }
-
-  const progress: ReportProgress = {
-    startedAt: new Date(), tweetCount: tweetList.length, status: 'Preparing...',
-    content: '', done: false, tweets: tweetList, subscribers: new Set(),
-  }
-  reportGenerating.set(userId, progress)
+  progress.tweetCount = tweetList.length
+  progress.tweets = tweetList
 
   try {
     setStatus(`Analyzing ${tweetList.length} posts...`)
