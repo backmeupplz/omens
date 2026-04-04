@@ -63,12 +63,15 @@ xRouter.post('/login', zValidator('json', xLoginSchema), async (c) => {
       })
     }
 
-    // Delete old user-tweet links so reconnection gets fresh data
-    await db.delete(userTweets).where(eq(userTweets.userId, user.id))
+    const isReconnect = existing.length > 0
+    if (!isReconnect) {
+      // Only wipe tweet links on first connection, not reconnect
+      await db.delete(userTweets).where(eq(userTweets.userId, user.id))
+    }
 
-    console.log(`[x] User ${user.id} connected X @${session.username}`)
+    console.log(`[x] User ${user.id} ${isReconnect ? 'reconnected' : 'connected'} X @${session.username}`)
 
-    // Trigger initial fetch in background
+    // Trigger fetch in background
     void fetchForUser(user.id)
 
     return c.json({ connected: true, username: session.username })

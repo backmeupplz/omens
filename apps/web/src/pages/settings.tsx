@@ -20,6 +20,7 @@ function XSection({ onXChange }: { onXChange: () => void }) {
   const [totp, setTotp] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showReconnect, setShowReconnect] = useState(false)
 
   const connect = async () => {
     setError('')
@@ -38,10 +39,11 @@ function XSection({ onXChange }: { onXChange: () => void }) {
       setHandle('')
       setPassword('')
       setTotp('')
+      setShowReconnect(false)
       refetch()
       onXChange()
-      // Redirect to feed after first connection
-      navigate('/')
+      // Redirect to feed after first connection if not reconnecting
+      if (!session?.connected) navigate('/')
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Connection failed')
     } finally {
@@ -72,14 +74,64 @@ function XSection({ onXChange }: { onXChange: () => void }) {
           <span class="text-sm text-zinc-300">
             Connected as <span class="font-medium text-zinc-100">{session.username}</span>
           </span>
-          <button
-            type="button"
-            onClick={disconnect}
-            class="rounded px-3 py-1.5 text-xs bg-red-900/50 text-red-400 hover:bg-red-900 whitespace-nowrap"
-          >
-            Disconnect
-          </button>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowReconnect((v) => !v)}
+              class="rounded px-3 py-1.5 text-xs bg-zinc-700 text-zinc-300 hover:bg-zinc-600 whitespace-nowrap"
+            >
+              Reconnect
+            </button>
+            <button
+              type="button"
+              onClick={disconnect}
+              class="rounded px-3 py-1.5 text-xs bg-red-900/50 text-red-400 hover:bg-red-900 whitespace-nowrap"
+            >
+              Disconnect
+            </button>
+          </div>
         </div>
+        {showReconnect && (
+          <div class="space-y-3 rounded border border-zinc-800 bg-zinc-900 p-3">
+            <p class="text-sm text-zinc-500">Re-enter credentials to update your session without losing posts.</p>
+            <input
+              type="text"
+              class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+              placeholder="X email or phone"
+              value={username}
+              onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
+            />
+            <input
+              type="text"
+              class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+              placeholder="X handle, e.g. backmeupplz (optional)"
+              value={handle}
+              onInput={(e) => setHandle((e.target as HTMLInputElement).value)}
+            />
+            <input
+              type="password"
+              class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+              placeholder="Password"
+              value={password}
+              onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
+            />
+            <input
+              type="text"
+              class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+              placeholder="2FA code (optional)"
+              value={totp}
+              onInput={(e) => setTotp((e.target as HTMLInputElement).value)}
+            />
+            <button
+              type="button"
+              onClick={connect}
+              disabled={loading || !username || !password}
+              class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {loading ? 'Reconnecting...' : 'Update credentials'}
+            </button>
+          </div>
+        )}
       </div>
     )
   }
