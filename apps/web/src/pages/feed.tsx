@@ -31,13 +31,14 @@ function Lightbox({
   onClose: () => void
 }) {
   const [cur, setCur] = useState(index)
+  const [loaded, setLoaded] = useState(false)
 
   const prev = useCallback(
-    () => setCur((c) => (c > 0 ? c - 1 : items.length - 1)),
+    () => { setLoaded(false); setCur((c) => (c > 0 ? c - 1 : items.length - 1)) },
     [items.length],
   )
   const next = useCallback(
-    () => setCur((c) => (c < items.length - 1 ? c + 1 : 0)),
+    () => { setLoaded(false); setCur((c) => (c < items.length - 1 ? c + 1 : 0)) },
     [items.length],
   )
 
@@ -69,6 +70,14 @@ function Lightbox({
           </svg>
         </button>
       )}
+      {!loaded && (
+        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <svg class="w-8 h-8 text-zinc-400 animate-spin" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+        </div>
+      )}
       {item.type !== 'photo' ? (
         <video
           src={videoProxyUrl(item.url)}
@@ -76,15 +85,17 @@ function Lightbox({
           autoPlay
           loop={item.type === 'gif'}
           muted={item.type === 'gif'}
-          class="max-h-[90vh] max-w-[90vw] rounded-lg"
+          class={`max-h-[90vh] max-w-[90vw] rounded-lg transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
           onClick={(e) => e.stopPropagation()}
+          onLoadedData={() => setLoaded(true)}
         />
       ) : (
         <img
           src={imgProxy(`${item.url}?name=large`)}
           alt=""
-          class="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
+          class={`max-h-[90vh] max-w-[90vw] rounded-lg object-contain transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
           onClick={(e) => e.stopPropagation()}
+          onLoad={() => setLoaded(true)}
         />
       )}
       {items.length > 1 && (
