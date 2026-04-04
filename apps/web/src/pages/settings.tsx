@@ -15,6 +15,7 @@ function XSection({ onXChange }: { onXChange: () => void }) {
     connectedAt?: string
   }>('/x/session')
   const [username, setUsername] = useState('')
+  const [handle, setHandle] = useState('')
   const [password, setPassword] = useState('')
   const [totp, setTotp] = useState('')
   const [error, setError] = useState('')
@@ -29,10 +30,12 @@ function XSection({ onXChange }: { onXChange: () => void }) {
         body: JSON.stringify({
           username,
           password,
+          ...(handle && { handle }),
           ...(totp && { totp }),
         }),
       })
       setUsername('')
+      setHandle('')
       setPassword('')
       setTotp('')
       refetch()
@@ -94,9 +97,16 @@ function XSection({ onXChange }: { onXChange: () => void }) {
         <input
           type="text"
           class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
-          placeholder="X email"
+          placeholder="X email or phone"
           value={username}
           onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
+        />
+        <input
+          type="text"
+          class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+          placeholder="X handle, e.g. backmeupplz (optional)"
+          value={handle}
+          onInput={(e) => setHandle((e.target as HTMLInputElement).value)}
         />
         <input
           type="password"

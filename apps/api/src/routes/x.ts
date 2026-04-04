@@ -15,11 +15,11 @@ const xRouter = new Hono<{ Variables: { user: AuthUser } }>()
 
 xRouter.post('/login', zValidator('json', xLoginSchema), async (c) => {
   const user = c.get('user')
-  const { username, password, totp } = c.req.valid('json')
+  const { username, password, handle, totp } = c.req.valid('json')
   const db = getDb(env.DATABASE_URL)
 
   try {
-    const session = await xLogin(username, password, totp)
+    const session = await xLogin(username, password, handle, totp)
 
     // Validate session actually works before storing
     try {
@@ -84,8 +84,10 @@ xRouter.post('/login', zValidator('json', xLoginSchema), async (c) => {
       'Invalid credentials',
       'TOTP/2FA code required',
       'curl-impersonate not found',
+      'Incorrect. Please try again',
+      'X denied the login',
     ]
-    const message = safeMessages.find((m) => internal.includes(m)) || 'Login failed'
+    const message = safeMessages.find((m) => internal.includes(m)) || internal
     console.error(`[x] Login error (shown to user: "${message}"):`, internal)
     return c.json({ error: message }, 400)
   }

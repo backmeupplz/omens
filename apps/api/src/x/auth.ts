@@ -229,7 +229,14 @@ async function taskRequest(
 
   if (result.status !== 200) {
     console.error(`[x] Task failed (${result.status}):`, result.body.slice(0, 500))
-    throw new Error(`X login step failed (${result.status})`)
+    // Try to extract the actual error message from X
+    let detail = ''
+    try {
+      const parsed = JSON.parse(result.body)
+      const msg = parsed?.errors?.[0]?.message
+      if (msg) detail = msg.split(/\s[a-z];/)[0] // strip X tracking suffix
+    } catch {}
+    throw new Error(detail || `X login step failed (${result.status})`)
   }
 
   const data = JSON.parse(result.body)
@@ -255,6 +262,7 @@ function getSubtaskIds(data: any): string[] {
 export async function xLogin(
   username: string,
   password: string,
+  handle?: string,
   totp?: string,
 ): Promise<XSession> {
   const curlBin = await findCurlImpersonate()
@@ -359,10 +367,14 @@ export async function xLogin(
         },
       }]
     } else if (subtaskIds.includes('LoginEnterAlternateIdentifierSubtask')) {
-      // X wants alternate identifier (email/phone) — send username again
+      // X wants alternate identifier (handle/phone) — must differ from primary
+      const altId = handle || username
+      if (!handle) {
+        console.warn('[x] No handle provided for alternate identifier, falling back to username')
+      }
       input = [{
         subtask_id: 'LoginEnterAlternateIdentifierSubtask',
-        enter_text: { text: username, link: 'next_link' },
+        enter_text: { text: altId, link: 'next_link' },
       }]
     } else if (subtaskIds.includes('LoginEnterPassword')) {
       input = [{

@@ -20,6 +20,7 @@ export const loginSchema = z.object({
 export const xLoginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
+  handle: z.string().optional(),
   totp: z.string().optional(),
 })
 
