@@ -32,7 +32,8 @@ feedRouter.get('/', async (c) => {
 
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)` })
-    .from(userTweets)
+    .from(tweets)
+    .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
     .where(eq(userTweets.userId, user.id))
 
   // Resolve parent tweets for replies
