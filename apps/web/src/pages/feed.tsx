@@ -1026,24 +1026,46 @@ function linkify(text: string): preact.ComponentChildren[] {
   return parts
 }
 
-function TweetContent({ text, hideUrls }: { text: string; hideUrls?: boolean }) {
+function TweetContent({
+  text,
+  hideUrls,
+  forceExpanded,
+  onExpandRequest,
+}: {
+  text: string
+  hideUrls?: boolean
+  forceExpanded?: boolean
+  onExpandRequest?: () => void
+}) {
   const [expanded, setExpanded] = useState(false)
   let cleaned = text
   if (hideUrls) {
     cleaned = cleaned.replace(/\s*https?:\/\/\S+/g, '').trim()
   }
-  const needsTruncation = cleaned.length > MAX_CHARS
-  const display = needsTruncation && !expanded ? `${cleaned.slice(0, MAX_CHARS)}...` : cleaned
+  const lines = cleaned.split('\n')
+  const tooManyLines = lines.length > 10
+  const tooManyChars = cleaned.length > MAX_CHARS
+  const needsTruncation = tooManyChars || tooManyLines
+  const isExpanded = forceExpanded || expanded
+  let display = cleaned
+  if (needsTruncation && !isExpanded) {
+    if (tooManyLines) display = lines.slice(0, 10).join('\n') + '...'
+    if (tooManyChars && display.length > MAX_CHARS) display = display.slice(0, MAX_CHARS) + '...'
+  }
 
   return (
     <div class="overflow-hidden">
       <p class="text-[15px] text-zinc-200 whitespace-pre-wrap leading-relaxed break-words">
         {linkify(display)}
       </p>
-      {needsTruncation && (
+      {needsTruncation && !forceExpanded && (
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (onExpandRequest) onExpandRequest()
+            else setExpanded(!expanded)
+          }}
           class="text-sm text-blue-400 hover:text-blue-300 mt-1"
         >
           {expanded ? 'Show less' : 'Show full post'}
@@ -1084,6 +1106,7 @@ function TweetDetailModal({
   onNudge,
   score,
   minScore,
+  forceExpandedText,
 }: {
   tweet: Tweet
   onClose: () => void
@@ -1091,6 +1114,7 @@ function TweetDetailModal({
   onNudge?: (tweetId: string, direction: 'up' | 'down') => void
   score?: number | null
   minScore?: number
+  forceExpandedText?: boolean
 }) {
   const [replies, setReplies] = useState<ReplyData[]>([])
   const [repliesLoading, setRepliesLoading] = useState(true)
@@ -1149,7 +1173,7 @@ function TweetDetailModal({
       onClick={(e: Event) => { e.stopPropagation(); onClose() }}
     >
       <div class="w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
-        <TweetCard tweet={tweet} nudge={nudge} onNudge={onNudge} score={score} minScore={minScore} embedded />
+        <TweetCard tweet={tweet} nudge={nudge} onNudge={onNudge} score={score} minScore={minScore} embedded forceExpandedText={forceExpandedText} />
 
         {/* Replies section */}
         <div class="mt-2 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
@@ -1193,13 +1217,15 @@ function TweetDetailModal({
   )
 }
 
-export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: {
+export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, expandBehavior, forceExpandedText }: {
   tweet: Tweet
   nudge?: 'up' | 'down' | null
   onNudge?: (tweetId: string, direction: 'up' | 'down') => void
   score?: number | null
   minScore?: number
   embedded?: boolean
+  expandBehavior?: 'inline' | 'detail'
+  forceExpandedText?: boolean
 }) {
   const media: MediaItem[] = safeParse<MediaItem[]>(tweet.mediaUrls) ?? []
   const quoted = safeParse<QuotedTweet>(tweet.quotedTweet)
@@ -1212,6 +1238,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
   const [showReplies, setShowReplies] = useState(false)
   const [showThread, setShowThread] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
+  const [showDetailExpanded, setShowDetailExpanded] = useState(false)
   const [ogLoaded, setOgLoaded] = useState(false)
   const isThread = tweet.replyToHandle === tweet.authorHandle
   const parentMedia: MediaItem[] = isThread && tweet.parentTweet ? safeParse<MediaItem[]>(tweet.parentTweet.mediaUrls) ?? [] : []
@@ -1221,17 +1248,28 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
   const parentIsThread = tweet.parentTweet ? tweet.parentTweet.replyToHandle === tweet.parentTweet.authorHandle : false
   const showThreadButton = isThread && (!tweet.parentTweet || parentIsThread)
   const onOgLoaded = useCallback(() => setOgLoaded(true), [])
+  const openDetail = useCallback((expandedText = false) => {
+    if (embedded) return
+    setShowDetailExpanded(expandedText)
+    setShowDetail(true)
+  }, [embedded])
+  const closeDetail = useCallback(() => {
+    setShowDetail(false)
+    setShowDetailExpanded(false)
+  }, [])
+  const onExpandRequest = !embedded && expandBehavior === 'detail' ? () => openDetail(true) : undefined
 
   return (
     <div>
     {!embedded && showDetail && (
       <TweetDetailModal
         tweet={tweet}
-        onClose={() => setShowDetail(false)}
+        onClose={closeDetail}
         nudge={nudge}
         onNudge={onNudge}
         score={score}
         minScore={minScore}
+        forceExpandedText={showDetailExpanded}
       />
     )}
     {tweet.parentTweet && !isThread && (
@@ -1245,7 +1283,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
             {' '}@{tweet.parentTweet.authorHandle}
           </span>
           <div class="text-xs text-zinc-500 mt-0.5">
-            <TweetContent text={tweet.parentTweet.content} />
+            <TweetContent text={tweet.parentTweet.content} forceExpanded={forceExpandedText} onExpandRequest={onExpandRequest} />
           </div>
         </div>
       </div>
@@ -1254,7 +1292,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
       class={`${tweet.parentTweet && !isThread ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} border border-zinc-800 bg-zinc-900 px-3 sm:px-4 py-3 hover:border-zinc-700 transition-colors${embedded ? '' : ' cursor-pointer'}`}
       onClick={embedded ? undefined : () => {
         if (lightbox !== null || quotedLightbox !== null || parentLightbox !== null || showReplies || showThread) return
-        setShowDetail(true)
+        openDetail(false)
       }}
     >
       {lightbox !== null && (
@@ -1310,7 +1348,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
               <span class="text-xs text-zinc-600">&middot; {timeAgo(tweet.parentTweet.publishedAt)}</span>
             )}
           </div>
-          <TweetContent text={tweet.parentTweet.content} hideUrls={!!parentCard} />
+          <TweetContent text={tweet.parentTweet.content} hideUrls={!!parentCard} forceExpanded={forceExpandedText} onExpandRequest={onExpandRequest} />
           {parentMedia.length > 0 && <MediaGrid media={parentMedia} onPhotoClick={setParentLightbox} />}
           {parentQuoted && (
             <div class="mt-2 rounded-xl border border-zinc-700 overflow-hidden p-2.5 cursor-default" onClick={(e) => e.stopPropagation()}>
@@ -1428,7 +1466,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
       )}
 
       {/* Content — full width, no indent */}
-      <TweetContent text={tweet.content} hideUrls={ogLoaded || !!card} />
+      <TweetContent text={tweet.content} hideUrls={ogLoaded || !!card} forceExpanded={forceExpandedText} onExpandRequest={onExpandRequest} />
 
       {/* Media thumbnails */}
       <MediaGrid media={media} onPhotoClick={setLightbox} />
@@ -1447,7 +1485,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded }: 
             <span class="text-xs text-zinc-500">@{quoted.authorHandle}</span>
           </div>
           <div class="text-sm text-zinc-400">
-            <TweetContent text={quoted.content} hideUrls={!!quoted.card} />
+            <TweetContent text={quoted.content} hideUrls={!!quoted.card} forceExpanded={forceExpandedText} onExpandRequest={onExpandRequest} />
           </div>
           <MediaGrid media={quoted.media || []} onPhotoClick={setQuotedLightbox} />
           {quoted.card && <LinkCard data={quoted.card} fallbackUrl={quoted.url} tweetUrl={quoted.url} />}
@@ -1656,6 +1694,170 @@ export function renderReportContent(
   return result
 }
 
+
+type SectionItem = { type: 'text' | 'tweet'; line: string; tweet?: Tweet }
+
+function parseBoldText(text: string): preact.ComponentChildren[] {
+  const parts: preact.ComponentChildren[] = []
+  const regex = /\*\*(.+?)\*\*/g
+  let last = 0
+  let match
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index))
+    parts.push(<strong key={match.index}>{match[1]}</strong>)
+    last = regex.lastIndex
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts
+}
+
+function getArticleColumnWidth(items: SectionItem[]) {
+  const tweetCount = items.filter((item) => item.type === 'tweet').length
+  const textLength = items.reduce((total, item) => total + (item.type === 'text' ? item.line.trim().length : 0), 0)
+
+  if (tweetCount >= 6) return '17.5rem'
+  if (tweetCount >= 4) return '18.5rem'
+  if (tweetCount >= 2) return textLength > 1400 ? '19.5rem' : '18.75rem'
+  if (textLength > 2200) return '20.5rem'
+  if (textLength > 1200) return '22rem'
+  return '24rem'
+}
+
+function NewspaperContent({ text, refTweets, reportDate, tweetCount: totalTweetCount, issueNumber }: {
+  text: string
+  refTweets: Map<string, Tweet>
+  reportDate: string
+  tweetCount: number
+  issueNumber: number
+}) {
+  const cleaned = text.replace(/\\([^\\])/g, '$1')
+  const lines = cleaned.split('\n')
+
+  // Parse into sections
+  const sections: Array<{ header: string | null; headerLevel: number; items: SectionItem[] }> = []
+  let current: typeof sections[0] = { header: null, headerLevel: 0, items: [] }
+  for (const line of lines) {
+    const h1 = line.match(/^# (.+)/)
+    const h2 = line.match(/^## (.+)/)
+    const h3 = line.match(/^### (.+)/)
+    if (h1 || h2 || h3) {
+      if (current.items.length > 0 || current.header) sections.push(current)
+      current = { header: (h1 || h2 || h3)![1], headerLevel: h1 ? 1 : h2 ? 2 : 3, items: [] }
+      continue
+    }
+    const tweetMatch = line.match(/\[\[tweet:([^\]]+)\]\]/)
+    if (tweetMatch) {
+      current.items.push({ type: 'tweet', line, tweet: refTweets.get(tweetMatch[1]) || undefined })
+    } else {
+      current.items.push({ type: 'text', line })
+    }
+  }
+  if (current.items.length > 0 || current.header) sections.push(current)
+
+  const articles = sections.filter((s) => s.header)
+
+  const d = new Date(reportDate)
+  const dateStr = d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+  const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+
+  const renderArticleFlow = (items: SectionItem[], prefix: string) => {
+    const blocks: preact.ComponentChildren[] = []
+    let firstParagraph = true
+
+    for (let ii = 0; ii < items.length; ii++) {
+      const item = items[ii]
+      if (item.type === 'tweet') {
+        blocks.push(
+          item.tweet
+            ? <div key={`${prefix}t-${ii}`} class="np-flow-tweet"><TweetCard tweet={item.tweet} expandBehavior="detail" /></div>
+            : <div key={`${prefix}t-${ii}`} class="np-tweet np-flow-tweet" style={{ fontStyle: 'italic', color: 'var(--np-text-muted)' }}>Referenced post is no longer available</div>,
+        )
+        continue
+      }
+
+      const line = item.line.trim()
+      if (!line) {
+        blocks.push(<div key={`${prefix}s-${ii}`} class="np-spacer np-flow-spacer" />)
+        continue
+      }
+
+      const unordered = item.line.match(/^[-*]\s+(.*)/)
+      const ordered = item.line.match(/^\d+\.\s+(.*)/)
+      if (unordered || ordered) {
+        const orderedList = !!ordered
+        const entries: string[] = []
+        for (; ii < items.length; ii++) {
+          const next = items[ii]
+          if (next.type !== 'text') {
+            ii--
+            break
+          }
+          const match = orderedList
+            ? next.line.match(/^\d+\.\s+(.*)/)
+            : next.line.match(/^[-*]\s+(.*)/)
+          if (!match) {
+            ii--
+            break
+          }
+          entries.push(match[1])
+        }
+
+        blocks.push(
+          orderedList
+            ? (
+                <ol key={`${prefix}l-${ii}`} class="np-flow-list list-decimal">
+                  {entries.map((entry, li) => <li key={`${prefix}ol-${ii}-${li}`}>{parseBoldText(entry)}</li>)}
+                </ol>
+              )
+            : (
+                <ul key={`${prefix}l-${ii}`} class="np-flow-list list-disc">
+                  {entries.map((entry, li) => <li key={`${prefix}ul-${ii}-${li}`}>{parseBoldText(entry)}</li>)}
+                </ul>
+              ),
+        )
+        continue
+      }
+
+      const className = firstParagraph ? 'np-flow-paragraph np-dropcap' : 'np-flow-paragraph'
+      blocks.push(<p key={`${prefix}p-${ii}`} class={className}>{parseBoldText(item.line)}</p>)
+      firstParagraph = false
+    }
+
+    return blocks
+  }
+
+  return (
+    <div>
+      <div class="np-masthead">
+        <div class="np-masthead-title">The Daily Omens</div>
+        <div class="np-masthead-sub">Your AI-Curated {d.getHours() < 12 ? 'Morning' : d.getHours() < 17 ? 'Afternoon' : 'Evening'} Briefing</div>
+        <div class="np-masthead-rule" />
+        <div class="np-masthead-meta">
+          <span>{dateStr}</span>
+          <span>No. {issueNumber}</span>
+          <span>{totalTweetCount} sources &middot; {timeStr}</span>
+        </div>
+      </div>
+
+      {/* Articles: one after another, top to bottom */}
+      {articles.map((article, ai) => (
+        <article
+          key={ai}
+          class="np-article"
+          style={{ ['--np-column-width' as any]: getArticleColumnWidth(article.items) }}
+        >
+          <div class={`np-article-header np-section-header ${ai === 0 ? 'np-section-header-lg' : article.headerLevel <= 2 ? 'np-section-header-md' : 'np-section-header-sm'}`}>
+            {article.header}
+          </div>
+          <div class="np-body np-article-flow">
+            {renderArticleFlow(article.items, `${ai}-`)}
+          </div>
+        </article>
+      ))}
+    </div>
+  )
+}
+
 function ElapsedTime({ since }: { since: number }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
@@ -1671,6 +1873,18 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
   const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number; reportAtHour?: number; nextReportAt?: number | null }>(demo ? null : '/ai/settings')
   const { data, loading, refetch } = useApi<{ report: AiReportData | null }>(`${prefix}/report`)
   const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>(`${prefix}/reports`)
+  const [newspaperMode, setNewspaperMode] = useState(() => localStorage.getItem('omens-newspaper-mode') === '1')
+  useEffect(() => {
+    document.documentElement.classList.toggle('newspaper-active', newspaperMode)
+    return () => document.documentElement.classList.remove('newspaper-active')
+  }, [newspaperMode])
+  const toggleNewspaperMode = useCallback(() => {
+    setNewspaperMode((prev) => {
+      const next = !prev
+      localStorage.setItem('omens-newspaper-mode', next ? '1' : '0')
+      return next
+    })
+  }, [])
   const [generating, setGenerating] = useState(false)
   const [streamContent, setStreamContent] = useState('')
   const [streamTweets, setStreamTweets] = useState<Map<string, Tweet>>(new Map())
@@ -1882,12 +2096,18 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
           </div>
         )
       })()}
-          <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden">
-            <div class="flex items-center justify-between gap-2 mb-3 text-xs text-zinc-500">
+          <div class="flex items-center justify-between gap-2 mb-2 text-xs text-zinc-500">
               <span>{new Date(activeReport.createdAt).toLocaleString()} &middot; {activeReport.tweetCount} posts{!viewingReportId && settings?.nextReportAt ? (
                   <Countdown targetMs={settings.nextReportAt} format="hm" prefix=" &middot; next in " />
                 ) : null}</span>
               <span class="flex items-center gap-1.5 shrink-0">
+                <button type="button" onClick={toggleNewspaperMode}
+                  class={`hover:text-zinc-300 transition-colors ${newspaperMode ? 'text-zinc-100' : ''}`}
+                  title={newspaperMode ? 'Exit newspaper mode' : 'Newspaper mode'}>
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
+                  </svg>
+                </button>
                 <CopyShareButton url={`${window.location.origin}/report/${viewingReportId || activeReport.id}`} />
                 {pastData && pastData.reports.length > 1 && (
                   <button type="button" onClick={() => setShowPastReports(!showPastReports)}
@@ -1918,7 +2138,16 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
                 </button>}
               </span>
             </div>
-            {renderReportContent(activeReport.content, refTweetMap)}
+          <div class={newspaperMode ? 'newspaper np-outer' : 'rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden'}>
+            {newspaperMode
+              ? <NewspaperContent
+                  text={activeReport.content}
+                  refTweets={refTweetMap}
+                  reportDate={activeReport.createdAt}
+                  tweetCount={activeReport.tweetCount}
+                  issueNumber={pastData ? pastData.reports.length - (pastData.reports.findIndex((r) => r.id === (viewingReportId || activeReport.id))) : 1}
+                />
+              : renderReportContent(activeReport.content, refTweetMap)}
           </div>
         </div>
       )}
@@ -1966,12 +2195,19 @@ function usePaginatedFeed(url: string, resetKey: number) {
     else setLoadingMore(true)
     try {
       const res = await api<FeedResponse>(`${url}${url.includes('?') ? '&' : '?'}limit=${FEED_LIMIT}&page=${p}`)
+      const newData = res.data
       setAllTweets(prev => {
-        if (reset) return res.data
+        if (reset) return newData
         const ids = new Set(prev.map(t => t.id))
-        return [...prev, ...res.data.filter(t => !ids.has(t.id))]
+        const unique = newData.filter(t => !ids.has(t.id))
+        return [...prev, ...unique]
       })
-      setTotal(res.pagination.total)
+      // If a "load more" page returned no new data, we've exhausted the feed
+      if (!reset && newData.length < FEED_LIMIT) {
+        setTotal(prev => Math.min(prev, (p - 1) * FEED_LIMIT + newData.length))
+      } else {
+        setTotal(res.pagination.total)
+      }
       setPage(p)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load')
