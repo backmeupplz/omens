@@ -4,13 +4,14 @@ import { api, API_BASE } from '../helpers/api'
 import { Countdown } from '../helpers/components'
 import { useApi } from '../helpers/hooks'
 import { NewspaperRouteControls, NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
+import { SetupStateBlock, type SetupStep } from '../helpers/setup-state'
 import { Spinner } from '../helpers/spinner'
 
 // === X Section ===
 
 function XSection({ onXChange }: { onXChange: () => void }) {
   const [, navigate] = useLocation()
-  const { data: session, loading: sessionLoading, refetch } = useApi<{
+  const { data: session, loading: sessionLoading, error: sessionError, refetch } = useApi<{
     connected: boolean
     username?: string
     connectedAt?: string
@@ -151,6 +152,9 @@ function XSection({ onXChange }: { onXChange: () => void }) {
       <h3 class="font-medium">Connect X</h3>
       <p class="np-copy-muted text-sm">Connect your X account to read your home feed.</p>
 
+      {sessionError && (
+        <p class="np-alert np-alert-error">Couldn&apos;t verify your saved X session. Reconnect below.</p>
+      )}
       {error && (
         <p class="np-alert np-alert-error">{error}</p>
       )}
@@ -226,7 +230,7 @@ interface ModelInfo {
 }
 
 export function AiSection({ onSave }: { onSave?: () => void } = {}) {
-  const { data: settings, refetch } = useApi<AiSettingsData>('/ai/settings')
+  const { data: settings, error: settingsError, refetch } = useApi<AiSettingsData>('/ai/settings')
   const [editing, setEditing] = useState(false)
   const [provider, setProvider] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -312,6 +316,17 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
 
   const providerName = AI_PROVIDERS.find((p) => p.id === settings?.provider)?.name || settings?.provider
 
+  const requiresApiKey = !!provider && provider !== 'ollama'
+  const canFetchModels = !!provider && (provider === 'ollama' || !!apiKey || !!settings?.configured)
+  const previewModels = () => {
+    if (!provider) return
+    if (provider === 'ollama' || apiKey) {
+      fetchModels(provider, apiKey, baseUrl)
+      return
+    }
+    fetchSavedModels()
+  }
+
   // Connected state
   if (settings?.configured && !editing) {
     return (
@@ -340,9 +355,16 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
   return (
     <div class="space-y-4">
       <h3 class="font-medium">AI Provider</h3>
-      <p class="np-copy-muted text-sm">Configure an AI provider to generate feed reports.</p>
+      <p class="np-copy-muted text-sm">Bring your own AI provider, model, and API key to score your X feed and generate the newspaper.</p>
 
+      {settingsError && <p class="np-alert np-alert-error">Couldn&apos;t load saved AI settings. Re-enter them below.</p>}
       {error && <p class="np-alert np-alert-error">{error}</p>}
+      {provider === 'ollama' && (
+        <p class="np-setup-hint">Ollama runs locally, so no API key is needed. Set a base URL only if it is not on `http://localhost:11434`.</p>
+      )}
+      {error && (
+        <p class="np-setup-hint">Check the provider, API key, base URL, and model access. Some providers only return model lists for fully valid keys.</p>
+      )}
 
       <div class="space-y-3">
         <div>
@@ -364,7 +386,7 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
           </select>
         </div>
 
-        {provider && (
+        {requiresApiKey && (
           <div>
             <label class="mb-1 block">
               API Key {settings?.configured && settings.apiKeyMasked && (
@@ -381,8 +403,8 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
               />
               <button
                 type="button"
-                onClick={() => apiKey ? fetchModels(provider, apiKey, baseUrl) : fetchSavedModels()}
-                disabled={modelsLoading || (!apiKey && !settings?.configured && provider !== 'ollama')}
+                onClick={previewModels}
+                disabled={modelsLoading || !canFetchModels}
                 class="np-button np-button-secondary disabled:opacity-50 shrink-0"
               >
                 {modelsLoading ? 'Loading...' : 'Fetch models'}
@@ -401,6 +423,19 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
               value={baseUrl}
               onInput={(e) => setBaseUrl((e.target as HTMLInputElement).value)}
             />
+          </div>
+        )}
+
+        {provider === 'ollama' && (
+          <div>
+            <button
+              type="button"
+              onClick={previewModels}
+              disabled={modelsLoading || !provider}
+              class="np-button np-button-secondary disabled:opacity-50"
+            >
+              {modelsLoading ? 'Loading...' : 'Fetch models'}
+            </button>
           </div>
         )}
 
@@ -453,6 +488,53 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
         )}
       </div>
     </div>
+  )
+}
+
+function SettingsOverview({ xConnected }: { xConnected: boolean }) {
+  const { data: aiSettings } = useApi<Pick<AiSettingsData, 'configured' | 'provider' | 'model'>>('/ai/settings')
+  const aiReady = !!aiSettings?.configured
+  const providerName = aiSettings?.provider
+    ? (AI_PROVIDERS.find((p) => p.id === aiSettings.provider)?.name || aiSettings.provider)
+    : null
+
+  const steps: SetupStep[] = [
+    {
+      label: 'Connect your X account',
+      detail: xConnected
+        ? 'Your home timeline is connected and ready to fetch.'
+        : 'Omens needs your own X feed before it can ingest posts or build a briefing.',
+      state: xConnected ? 'done' : 'active',
+    },
+    {
+      label: 'Bring your own AI provider',
+      detail: !xConnected
+        ? 'This unlocks after X is connected.'
+        : aiReady
+          ? `${providerName} ${aiSettings?.model ? `· ${aiSettings.model}` : ''} is configured for scoring and reports.`
+          : 'Add your provider, API key, and model to filter the feed and write the newspaper.',
+      state: !xConnected ? 'pending' : aiReady ? 'done' : 'active',
+    },
+    {
+      label: 'Generate your own edition',
+      detail: aiReady
+        ? 'Reports, filtered feed, and AI tuning are ready.'
+        : 'Once AI is configured, Omens can score posts, draft reports, and learn from your nudges.',
+      state: aiReady ? 'done' : 'pending',
+    },
+  ]
+
+  return (
+    <SetupStateBlock
+      kicker="Setup Status"
+      title={xConnected ? (aiReady ? 'Your edition is configured' : 'One step left') : 'Set up your own edition'}
+      intro={xConnected
+        ? (aiReady
+          ? 'Your X feed and AI provider are connected. You can fetch posts, tune relevance, and generate reports.'
+          : 'Your X feed is connected. Add an AI provider next to unlock the filtered feed and daily briefings.')
+        : 'Start by connecting X. After that, bring your own AI provider to filter the people you follow and publish your own briefing.'}
+      steps={steps}
+    />
   )
 }
 
@@ -978,6 +1060,9 @@ export function Settings({
   return (
     <NewspaperShell leftControls={<NewspaperRouteControls current="settings" />} showMeta={false}>
       <div class="np-settings-grid">
+        <article class="np-article np-settings-card np-settings-card-wide">
+          <SettingsOverview xConnected={xConnected} />
+        </article>
         <article class="np-article np-settings-card">
           <XSection onXChange={onXChange} />
         </article>

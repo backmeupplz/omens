@@ -6,6 +6,7 @@ import { FeedLeadArticle, NewspaperFeedShell } from '../helpers/feed-shell'
 import { fmt, safeParse, timeAgo } from '../helpers/format'
 import { useApi } from '../helpers/hooks'
 import { NewspaperRouteControls, NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
+import { SetupStateBlock } from '../helpers/setup-state'
 import { Spinner } from '../helpers/spinner'
 import { AiSection } from './settings'
 
@@ -2372,9 +2373,58 @@ export function NewspaperReportPage({
   )
 }
 
+function AiSetupLead({
+  title,
+  intro,
+  current,
+  error,
+  onSave,
+}: {
+  title: string
+  intro: string
+  current: 'report' | 'filtered'
+  error?: string | null
+  onSave?: () => void
+}) {
+  return (
+    <NewspaperShell
+      leftControls={<NewspaperRouteControls current={current} />}
+      showMeta={false}
+    >
+      <FeedLeadArticle>
+        <SetupStateBlock
+          kicker="AI Setup"
+          title={title}
+          intro={intro}
+          steps={[
+            {
+              label: 'X feed connected',
+              detail: 'Omens already has access to your timeline.',
+              state: 'done',
+            },
+            {
+              label: 'Bring your own AI',
+              detail: 'Add a provider, model, and API key so Omens can score posts and write your edition.',
+              state: 'active',
+            },
+            {
+              label: 'Generate and tune',
+              detail: 'After setup, filtered feed, daily reports, and nudges all become available.',
+              state: 'pending',
+            },
+          ]}
+        >
+          {error && <p class="np-alert np-alert-error">{error}</p>}
+          <AiSection onSave={onSave} />
+        </SetupStateBlock>
+      </FeedLeadArticle>
+    </NewspaperShell>
+  )
+}
+
 function AiReportView({ demo }: { demo?: boolean } = {}) {
   const prefix = demo ? '/demo' : '/ai'
-  const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number; reportAtHour?: number; nextReportAt?: number | null }>(demo ? null : '/ai/settings')
+  const { data: settings, loading: settingsLoading, error: settingsError, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number; reportAtHour?: number; nextReportAt?: number | null }>(demo ? null : '/ai/settings')
   const { data, loading, refetch } = useApi<{ report: AiReportData | null }>(`${prefix}/report`)
   const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>(`${prefix}/reports`)
   useNewspaperActive()
@@ -2531,7 +2581,17 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
       </NewspaperShell>
     )
   }
-  if (!demo && !settings?.configured) return <AiSection onSave={refetchSettings} />
+  if (!demo && !settings?.configured) {
+    return (
+      <AiSetupLead
+        current="report"
+        title="Add an AI provider to publish your briefing"
+        intro="Your X feed is connected. Omens still needs your own AI provider and model before it can draft daily reports."
+        error={settingsError}
+        onSave={refetchSettings}
+      />
+    )
+  }
 
   const activeReport = viewingReportId ? viewingReport : data?.report
   const refTweetMap = new Map<string, Tweet>()
@@ -2764,16 +2824,16 @@ export function AiReportPage({ demo }: { demo?: boolean } = {}) {
   return <AiReportView demo={demo} />
 }
 
-function useAiSettings(demo?: boolean): { minScore: number; configured: boolean } {
-  const { data } = useApi<{ configured: boolean; minScore?: number }>(demo ? null : '/ai/settings')
-  if (demo) return { minScore: 50, configured: true }
-  return { minScore: data?.minScore ?? 50, configured: data?.configured ?? false }
+function useAiSettings(demo?: boolean): { minScore: number; configured: boolean; error: string | null } {
+  const { data, error } = useApi<{ configured: boolean; minScore?: number }>(demo ? null : '/ai/settings')
+  if (demo) return { minScore: 50, configured: true, error: null }
+  return { minScore: data?.minScore ?? 50, configured: data?.configured ?? false, error }
 }
 
 export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise<void>) => void; demo?: boolean }) {
   useNewspaperActive()
   const { nudges, onNudge, feedback } = useNudges(demo)
-  const { minScore, configured: aiConfigured } = useAiSettings(demo)
+  const { minScore, configured: aiConfigured, error: aiSettingsError } = useAiSettings(demo)
   const [feedKey, setFeedKey] = useState(0) // bump to re-fetch feed
   const { allTweets, loading, loadingMore, error, remaining, loadMore } = usePaginatedFeed(demo ? '/demo/filtered-feed' : '/ai/filtered-feed', feedKey)
   const [filterError, setFilterError] = useState<string | null>(null)
@@ -2875,6 +2935,18 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
       </svg>
     </button>
   ) : null
+
+  if (!demo && !loading && !aiConfigured) {
+    return (
+      <AiSetupLead
+        current="filtered"
+        title="Add an AI provider to unlock the filtered feed"
+        intro="Your X posts are ready, but Omens needs your own AI provider to score them and decide what makes the front page."
+        error={aiSettingsError}
+        onSave={() => window.location.reload()}
+      />
+    )
+  }
 
   return (
     <NewspaperFeedShell
