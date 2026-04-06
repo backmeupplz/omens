@@ -69,56 +69,56 @@ function XSection({ onXChange }: { onXChange: () => void }) {
       <div class="space-y-3">
         <h3 class="font-medium">X Account</h3>
         {error && (
-          <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>
+          <p class="np-alert np-alert-error">{error}</p>
         )}
-        <div class="flex flex-wrap items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-4 py-3 gap-2">
-          <span class="text-sm text-zinc-300">
-            Connected as <span class="font-medium text-zinc-100">{session.username}</span>
+        <div class="np-inline-card np-inline-card-row">
+          <span class="np-copy-subtle text-sm">
+            Connected as <span class="np-copy-strong font-medium">{session.username}</span>
           </span>
           <div class="flex gap-2">
             <button
               type="button"
               onClick={() => setShowReconnect((v) => !v)}
-              class="rounded px-3 py-1.5 text-xs bg-zinc-700 text-zinc-300 hover:bg-zinc-600 whitespace-nowrap"
+              class="np-button np-button-secondary np-button-small whitespace-nowrap"
             >
               Reconnect
             </button>
             <button
               type="button"
               onClick={disconnect}
-              class="rounded px-3 py-1.5 text-xs bg-red-900/50 text-red-400 hover:bg-red-900 whitespace-nowrap"
+              class="np-button np-button-danger np-button-small whitespace-nowrap"
             >
               Disconnect
             </button>
           </div>
         </div>
         {showReconnect && (
-          <div class="space-y-3 rounded border border-zinc-800 bg-zinc-900 p-3">
-            <p class="text-sm text-zinc-500">Re-enter credentials to update your session without losing posts.</p>
+          <div class="np-inline-card space-y-3">
+            <p class="np-copy-muted text-sm">Re-enter credentials to update your session without losing posts.</p>
             <input
               type="text"
-              class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+              class="np-control"
               placeholder="X email or phone"
               value={username}
               onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
             />
             <input
               type="text"
-              class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+              class="np-control"
               placeholder="X handle, e.g. backmeupplz (optional)"
               value={handle}
               onInput={(e) => setHandle((e.target as HTMLInputElement).value)}
             />
             <input
               type="password"
-              class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+              class="np-control"
               placeholder="Password"
               value={password}
               onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
             />
             <input
               type="text"
-              class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+              class="np-control"
               placeholder="2FA code (optional)"
               value={totp}
               onInput={(e) => setTotp((e.target as HTMLInputElement).value)}
@@ -128,14 +128,14 @@ function XSection({ onXChange }: { onXChange: () => void }) {
                 type="button"
                 onClick={connect}
                 disabled={loading || !username || !password}
-                class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+                class="np-button np-button-primary disabled:opacity-50"
               >
                 {loading ? 'Reconnecting...' : 'Update credentials'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowReconnect(false)}
-                class="rounded border border-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                class="np-button np-button-secondary"
               >
                 Cancel
               </button>
@@ -149,37 +149,37 @@ function XSection({ onXChange }: { onXChange: () => void }) {
   return (
     <div class="space-y-3">
       <h3 class="font-medium">Connect X</h3>
-      <p class="text-sm text-zinc-500">Connect your X account to read your home feed.</p>
+      <p class="np-copy-muted text-sm">Connect your X account to read your home feed.</p>
 
       {error && (
-        <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>
+        <p class="np-alert np-alert-error">{error}</p>
       )}
 
       <div class="space-y-3">
         <input
           type="text"
-          class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+          class="np-control"
           placeholder="X email or phone"
           value={username}
           onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
         />
         <input
           type="text"
-          class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+          class="np-control"
           placeholder="X handle, e.g. backmeupplz (optional)"
           value={handle}
           onInput={(e) => setHandle((e.target as HTMLInputElement).value)}
         />
         <input
           type="password"
-          class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+          class="np-control"
           placeholder="Password"
           value={password}
           onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
         />
         <input
           type="text"
-          class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+          class="np-control"
           placeholder="2FA code (optional)"
           value={totp}
           onInput={(e) => setTotp((e.target as HTMLInputElement).value)}
@@ -188,7 +188,7 @@ function XSection({ onXChange }: { onXChange: () => void }) {
           type="button"
           onClick={connect}
           disabled={loading || !username || !password}
-          class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+          class="np-button np-button-primary disabled:opacity-50"
         >
           {loading ? 'Connecting...' : 'Connect'}
         </button>
@@ -317,15 +317,15 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
     return (
       <div class="space-y-3">
         <h3 class="font-medium">AI Provider</h3>
-        {error && <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>}
-        <div class="flex flex-wrap items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-4 py-3 gap-2">
-          <span class="text-sm text-zinc-300">
-            {providerName} &middot; <span class="font-medium text-zinc-100">{settings.model}</span>
+        {error && <p class="np-alert np-alert-error">{error}</p>}
+        <div class="np-inline-card np-inline-card-row">
+          <span class="np-copy-subtle text-sm">
+            {providerName} &middot; <span class="np-copy-strong font-medium">{settings.model}</span>
           </span>
           <button
             type="button"
             onClick={() => { setEditing(true); fetchSavedModels() }}
-            class="rounded px-3 py-1.5 text-xs bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 whitespace-nowrap"
+            class="np-button np-button-secondary np-button-small whitespace-nowrap"
           >
             Change
           </button>
@@ -340,15 +340,15 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
   return (
     <div class="space-y-4">
       <h3 class="font-medium">AI Provider</h3>
-      <p class="text-sm text-zinc-500">Configure an AI provider to generate feed reports.</p>
+      <p class="np-copy-muted text-sm">Configure an AI provider to generate feed reports.</p>
 
-      {error && <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>}
+      {error && <p class="np-alert np-alert-error">{error}</p>}
 
       <div class="space-y-3">
         <div>
-          <label class="text-xs text-zinc-400 mb-1 block">Provider</label>
+          <label class="mb-1 block">Provider</label>
           <select
-            class="w-full rounded bg-zinc-800 px-3 py-2 pr-8 text-sm border border-zinc-700 select-styled"
+            class="np-control np-control-select select-styled"
             value={provider}
             onChange={(e) => {
               const v = (e.target as HTMLSelectElement).value
@@ -366,15 +366,15 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
 
         {provider && (
           <div>
-            <label class="text-xs text-zinc-400 mb-1 block">
+            <label class="mb-1 block">
               API Key {settings?.configured && settings.apiKeyMasked && (
-                <span class="text-zinc-600">(current: {settings.apiKeyMasked})</span>
+                <span class="np-copy-muted">(current: {settings.apiKeyMasked})</span>
               )}
             </label>
             <div class="flex gap-2">
               <input
                 type="password"
-                class="flex-1 rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700 min-w-0"
+                class="np-control min-w-0 flex-1"
                 placeholder={settings?.configured ? 'Leave blank to keep current key' : 'Enter API key'}
                 value={apiKey}
                 onInput={(e) => setApiKey((e.target as HTMLInputElement).value)}
@@ -383,7 +383,7 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
                 type="button"
                 onClick={() => apiKey ? fetchModels(provider, apiKey, baseUrl) : fetchSavedModels()}
                 disabled={modelsLoading || (!apiKey && !settings?.configured && provider !== 'ollama')}
-                class="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700 disabled:opacity-50 shrink-0"
+                class="np-button np-button-secondary disabled:opacity-50 shrink-0"
               >
                 {modelsLoading ? 'Loading...' : 'Fetch models'}
               </button>
@@ -393,10 +393,10 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
 
         {showBaseUrl && (
           <div>
-            <label class="text-xs text-zinc-400 mb-1 block">Base URL (optional)</label>
+            <label class="mb-1 block">Base URL (optional)</label>
             <input
               type="text"
-              class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+              class="np-control"
               placeholder={provider === 'ollama' ? 'http://localhost:11434' : 'https://openrouter.ai/api/v1'}
               value={baseUrl}
               onInput={(e) => setBaseUrl((e.target as HTMLInputElement).value)}
@@ -406,10 +406,10 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
 
         {provider && (
           <div>
-            <label class="text-xs text-zinc-400 mb-1 block">Model</label>
+            <label class="mb-1 block">Model</label>
             {models.length > 0 ? (
               <select
-                class="w-full rounded bg-zinc-800 px-3 py-2 pr-8 text-sm border border-zinc-700 select-styled"
+                class="np-control np-control-select select-styled"
                 value={model}
                 onChange={(e) => setModel((e.target as HTMLSelectElement).value)}
               >
@@ -421,7 +421,7 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
             ) : (
               <input
                 type="text"
-                class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+                class="np-control"
                 placeholder="e.g. gpt-4o, claude-sonnet-4-20250514"
                 value={model}
                 onInput={(e) => setModel((e.target as HTMLInputElement).value)}
@@ -436,7 +436,7 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
               type="button"
               onClick={save}
               disabled={saving || !provider || !model || (!apiKey && !settings?.configured && provider !== 'ollama')}
-              class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+              class="np-button np-button-primary disabled:opacity-50"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
@@ -444,7 +444,7 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
               <button
                 type="button"
                 onClick={() => { setEditing(false); setError('') }}
-                class="rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                class="np-button np-button-secondary"
               >
                 Cancel
               </button>
@@ -482,9 +482,9 @@ function FetchIntervalSection() {
   return (
     <div class="space-y-3">
       <h3 class="font-medium">Auto-fetch</h3>
-      <label class="text-xs text-zinc-400 block">Fetch new posts every</label>
+      <label class="block">Fetch new posts every</label>
       <select
-        class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700 select-styled"
+        class="np-control np-control-select select-styled"
         value={fetchInterval}
         onChange={(e) => {
           const v = Number((e.target as HTMLSelectElement).value)
@@ -500,7 +500,7 @@ function FetchIntervalSection() {
         <option value="30">30 minutes</option>
         <option value="60">1 hour</option>
       </select>
-      {saving && <span class="text-xs text-zinc-500">Saving...</span>}
+      {saving && <span class="np-copy-muted text-xs">Saving...</span>}
     </div>
   )
 }
@@ -526,7 +526,6 @@ function AiTuningSection() {
   const [savingScore, setSavingScore] = useState(false)
   const [savingIntervals, setSavingIntervals] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const intervalDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (settings?.minScore != null && localMinScore === null) setLocalMinScore(settings.minScore)
@@ -648,12 +647,12 @@ function AiTuningSection() {
     <div class="space-y-4">
       <h3 class="font-medium">AI Tuning</h3>
 
-      {error && <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>}
+      {error && <p class="np-alert np-alert-error">{error}</p>}
 
       {/* Min relevance slider */}
       {localMinScore !== null && (
         <div>
-          <label class="text-xs text-zinc-400 mb-1 block">Min relevance for filtered feed</label>
+          <label class="mb-1 block">Min relevance for filtered feed</label>
           <div class="flex items-center gap-3">
             <input
               type="range"
@@ -664,9 +663,9 @@ function AiTuningSection() {
               onInput={(e) => onSliderChange(Number((e.target as HTMLInputElement).value))}
               class="flex-1"
             />
-            <span class="text-sm text-zinc-300 w-8 text-right tabular-nums">{localMinScore}</span>
+            <span class="np-copy-subtle text-sm w-8 text-right tabular-nums">{localMinScore}</span>
             {savingScore && (
-              <svg class="w-3.5 h-3.5 animate-spin text-zinc-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <svg class="w-3.5 h-3.5 animate-spin np-copy-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             )}
@@ -677,9 +676,9 @@ function AiTuningSection() {
       {/* Report intervals */}
       {reportInterval !== null && (
         <div class="space-y-3">
-          <label class="text-xs text-zinc-400 block">Auto-generate reports every</label>
+          <label class="block">Auto-generate reports every</label>
           <select
-            class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700 select-styled"
+            class="np-control np-control-select select-styled"
             value={reportInterval}
             onChange={(e) => {
               const v = Number((e.target as HTMLSelectElement).value)
@@ -697,9 +696,9 @@ function AiTuningSection() {
           </select>
           {reportInterval != null && reportInterval > 0 && reportAtHour !== null && (
             <>
-              <label class="text-xs text-zinc-400 block">Generate report at</label>
+              <label class="block">Generate report at</label>
               <select
-                class="w-full rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700 select-styled"
+                class="np-control np-control-select select-styled"
                 value={reportAtHour}
                 onChange={(e) => {
                   const localH = Number((e.target as HTMLSelectElement).value)
@@ -717,24 +716,24 @@ function AiTuningSection() {
               </select>
             </>
           )}
-          {savingIntervals && <span class="text-xs text-zinc-500">Saving...</span>}
+          {savingIntervals && <span class="np-copy-muted text-xs">Saving...</span>}
         </div>
       )}
 
       {/* Quick instruction input */}
       <div>
-        <label class="text-xs text-zinc-400 mb-1 block">Tell the AI what you want to see</label>
+        <label class="mb-1 block">Tell the AI what you want to see</label>
         <div class="flex gap-2">
           <input
             type="text"
-            class="flex-1 rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700 min-w-0"
+            class="np-control min-w-0 flex-1"
             placeholder='e.g. "show me more memes", "less crypto"'
             value={instruction}
             onInput={(e) => setInstruction((e.target as HTMLInputElement).value)}
             onKeyDown={(e) => { if (e.key === 'Enter') addInstruction() }}
           />
           <button type="button" onClick={addInstruction} disabled={!instruction.trim()}
-            class="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700 disabled:opacity-50 shrink-0">Add</button>
+            class="np-button np-button-secondary disabled:opacity-50 shrink-0">Add</button>
         </div>
       </div>
 
@@ -742,20 +741,20 @@ function AiTuningSection() {
       {hasPending && (
         <div class="space-y-2">
           <div class="flex items-center justify-between">
-            <span class="text-xs text-zinc-400">
+            <span class="np-copy-muted text-xs">
               Pending changes ({internals.pendingNudges.length + internals.pendingInstructions.length})
               {!regenerating && (internals.isApplying
                 ? <span> · applying now...</span>
                 : internals.autoApplyAt && <Countdown targetMs={internals.autoApplyAt} prefix=" · auto-applies in " expiredLabel=" · applying soon..." />)}
             </span>
             <button type="button" onClick={regenerate} disabled={regenerating}
-              class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium hover:bg-emerald-500 disabled:opacity-50 whitespace-nowrap">
+              class="np-button np-button-primary np-button-small disabled:opacity-50 whitespace-nowrap">
               {regenerating ? 'Applying...' : 'Apply now'}
             </button>
           </div>
           {regenerating && regenStatus && (
-            <div class="flex items-center gap-2 text-xs text-zinc-400">
-              <svg class="w-3.5 h-3.5 animate-spin shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <div class="flex items-center gap-2 text-xs np-copy-muted">
+              <svg class="w-3.5 h-3.5 animate-spin shrink-0 np-link-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
               {regenStatus}
@@ -763,60 +762,60 @@ function AiTuningSection() {
           )}
 
           {internals.pendingInstructions.map((p) => (
-            <div key={p.id} class="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-3 py-2">
-              <span class="text-sm text-zinc-300">"{p.instruction}"</span>
+            <div key={p.id} class="np-inline-card np-inline-card-row">
+              <span class="np-copy-subtle text-sm">"{p.instruction}"</span>
               <button type="button" onClick={() => removeInstruction(p.id)}
-                class="text-zinc-500 hover:text-zinc-300 text-xs ml-2 shrink-0">&times;</button>
+                class="np-link-muted text-xs ml-2 shrink-0">&times;</button>
             </div>
           ))}
 
           {internals.pendingNudges.map((n) => (
-            <div key={n.id} class="flex items-start justify-between rounded border border-zinc-800 bg-zinc-900 px-3 py-2 gap-2">
+            <div key={n.id} class="np-inline-card flex items-start justify-between gap-2">
               <div class="min-w-0">
                 <p class="text-xs mb-0.5">
-                  <span class={`font-medium ${n.direction === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <span class={`font-medium ${n.direction === 'up' ? 'np-link-accent' : 'np-copy-danger'}`}>
                     {n.direction === 'up' ? 'More like' : 'Less like'}
                   </span>{' '}
-                  <span class="text-zinc-500">@{n.authorHandle}</span>
+                  <span class="np-copy-muted">@{n.authorHandle}</span>
                 </p>
-                <p class="text-sm text-zinc-300 line-clamp-2">{n.tweetContent}</p>
+                <p class="np-copy-subtle text-sm line-clamp-2">{n.tweetContent}</p>
               </div>
               <button type="button" onClick={() => removeNudge(n.tweetId)}
-                class="text-zinc-500 hover:text-zinc-300 text-sm mt-0.5 shrink-0">&times;</button>
+                class="np-link-muted text-sm mt-0.5 shrink-0">&times;</button>
             </div>
           ))}
         </div>
       )}
 
       {!hasPending && (
-        <p class="text-xs text-zinc-500">No pending changes. Use thumbs up/down on posts or add instructions above to tune the AI.</p>
+        <p class="np-copy-muted text-xs">No pending changes. Use thumbs up/down on posts or add instructions above to tune the AI.</p>
       )}
 
       {internals.lastRegenAt && (
-        <p class="text-xs text-zinc-600">Last regenerated: {new Date(internals.lastRegenAt).toLocaleString()}</p>
+        <p class="np-copy-muted text-xs">Last regenerated: {new Date(internals.lastRegenAt).toLocaleString()}</p>
       )}
 
       {/* Current prompt (collapsible + editable) */}
       <div>
         <div class="flex items-center gap-2">
           <button type="button" onClick={() => setShowPrompt(!showPrompt)}
-            class="text-xs text-zinc-500 hover:text-zinc-300">
+            class="np-link-muted text-xs">
             {showPrompt ? 'Hide' : 'Show'} current prompt
           </button>
           {showPrompt && !editingPrompt && (
             <button type="button" onClick={() => { setPromptDraft(internals.currentPrompt || internals.defaultPrompt); setEditingPrompt(true) }}
-              class="text-xs text-zinc-500 hover:text-zinc-300">Edit</button>
+              class="np-link-muted text-xs">Edit</button>
           )}
         </div>
         {showPrompt && !editingPrompt && (
-          <pre class="mt-2 rounded bg-zinc-900 border border-zinc-800 px-3 py-2 text-xs text-zinc-400 whitespace-pre-wrap overflow-auto max-h-60 scrollbar-dark">
+          <pre class="np-inline-code mt-2 text-xs whitespace-pre-wrap overflow-auto max-h-60 scrollbar-dark">
             {internals.currentPrompt || internals.defaultPrompt}
           </pre>
         )}
         {editingPrompt && (
           <div class="mt-2">
             <textarea
-              class="w-full rounded bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs text-zinc-300 font-mono min-h-[200px] resize-y focus:border-zinc-500 focus:outline-none scrollbar-dark"
+              class="np-control np-control-textarea text-xs scrollbar-dark"
               value={promptDraft}
               onInput={(e) => setPromptDraft((e.target as HTMLTextAreaElement).value)}
             />
@@ -836,14 +835,14 @@ function AiTuningSection() {
                     setSavingPrompt(false)
                   }
                 }}
-                class="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium hover:bg-emerald-500 disabled:opacity-50"
+                class="np-button np-button-primary np-button-small disabled:opacity-50"
               >
                 {savingPrompt ? 'Saving...' : 'Save'}
               </button>
               <button
                 type="button"
                 onClick={() => setEditingPrompt(false)}
-                class="rounded bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-700"
+                class="np-button np-button-secondary np-button-small"
               >
                 Cancel
               </button>
@@ -894,21 +893,21 @@ function ApiKeysSection() {
       <h3 class="font-medium">API Keys</h3>
 
       {error && (
-        <p class="text-sm text-red-400 bg-red-900/20 rounded px-3 py-2">{error}</p>
+        <p class="np-alert np-alert-error">{error}</p>
       )}
 
       {newKey && (
-        <div class="rounded border border-emerald-800 bg-emerald-900/20 p-3">
-          <p class="text-sm text-emerald-400 mb-1">
+        <div class="np-alert np-alert-success">
+          <p class="mb-1">
             Copy this key now — it won't be shown again:
           </p>
-          <code class="block rounded bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-200 break-all select-all">
+          <code class="np-inline-code break-all select-all">
             {newKey}
           </code>
           <button
             type="button"
             onClick={() => setNewKey('')}
-            class="mt-2 text-xs text-zinc-400 hover:text-zinc-200"
+            class="np-link-muted mt-2 text-xs"
           >
             Dismiss
           </button>
@@ -918,7 +917,7 @@ function ApiKeysSection() {
       <div class="flex gap-2">
         <input
           type="text"
-          class="flex-1 rounded bg-zinc-800 px-3 py-2 text-sm border border-zinc-700"
+          class="np-control flex-1"
           placeholder="Key name (e.g., CLI, CI)"
           value={name}
           onInput={(e) => setName((e.target as HTMLInputElement).value)}
@@ -927,7 +926,7 @@ function ApiKeysSection() {
           type="button"
           onClick={createKey}
           disabled={!name}
-          class="rounded bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700 disabled:opacity-50"
+          class="np-button np-button-secondary disabled:opacity-50"
         >
           Create
         </button>
@@ -937,13 +936,13 @@ function ApiKeysSection() {
         {keys?.map((k: any) => (
           <div
             key={k.id}
-            class="flex items-center justify-between rounded border border-zinc-800 bg-zinc-900 px-4 py-3"
+            class="np-inline-card np-inline-card-row"
           >
             <div>
-              <span class="text-sm text-zinc-300">{k.name}</span>
-              <span class="ml-2 text-xs text-zinc-500 font-mono">{k.prefix}...</span>
+              <span class="np-copy-subtle text-sm">{k.name}</span>
+              <span class="ml-2 text-xs np-copy-muted font-mono">{k.prefix}...</span>
               {k.lastUsedAt && (
-                <span class="ml-2 text-xs text-zinc-600">
+                <span class="ml-2 text-xs np-copy-muted">
                   Last used: {new Date(k.lastUsedAt).toLocaleDateString()}
                 </span>
               )}
@@ -951,7 +950,7 @@ function ApiKeysSection() {
             <button
               type="button"
               onClick={() => deleteKey(k.id)}
-              class="rounded px-2 py-1 text-xs bg-red-900/50 text-red-400 hover:bg-red-900"
+              class="np-button np-button-danger np-button-small"
             >
               Delete
             </button>
@@ -1002,12 +1001,12 @@ export function Settings({
           <article class="np-article np-settings-card">
             <div class="space-y-4">
               <h3 class="font-medium">Session</h3>
-              <p class="text-sm text-zinc-500">Sign out of this Omens session on this device.</p>
+              <p class="np-copy-muted text-sm">Sign out of this Omens session on this device.</p>
               <div>
                 <button
                   type="button"
                   onClick={onLogout}
-                  class="rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
+                  class="np-button np-button-secondary"
                 >
                   Log out
                 </button>

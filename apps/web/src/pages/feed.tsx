@@ -1,10 +1,10 @@
 import { createPortal } from 'preact/compat'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { Link } from 'wouter-preact'
 import { api, API_BASE } from '../helpers/api'
-import { Countdown } from '../helpers/components'
+import { FeedLeadArticle, NewspaperFeedShell } from '../helpers/feed-shell'
 import { fmt, safeParse, timeAgo } from '../helpers/format'
 import { useApi } from '../helpers/hooks'
-import { renderMarkdownLine } from '../helpers/markdown'
 import { NewspaperRouteControls, NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
 import { Spinner } from '../helpers/spinner'
 import { AiSection } from './settings'
@@ -58,13 +58,13 @@ function Lightbox({
 
   const lightbox = (
     <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+      class="np-overlay fixed inset-0 z-50 flex items-center justify-center"
       onClick={(e: Event) => { e.stopPropagation(); onClose() }}
     >
       {items.length > 1 && (
         <button
           type="button"
-          class="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-zinc-800/80 p-2 text-zinc-200 hover:bg-zinc-700"
+          class="np-lightbox-nav absolute left-4 top-1/2 -translate-y-1/2 rounded-full p-2"
           onClick={(e) => { e.stopPropagation(); prev() }}
         >
           <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -74,7 +74,7 @@ function Lightbox({
       )}
       {!loaded && (
         <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <svg class="w-8 h-8 text-zinc-400 animate-spin" viewBox="0 0 24 24" fill="none">
+          <svg class="np-lightbox-spinner w-8 h-8 animate-spin" viewBox="0 0 24 24" fill="none">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
@@ -103,7 +103,7 @@ function Lightbox({
       {items.length > 1 && (
         <button
           type="button"
-          class="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-zinc-800/80 p-2 text-zinc-200 hover:bg-zinc-700"
+          class="np-lightbox-nav absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-2"
           onClick={(e) => { e.stopPropagation(); next() }}
         >
           <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -112,7 +112,7 @@ function Lightbox({
         </button>
       )}
       {items.length > 1 && (
-        <span class="absolute bottom-4 left-1/2 -translate-x-1/2 text-sm text-zinc-400">
+        <span class="np-lightbox-counter absolute bottom-4 left-1/2 -translate-x-1/2 text-sm">
           {cur + 1} / {items.length}
         </span>
       )}
@@ -195,53 +195,53 @@ function RepliesModal({
 
   const modal = (
     <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+      class="np-overlay fixed inset-0 z-50 flex items-center justify-center"
       onClick={(e: Event) => { e.stopPropagation(); onClose() }}
     >
       <div
-        class="w-full max-w-lg max-h-[80vh] rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col overflow-hidden mx-3"
+        class="np-overlay-panel mx-3 flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div class="flex items-center justify-between p-4 pb-2 border-b border-zinc-800">
-          <h3 class="font-semibold text-zinc-100">Replies</h3>
+        <div class="np-overlay-header flex items-center justify-between p-4 pb-2">
+          <h3 class="np-overlay-title">Replies</h3>
           <button
             type="button"
             onClick={onClose}
-            class="text-zinc-400 hover:text-zinc-200 text-xl leading-none"
+            class="np-overlay-close text-xl leading-none"
           >
             &times;
           </button>
         </div>
         <div class="overflow-y-auto flex-1 p-4 scrollbar-dark">
           {loading && <Spinner />}
-          {error && <p class="text-red-400 text-sm py-8 text-center">{error}</p>}
+          {error && <p class="np-alert np-alert-error py-3 text-center">{error}</p>}
           {!loading && !error && replies.length === 0 && (
-            <p class="text-zinc-500 text-sm py-8 text-center">No replies yet.</p>
+            <p class="np-overlay-empty py-8 text-sm">No replies yet.</p>
           )}
           <div class="space-y-4">
             {replies.map((r, i) => (
               <div key={i} class="flex gap-2.5">
                 {r.authorAvatar ? (
-                  <img src={imgProxy(r.authorAvatar)} alt="" class="w-8 h-8 rounded-full shrink-0 bg-zinc-700" />
+                  <img src={imgProxy(r.authorAvatar)} alt="" class="w-8 h-8 rounded-full shrink-0" />
                 ) : (
-                  <div class="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">
+                  <div class="np-avatar-fallback flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold">
                     {(r.authorName || '?').charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div class="min-w-0 flex-1">
                   <div class="flex items-baseline gap-1 mb-0.5 flex-wrap">
-                    <span class="text-sm font-semibold text-zinc-200">{r.authorName}</span>
+                    <span class="np-copy-strong text-sm font-semibold">{r.authorName}</span>
                     {r.authorHandle && (
-                      <span class="text-xs text-zinc-500">@{r.authorHandle}</span>
+                      <span class="np-copy-muted text-xs">@{r.authorHandle}</span>
                     )}
                     {r.authorFollowers > 0 && (
-                      <span class="text-xs text-zinc-600">&middot; {fmt(r.authorFollowers)}</span>
+                      <span class="np-copy-muted text-xs">&middot; {fmt(r.authorFollowers)}</span>
                     )}
                     {r.likes > 0 && (
-                      <span class="text-xs text-zinc-600">&middot; {fmt(r.likes)} likes</span>
+                      <span class="np-copy-muted text-xs">&middot; {fmt(r.likes)} likes</span>
                     )}
                   </div>
-                  <p class="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed break-words">{r.content}</p>
+                  <p class="np-copy-subtle whitespace-pre-wrap break-words text-sm leading-relaxed">{r.content}</p>
                 </div>
               </div>
             ))}
@@ -251,7 +251,7 @@ function RepliesModal({
               type="button"
               onClick={loadMore}
               disabled={loadingMore}
-              class="mt-4 w-full rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+              class="np-button np-button-secondary mt-4 w-full disabled:opacity-50"
             >
               {loadingMore ? 'Loading...' : 'Load more replies'}
             </button>
@@ -320,28 +320,28 @@ function ThreadModal({
 
   const modal = (
     <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+      class="np-overlay fixed inset-0 z-50 flex items-center justify-center"
       onClick={(e: Event) => { e.stopPropagation(); onClose() }}
     >
       <div
-        class="w-full max-w-lg max-h-[80vh] rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col overflow-hidden mx-3"
+        class="np-overlay-panel mx-3 flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div class="flex items-center justify-between p-4 pb-2 border-b border-zinc-800">
-          <h3 class="font-semibold text-zinc-100">Thread</h3>
+        <div class="np-overlay-header flex items-center justify-between p-4 pb-2">
+          <h3 class="np-overlay-title">Thread</h3>
           <button
             type="button"
             onClick={onClose}
-            class="text-zinc-400 hover:text-zinc-200 text-xl leading-none"
+            class="np-overlay-close text-xl leading-none"
           >
             &times;
           </button>
         </div>
         <div class="overflow-y-auto flex-1 p-4 scrollbar-dark">
           {loading && <Spinner />}
-          {error && <p class="text-red-400 text-sm py-8 text-center">{error}</p>}
+          {error && <p class="np-alert np-alert-error py-3 text-center">{error}</p>}
           {!loading && !error && tweets.length === 0 && (
-            <p class="text-zinc-500 text-sm py-8 text-center">No thread found.</p>
+            <p class="np-overlay-empty py-8 text-sm">No thread found.</p>
           )}
           {tweets.map((t, i) => (
             <ThreadTweetItem key={t.tweetId} tweet={t} isLast={i === tweets.length - 1} />
@@ -363,20 +363,20 @@ function ThreadTweetItem({ tweet, isLast }: { tweet: ThreadTweet; isLast: boolea
       {/* Vertical thread line */}
       <div class="flex flex-col items-center shrink-0">
         {tweet.authorAvatar ? (
-          <img src={imgProxy(tweet.authorAvatar)} alt="" class="w-8 h-8 rounded-full bg-zinc-700" loading="lazy" />
+          <img src={imgProxy(tweet.authorAvatar)} alt="" class="h-8 w-8 rounded-full" loading="lazy" />
         ) : (
-          <div class="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400">
+          <div class="np-avatar-fallback flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold">
             {(tweet.authorName || '?').charAt(0).toUpperCase()}
           </div>
         )}
-        {!isLast && <div class="w-0.5 flex-1 bg-zinc-700 mt-1 mb-1" />}
+        {!isLast && <div class="np-thread-line mt-1 mb-1 w-0.5 flex-1" />}
       </div>
       <div class="min-w-0 flex-1 pb-4">
         <div class="flex items-baseline gap-1 flex-wrap mb-0.5">
-          <span class="text-sm font-semibold text-zinc-200">{tweet.authorName}</span>
-          <span class="text-xs text-zinc-500">@{tweet.authorHandle}</span>
+          <span class="np-copy-strong text-sm font-semibold">{tweet.authorName}</span>
+          <span class="np-copy-muted text-xs">@{tweet.authorHandle}</span>
           {tweet.publishedAt && (
-            <span class="text-xs text-zinc-600">&middot; {timeAgo(tweet.publishedAt)}</span>
+            <span class="np-copy-muted text-xs">&middot; {timeAgo(tweet.publishedAt)}</span>
           )}
         </div>
         <TweetContent text={tweet.content} hideUrls={!!tweet.card} />
@@ -393,19 +393,19 @@ function ThreadTweetItem({ tweet, isLast }: { tweet: ThreadTweet; isLast: boolea
           </>
         )}
         {tweet.quotedTweet && (
-          <div class="mt-2 rounded-xl border border-zinc-700 overflow-hidden p-2.5">
+          <div class="np-inline-card mt-2 overflow-hidden p-2.5">
             <div class="flex items-center gap-2 mb-1">
               {tweet.quotedTweet.authorAvatar && (
                 <img src={imgProxy(tweet.quotedTweet.authorAvatar)} alt="" class="w-4 h-4 rounded-full" />
               )}
-              <span class="text-xs font-semibold text-zinc-300">{tweet.quotedTweet.authorName}</span>
-              <span class="text-xs text-zinc-500">@{tweet.quotedTweet.authorHandle}</span>
+              <span class="np-copy-subtle text-xs font-semibold">{tweet.quotedTweet.authorName}</span>
+              <span class="np-copy-muted text-xs">@{tweet.quotedTweet.authorHandle}</span>
             </div>
-            <p class="text-xs text-zinc-400 line-clamp-3 break-words">{tweet.quotedTweet.content}</p>
+            <p class="np-copy-muted line-clamp-3 break-words text-xs">{tweet.quotedTweet.content}</p>
           </div>
         )}
         {tweet.card && <LinkCard data={tweet.card} fallbackUrl={tweet.url} tweetUrl={tweet.url} />}
-        <div class="flex items-center gap-3 mt-1.5 text-xs text-zinc-600">
+        <div class="np-copy-muted mt-1.5 flex items-center gap-3 text-xs">
           {tweet.replies > 0 && <span>{fmt(tweet.replies)} replies</span>}
           {tweet.retweets > 0 && <span>{fmt(tweet.retweets)} RTs</span>}
           {tweet.likes > 0 && <span>{fmt(tweet.likes)} likes</span>}
@@ -539,7 +539,7 @@ function applyFormat(text: string, format?: ArticleRichBlock['format']): preact.
     let node: preact.ComponentChildren = textWithBreaks(segment)
     if (bold) node = <strong class="font-semibold">{node}</strong>
     if (italic) node = <em>{node}</em>
-    if (link) node = <a href={link.href} target="_blank" rel="noopener" class="text-blue-400 hover:underline">{node}</a>
+    if (link) node = <a href={link.href} target="_blank" rel="noopener" class="np-link-accent">{node}</a>
 
     parts.push(node)
   }
@@ -578,7 +578,7 @@ function EmbeddedTweet({ tweetId }: { tweetId: string }) {
   if (!tweet) {
     return (
       <a href={`https://x.com/i/status/${tweetId}`} target="_blank" rel="noopener"
-        class="my-3 block rounded-xl border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-sm text-zinc-400 hover:border-zinc-500 transition-colors">
+        class="np-inline-card np-link-muted my-3 block px-4 py-3 text-sm">
         View post on X
       </a>
     )
@@ -600,11 +600,11 @@ function articleFormatText(text: string): preact.ComponentChildren[] {
     if (match[1]) {
       // URL
       parts.push(
-        <a href={match[1]} target="_blank" rel="noopener" class="text-blue-400 hover:underline break-all">{match[1].replace(/^https?:\/\//, '')}</a>,
+        <a href={match[1]} target="_blank" rel="noopener" class="np-link-accent break-all">{match[1].replace(/^https?:\/\//, '')}</a>,
       )
     } else if (match[2]) {
       // **bold**
-      parts.push(<strong class="font-semibold text-zinc-100">{match[2]}</strong>)
+      parts.push(<strong class="np-copy-strong font-semibold">{match[2]}</strong>)
     } else if (match[3]) {
       // _italic_
       parts.push(<em class="italic">{match[3]}</em>)
@@ -639,16 +639,16 @@ function ArticleBodyPlainText({ body }: { body: string }) {
         // Detect heading-like lines (all uppercase, short-ish, no period at end)
         const isHeading = trimmed.length < 200 && trimmed === trimmed.toUpperCase() && !trimmed.endsWith('.') && /[A-Z]/.test(trimmed)
         if (isHeading) {
-          return <h3 key={i} class="text-lg font-bold text-zinc-100 mt-6 mb-2">{trimmed}</h3>
+          return <h3 key={i} class="np-copy-strong mt-6 mb-2 text-lg font-bold">{trimmed}</h3>
         }
 
         // Detect subheading-like lines (Title Case, short, no period)
         const isSubheading = trimmed.length < 150 && !trimmed.endsWith('.') && /^[A-Z]/.test(trimmed) && trimmed.split(/\s+/).length <= 15 && /^[A-Z][^.!?]*[^.!?\s]$/.test(trimmed) && trimmed !== trimmed.toUpperCase() && /[A-Z].*\b[A-Z]/.test(trimmed)
         if (isSubheading) {
-          return <h3 key={i} class="text-lg font-semibold text-zinc-100 mt-5 mb-1.5">{articleFormatText(trimmed)}</h3>
+          return <h3 key={i} class="np-copy-strong mt-5 mb-1.5 text-lg font-semibold">{articleFormatText(trimmed)}</h3>
         }
 
-        return <p key={i} class="text-[15px] text-zinc-300 leading-relaxed mb-3">{articleFormatText(trimmed)}</p>
+        return <p key={i} class="np-copy-subtle mb-3 text-[15px] leading-relaxed">{articleFormatText(trimmed)}</p>
       })}
     </div>
   )
@@ -694,53 +694,53 @@ function ArticleModal({
     switch (block.type) {
       case 'heading':
         return block.level === 1
-          ? <h2 key={i} class="text-xl font-bold text-zinc-100 mt-6 mb-2">{applyFormat(block.text || '', block.format)}</h2>
+          ? <h2 key={i} class="np-copy-strong mt-6 mb-2 text-xl font-bold">{applyFormat(block.text || '', block.format)}</h2>
           : block.level === 3
-            ? <h4 key={i} class="text-base font-semibold text-zinc-200 mt-4 mb-1">{applyFormat(block.text || '', block.format)}</h4>
-            : <h3 key={i} class="text-lg font-semibold text-zinc-100 mt-5 mb-1.5">{applyFormat(block.text || '', block.format)}</h3>
+            ? <h4 key={i} class="np-copy-subtle mt-4 mb-1 text-base font-semibold">{applyFormat(block.text || '', block.format)}</h4>
+            : <h3 key={i} class="np-copy-strong mt-5 mb-1.5 text-lg font-semibold">{applyFormat(block.text || '', block.format)}</h3>
       case 'image':
         return <img key={i} src={imgProxy(block.url!)} alt="" class="w-full rounded-lg my-4 cursor-pointer" loading="lazy" onClick={() => setLightboxUrl(imgProxy(block.url!))} />
       case 'blockquote':
-        return <blockquote key={i} class="border-l-2 border-zinc-600 pl-4 my-3 text-zinc-400 italic">{applyFormat(block.text || '', block.format)}</blockquote>
+        return <blockquote key={i} class="np-article-quote my-3 pl-4 italic">{applyFormat(block.text || '', block.format)}</blockquote>
       case 'list': {
         const Tag = block.ordered ? 'ol' : 'ul'
         return (
-          <Tag key={i} class={`${block.ordered ? 'list-decimal' : 'list-disc'} list-inside my-3 space-y-1.5 text-zinc-300`}>
+          <Tag key={i} class={`np-copy-subtle ${block.ordered ? 'list-decimal' : 'list-disc'} my-3 list-inside space-y-1.5`}>
             {block.items?.map((item, j) => <li key={j}>{applyFormat(item.text, item.format)}</li>)}
           </Tag>
         )
       }
       case 'divider':
-        return <hr key={i} class="border-zinc-700 my-6" />
+        return <hr key={i} class="np-divider my-6" />
       case 'tweet':
         return <EmbeddedTweet key={i} tweetId={block.tweetId!} />
       default:
-        return <p key={i} class="text-[15px] text-zinc-300 leading-relaxed mb-3">{applyFormat(block.text || '', block.format)}</p>
+        return <p key={i} class="np-copy-subtle mb-3 text-[15px] leading-relaxed">{applyFormat(block.text || '', block.format)}</p>
     }
   }
 
   const modal = (
     <div
-      class="fixed inset-0 z-50 flex items-start justify-center bg-black/80 overflow-y-auto py-8 px-3 cursor-default"
+      class="np-overlay fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-8 px-3 cursor-default"
       onClick={(e: Event) => { e.stopPropagation(); if (!lightboxUrl) onClose() }}
     >
       <div
-        class="w-full max-w-2xl rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col overflow-hidden"
+        class="np-overlay-panel flex w-full max-w-2xl flex-col overflow-hidden rounded-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-800 shrink-0">
-          <h3 class="font-semibold text-zinc-100 text-sm">Article</h3>
+        <div class="np-overlay-header flex items-center justify-between px-4 py-3 shrink-0">
+          <h3 class="np-overlay-title text-sm">Article</h3>
           <div class="flex items-center gap-3">
             <a href={cardData.url} target="_blank" rel="noopener"
-              class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
+              class="np-link-muted flex items-center gap-1 text-xs">
               <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                 <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
               </svg>
               Open on X
             </a>
-            <button type="button" onClick={onClose} class="text-zinc-400 hover:text-zinc-200 text-xl leading-none">&times;</button>
+            <button type="button" onClick={onClose} class="np-overlay-close text-xl leading-none">&times;</button>
           </div>
         </div>
 
@@ -749,8 +749,8 @@ function ArticleModal({
           {loading && <Spinner />}
           {error && (
             <div class="py-12 px-4 text-center">
-              <p class="text-red-400 text-sm mb-3">{error}</p>
-              <a href={cardData.url} target="_blank" rel="noopener" class="text-sm text-blue-400 hover:underline">Open on X instead</a>
+              <p class="np-alert np-alert-error mb-3 text-sm">{error}</p>
+              <a href={cardData.url} target="_blank" rel="noopener" class="np-link-accent text-sm">Open on X instead</a>
             </div>
           )}
           {article && (
@@ -767,13 +767,13 @@ function ArticleModal({
                     <img src={imgProxy(article.authorAvatar)} alt="" class="w-8 h-8 rounded-full" />
                   )}
                   <div>
-                    <span class="text-sm font-semibold text-zinc-200">{article.authorName}</span>
-                    <span class="text-sm text-zinc-500 ml-1.5">@{article.authorHandle}</span>
+                    <span class="np-copy-strong text-sm font-semibold">{article.authorName}</span>
+                    <span class="np-copy-muted ml-1.5 text-sm">@{article.authorHandle}</span>
                   </div>
                 </div>
 
                 {/* Title */}
-                <h1 class="text-2xl font-bold text-zinc-100 leading-tight mb-4">{article.title}</h1>
+                <h1 class="np-copy-strong mb-4 text-2xl font-bold leading-tight">{article.title}</h1>
 
                 {/* Body */}
                 {article.richContent ? (
@@ -781,7 +781,7 @@ function ArticleModal({
                 ) : article.body ? (
                   <ArticleBodyPlainText body={article.body} />
                 ) : cardData.description ? (
-                  <p class="text-[15px] text-zinc-400">{cardData.description}</p>
+                  <p class="np-copy-subtle text-[15px]">{cardData.description}</p>
                 ) : null}
               </div>
             </div>
@@ -789,7 +789,7 @@ function ArticleModal({
         </div>
       </div>
       {lightboxUrl && (
-        <div class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80"
+        <div class="np-overlay fixed inset-0 z-[60] flex items-center justify-center"
           onClick={(e) => { e.stopPropagation(); setLightboxUrl(null) }}>
           <img src={lightboxUrl} alt="" class="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
             onClick={(e) => e.stopPropagation()} />
@@ -822,7 +822,7 @@ function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl
         )}
         <button
           type="button"
-          class="np-post-link-card mt-2 block w-full text-left rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors"
+          class="np-post-link-card mt-2 block w-full overflow-hidden rounded-xl text-left transition-colors"
           onClick={(e) => { e.stopPropagation(); setShowArticle(true) }}
         >
           {data.thumbnail && (
@@ -831,11 +831,11 @@ function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl
             </div>
           )}
           <div class="p-2.5">
-            <p class="text-sm font-medium text-zinc-200 line-clamp-2">{data.title}</p>
+            <p class="np-link-card-title line-clamp-2 text-sm font-medium">{data.title}</p>
             {data.description && (
-              <p class="text-xs text-zinc-400 mt-0.5 line-clamp-2">{data.description}</p>
+              <p class="np-link-card-body mt-0.5 line-clamp-2 text-xs">{data.description}</p>
             )}
-            <p class="text-xs text-zinc-500 mt-0.5">{data.domain}</p>
+            <p class="np-link-card-domain mt-0.5 text-xs">{data.domain}</p>
           </div>
         </button>
       </>
@@ -847,7 +847,7 @@ function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl
       href={url}
       target="_blank"
       rel="noopener"
-      class="np-post-link-card mt-2 block rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors"
+      class="np-post-link-card mt-2 block overflow-hidden rounded-xl transition-colors"
       onClick={(e) => e.stopPropagation()}
     >
       {data.thumbnail && (
@@ -856,11 +856,11 @@ function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl
         </div>
       )}
       <div class="p-2.5">
-        <p class="text-sm font-medium text-zinc-200 line-clamp-2">{data.title}</p>
+        <p class="np-link-card-title line-clamp-2 text-sm font-medium">{data.title}</p>
         {data.description && (
-          <p class="text-xs text-zinc-400 mt-0.5 line-clamp-2">{data.description}</p>
+          <p class="np-link-card-body mt-0.5 line-clamp-2 text-xs">{data.description}</p>
         )}
-        <p class="text-xs text-zinc-500 mt-0.5">{data.domain}</p>
+        <p class="np-link-card-domain mt-0.5 text-xs">{data.domain}</p>
       </div>
     </a>
   )
@@ -892,12 +892,12 @@ function OgEmbed({
 
   if (!card) {
     return attempted ? (
-      <div class="mt-2 rounded-xl border border-zinc-700 overflow-hidden bg-zinc-900/90">
+      <div class="np-skeleton-shell mt-2 overflow-hidden rounded-xl border">
         <div class="np-link-thumb np-skeleton" />
         <div class="p-2.5 space-y-1.5">
-          <div class="h-4 w-[78%] rounded bg-zinc-800" />
-          <div class="h-3 w-full rounded bg-zinc-800/80" />
-          <div class="h-3 w-[68%] rounded bg-zinc-800/60" />
+          <div class="np-skeleton-line h-4 w-[78%] rounded" />
+          <div class="np-skeleton-line h-3 w-full rounded opacity-80" />
+          <div class="np-skeleton-line h-3 w-[68%] rounded opacity-60" />
         </div>
       </div>
     ) : null
@@ -925,7 +925,7 @@ function InlineVideo({ item, frameClass, fit }: { item: MediaItem; frameClass: s
   if (playing || isGif) {
     return (
       <div
-        class={`relative overflow-hidden rounded-lg border border-zinc-700 bg-black ${frameClass}`}
+        class={`np-media-frame relative overflow-hidden rounded-lg border ${frameClass}`}
       >
         {!loaded && (
           <img
@@ -950,7 +950,7 @@ function InlineVideo({ item, frameClass, fit }: { item: MediaItem; frameClass: s
           onLoadedData={() => setLoaded(true)}
         />
         {isGif && (
-          <span class="absolute bottom-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+          <span class="np-media-badge absolute bottom-2 left-2 rounded px-1.5 py-0.5 text-[10px] font-semibold">
             GIF
           </span>
         )}
@@ -961,7 +961,7 @@ function InlineVideo({ item, frameClass, fit }: { item: MediaItem; frameClass: s
   return (
     <button
       type="button"
-      class={`relative overflow-hidden rounded-lg border border-zinc-700 hover:border-zinc-500 transition-colors ${frameClass}`}
+      class={`np-media-frame relative overflow-hidden rounded-lg border transition-colors ${frameClass}`}
       onClick={(e) => { e.stopPropagation(); setPlaying(true) }}
     >
       <img
@@ -970,8 +970,8 @@ function InlineVideo({ item, frameClass, fit }: { item: MediaItem; frameClass: s
         class={`${fit} absolute inset-0 h-full w-full`}
         loading="lazy"
       />
-      <div class="absolute inset-0 flex items-center justify-center bg-black/30">
-        <svg class="w-10 h-10 text-white/90 drop-shadow-lg" fill="currentColor" viewBox="0 0 24 24">
+      <div class="np-media-play absolute inset-0 flex items-center justify-center">
+        <svg class="w-10 h-10 drop-shadow-lg" fill="currentColor" viewBox="0 0 24 24">
           <path d="M8 5v14l11-7z" />
         </svg>
       </div>
@@ -988,7 +988,7 @@ function MediaGrid({
 }) {
   if (media.length === 0) return null
   const single = media.length === 1
-  const frameClass = single ? 'w-full aspect-[4/3] sm:aspect-[16/10] bg-black' : 'w-full h-32 sm:h-36'
+  const frameClass = single ? 'w-full aspect-[4/3] sm:aspect-[16/10]' : 'w-full h-32 sm:h-36'
   const fit = single ? 'object-contain' : 'object-cover'
   return (
     <div class={`np-post-media mt-2 grid gap-1.5 overflow-hidden ${single ? 'grid-cols-1' : 'grid-cols-2'}`}>
@@ -999,7 +999,7 @@ function MediaGrid({
           <button
             key={item.thumbnail}
             type="button"
-            class={`relative overflow-hidden rounded-lg border border-zinc-700 hover:border-zinc-500 transition-colors ${frameClass}`}
+            class={`np-media-frame relative overflow-hidden rounded-lg border transition-colors ${frameClass}`}
             onClick={(e) => { e.stopPropagation(); onPhotoClick?.(i) }}
           >
             <img
@@ -1032,7 +1032,7 @@ function linkify(text: string): preact.ComponentChildren[] {
           href={match[1]}
           target="_blank"
           rel="noopener"
-          class="text-blue-400 hover:underline break-all"
+          class="np-link-accent break-all"
           onClick={(e: Event) => e.stopPropagation()}
         >
           {match[1].replace(/^https?:\/\//, '')}
@@ -1044,7 +1044,7 @@ function linkify(text: string): preact.ComponentChildren[] {
           href={`https://x.com/${match[2].slice(1)}`}
           target="_blank"
           rel="noopener"
-          class="text-blue-400 hover:underline"
+          class="np-link-accent"
           onClick={(e: Event) => e.stopPropagation()}
         >
           {match[2]}
@@ -1088,7 +1088,7 @@ function TweetContent({
 
   return (
     <div class={`np-post-content overflow-hidden ${className || ''}`}>
-      <p class="text-[15px] text-zinc-200 whitespace-pre-wrap leading-relaxed break-words">
+      <p class="np-copy-strong whitespace-pre-wrap break-words text-[15px] leading-relaxed">
         {linkify(display)}
       </p>
       {needsTruncation && !forceExpanded && (
@@ -1099,7 +1099,7 @@ function TweetContent({
             if (onExpandRequest) onExpandRequest()
             else setExpanded(!expanded)
           }}
-          class="text-sm text-blue-400 hover:text-blue-300 mt-1"
+          class="np-link-accent mt-1 text-sm"
         >
           {expanded ? 'Show less' : 'Show full post'}
         </button>
@@ -1122,7 +1122,7 @@ function CopyShareButton({ url, iconOnly }: { url: string; iconOnly?: boolean })
   return (
     <button
       type="button"
-      class="relative flex items-center gap-1 overflow-visible hover:text-zinc-300 transition-colors"
+      class="np-copy-share relative flex items-center gap-1 overflow-visible"
       onClick={(e) => {
         e.stopPropagation()
         navigator.clipboard.writeText(url)
@@ -1146,7 +1146,7 @@ function CopyShareButton({ url, iconOnly }: { url: string; iconOnly?: boolean })
       <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
         <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
       </svg>
-      {!iconOnly && (copied ? <span class="text-white font-medium">Copied!</span> : 'Share')}
+      {!iconOnly && (copied ? <span class="np-copy-strong font-medium">Copied!</span> : 'Share')}
     </button>
   )
 }
@@ -1223,45 +1223,45 @@ function TweetDetailModal({
 
   return (
     <div
-      class="np-post-modal fixed inset-0 z-50 flex items-start justify-center bg-black/80 overflow-y-auto py-8 px-3"
+      class="np-post-modal fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-8 px-3"
       onClick={(e: Event) => { e.stopPropagation(); onClose() }}
     >
       <div class="np-post-modal-body w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
         <TweetCard tweet={tweet} nudge={nudge} onNudge={onNudge} score={score} minScore={minScore} embedded forceExpandedText={forceExpandedText} />
 
         {/* Replies section */}
-        <div class="np-post-modal-replies mt-2 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
-          <h4 class="text-sm font-semibold text-zinc-300 mb-3">Replies</h4>
+        <div class="np-post-modal-replies mt-2 rounded-xl px-4 py-3">
+          <h4 class="np-copy-strong mb-3 text-sm font-semibold">Replies</h4>
           {repliesLoading && <Spinner class="py-4" />}
-          {repliesError && <p class="text-red-400 text-sm py-4 text-center">{repliesError}</p>}
+          {repliesError && <p class="np-alert np-alert-error py-3 text-center">{repliesError}</p>}
           {!repliesLoading && !repliesError && replies.length === 0 && (
-            <p class="text-zinc-600 text-sm py-4 text-center">No replies yet.</p>
+            <p class="np-overlay-empty py-4 text-sm">No replies yet.</p>
           )}
           <div class="space-y-3">
             {replies.map((r, i) => (
               <div key={i} class="flex gap-2.5">
                 {r.authorAvatar ? (
-                  <img src={imgProxy(r.authorAvatar)} alt="" class="w-7 h-7 rounded-full shrink-0 bg-zinc-700" />
+                  <img src={imgProxy(r.authorAvatar)} alt="" class="h-7 w-7 shrink-0 rounded-full" />
                 ) : (
-                  <div class="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">
+                  <div class="np-avatar-fallback flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold">
                     {(r.authorName || '?').charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div class="min-w-0 flex-1">
                   <div class="flex items-baseline gap-1 mb-0.5 flex-wrap">
-                    <span class="text-sm font-semibold text-zinc-200">{r.authorName}</span>
-                    {r.authorHandle && <span class="text-xs text-zinc-500">@{r.authorHandle}</span>}
-                    {r.authorFollowers > 0 && <span class="text-xs text-zinc-600">&middot; {fmt(r.authorFollowers)}</span>}
-                    {r.likes > 0 && <span class="text-xs text-zinc-600">&middot; {fmt(r.likes)} likes</span>}
+                    <span class="np-copy-strong text-sm font-semibold">{r.authorName}</span>
+                    {r.authorHandle && <span class="np-copy-muted text-xs">@{r.authorHandle}</span>}
+                    {r.authorFollowers > 0 && <span class="np-copy-muted text-xs">&middot; {fmt(r.authorFollowers)}</span>}
+                    {r.likes > 0 && <span class="np-copy-muted text-xs">&middot; {fmt(r.likes)} likes</span>}
                   </div>
-                  <p class="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed break-words">{r.content}</p>
+                  <p class="np-copy-subtle whitespace-pre-wrap break-words text-sm leading-relaxed">{r.content}</p>
                 </div>
               </div>
             ))}
           </div>
           {repliesCursor && (
             <button type="button" onClick={loadMoreReplies} disabled={loadingMore}
-              class="mt-3 w-full rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50">
+              class="np-button np-button-secondary mt-3 w-full disabled:opacity-50">
               {loadingMore ? 'Loading...' : 'Load more replies'}
             </button>
           )}
@@ -1331,23 +1331,23 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
     <div>
     {detailModal}
     {tweet.parentTweet && !isThread && (
-      <div class="np-post-context rounded-t-xl border border-b-0 border-zinc-800 bg-zinc-950 px-3 sm:px-4 py-2.5 flex items-start gap-2.5 overflow-hidden">
+      <div class="np-post-context flex items-start gap-2.5 overflow-hidden rounded-t-xl border border-b-0 px-3 py-2.5 sm:px-4">
         {tweet.parentTweet.authorAvatar && (
           <img src={imgProxy(tweet.parentTweet.authorAvatar)} alt="" class="w-5 h-5 rounded-full mt-0.5 shrink-0" />
         )}
         <div class="min-w-0">
-          <span class="text-xs text-zinc-500">
-            <span class="font-medium text-zinc-400">{tweet.parentTweet.authorName}</span>
+          <span class="np-copy-muted text-xs">
+            <span class="np-copy-subtle font-medium">{tweet.parentTweet.authorName}</span>
             {' '}@{tweet.parentTweet.authorHandle}
           </span>
-          <div class="text-xs text-zinc-500 mt-0.5">
+          <div class="np-copy-muted mt-0.5 text-xs">
             <TweetContent text={tweet.parentTweet.content} forceExpanded={forceExpandedText} onExpandRequest={onExpandRequest} />
           </div>
         </div>
       </div>
     )}
     <div
-      class={`np-post ${tweet.parentTweet && !isThread ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} border border-zinc-800 bg-zinc-900 px-3 sm:px-4 py-3 hover:border-zinc-700 transition-colors${embedded ? '' : ' cursor-pointer'}`}
+      class={`np-post ${tweet.parentTweet && !isThread ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} px-3 py-3 transition-colors sm:px-4${embedded ? '' : ' cursor-pointer'}`}
       onClick={embedded ? undefined : () => {
         if (lightbox !== null || quotedLightbox !== null || parentLightbox !== null || showReplies || showThread) return
         openDetail(false)
@@ -1391,31 +1391,31 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
         />
       )}
       {isThread && tweet.parentTweet && (
-        <div class="np-post-thread pb-2 mb-2 border-b border-zinc-800">
+        <div class="np-post-thread mb-2 border-b pb-2">
           <div class="flex items-center gap-2 mb-1">
             {tweet.parentTweet.authorAvatar ? (
-              <img src={imgProxy(tweet.parentTweet.authorAvatar)} alt="" class="w-5 h-5 rounded-full bg-zinc-700" loading="lazy" />
+              <img src={imgProxy(tweet.parentTweet.authorAvatar)} alt="" class="h-5 w-5 rounded-full" loading="lazy" />
             ) : (
-              <div class="w-5 h-5 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-400">
+              <div class="np-avatar-fallback flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold">
                 {(tweet.parentTweet.authorName || '?').charAt(0).toUpperCase()}
               </div>
             )}
-            <span class="text-sm font-semibold text-zinc-200">{tweet.parentTweet.authorName}</span>
-            <span class="text-xs text-zinc-500">@{tweet.parentTweet.authorHandle}</span>
+            <span class="np-copy-strong text-sm font-semibold">{tweet.parentTweet.authorName}</span>
+            <span class="np-copy-muted text-xs">@{tweet.parentTweet.authorHandle}</span>
             {tweet.parentTweet.publishedAt && (
-              <span class="text-xs text-zinc-600">&middot; {timeAgo(tweet.parentTweet.publishedAt)}</span>
+              <span class="np-copy-muted text-xs">&middot; {timeAgo(tweet.parentTweet.publishedAt)}</span>
             )}
           </div>
           <TweetContent text={tweet.parentTweet.content} hideUrls={!!parentCard} forceExpanded={forceExpandedText} onExpandRequest={onExpandRequest} />
           {parentMedia.length > 0 && <MediaGrid media={parentMedia} onPhotoClick={setParentLightbox} />}
           {parentQuoted && (
-            <div class="mt-2 rounded-xl border border-zinc-700 overflow-hidden p-2.5 cursor-default" onClick={(e) => e.stopPropagation()}>
+            <div class="np-inline-card mt-2 overflow-hidden p-2.5 cursor-default" onClick={(e) => e.stopPropagation()}>
               <div class="flex items-center gap-2 mb-1">
                 {parentQuoted.authorAvatar && <img src={imgProxy(parentQuoted.authorAvatar)} alt="" class="w-4 h-4 rounded-full" />}
-                <span class="text-xs font-semibold text-zinc-300">{parentQuoted.authorName}</span>
-                <span class="text-xs text-zinc-500">@{parentQuoted.authorHandle}</span>
+                <span class="np-copy-subtle text-xs font-semibold">{parentQuoted.authorName}</span>
+                <span class="np-copy-muted text-xs">@{parentQuoted.authorHandle}</span>
               </div>
-              <p class="text-xs text-zinc-400 line-clamp-3 break-words">{parentQuoted.content}</p>
+              <p class="np-copy-muted line-clamp-3 break-words text-xs">{parentQuoted.content}</p>
             </div>
           )}
           {parentCard ? (
@@ -1424,10 +1424,10 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
             parentMedia.length === 0 && !parentQuoted && <OgEmbed text={tweet.parentTweet.content} onLoaded={() => {}} />
           )}
           {/* Parent engagement */}
-          <div class="flex items-center gap-3 mt-2 text-xs text-zinc-500">
+          <div class="np-copy-muted mt-2 flex items-center gap-3 text-xs">
             <button
               type="button"
-              class="flex items-center gap-1 hover:text-blue-400 transition-colors"
+              class="np-action-accent flex items-center gap-1"
               onClick={(e) => { e.stopPropagation(); setShowReplies(true) }}
             >
               <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -1471,17 +1471,17 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
           <img
             src={imgProxy(tweet.authorAvatar)}
             alt=""
-            class="w-9 h-9 rounded-full shrink-0 bg-zinc-700"
+            class="h-9 w-9 shrink-0 rounded-full"
             loading="lazy"
           />
         ) : (
-          <div class="w-9 h-9 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-300 shrink-0">
+          <div class="np-avatar-fallback flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold">
             {tweet.authorName.charAt(0).toUpperCase()}
           </div>
         )}
         <div class="min-w-0">
           {tweet.isRetweet && (
-            <div class="flex items-center gap-1 text-xs text-zinc-500 mb-0.5">
+            <div class="np-copy-muted mb-0.5 flex items-center gap-1 text-xs">
               <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
                 <path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
@@ -1491,36 +1491,36 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
           )}
           <div class="overflow-hidden">
             <div class="flex items-baseline gap-1 flex-wrap">
-              <span class="font-semibold text-sm text-zinc-100 truncate max-w-[70%]">
+              <span class="np-copy-strong max-w-[70%] truncate text-sm font-semibold">
                 {tweet.authorName}
               </span>
-              <span class="text-sm text-zinc-500 truncate">@{tweet.authorHandle}</span>
+              <span class="np-copy-muted truncate text-sm">@{tweet.authorHandle}</span>
               {tweet.authorFollowers > 0 && (
-                <span class="text-xs text-zinc-600 shrink-0">&middot; {fmt(tweet.authorFollowers)}</span>
+                <span class="np-copy-muted shrink-0 text-xs">&middot; {fmt(tweet.authorFollowers)}</span>
               )}
               {tweet.publishedAt && (
-                <span class="text-sm text-zinc-600 shrink-0">&middot; {timeAgo(tweet.publishedAt)}</span>
+                <span class="np-copy-muted shrink-0 text-sm">&middot; {timeAgo(tweet.publishedAt)}</span>
               )}
             </div>
           </div>
         </div>
         {/* Bio tooltip */}
         {tweet.authorBio && (
-          <div class="hidden sm:group-hover/author:block absolute left-0 top-full mt-1 z-10 w-64 sm:w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-zinc-700 bg-zinc-800 p-3 shadow-xl">
+          <div class="np-popover absolute left-0 top-full z-10 mt-1 hidden w-64 max-w-[calc(100vw-2rem)] rounded-lg p-3 sm:w-72 sm:group-hover/author:block">
             <div class="flex items-center gap-2 mb-1">
-              <span class="font-semibold text-sm text-zinc-100">{tweet.authorName}</span>
+              <span class="np-copy-strong text-sm font-semibold">{tweet.authorName}</span>
               {tweet.authorFollowers > 0 && (
-                <span class="text-xs text-zinc-400">{fmt(tweet.authorFollowers)} followers</span>
+                <span class="np-copy-muted text-xs">{fmt(tweet.authorFollowers)} followers</span>
               )}
             </div>
-            <p class="text-xs text-zinc-400 leading-relaxed">{tweet.authorBio}</p>
+            <p class="np-copy-subtle text-xs leading-relaxed">{tweet.authorBio}</p>
           </div>
         )}
       </div>
 
       {/* Reply context */}
       {tweet.replyToHandle && !tweet.parentTweet && (
-        <p class="np-post-reply-context text-xs text-zinc-500 mb-1">Replying to <span class="np-post-reply-handle text-emerald-500">@{tweet.replyToHandle}</span></p>
+        <p class="np-post-reply-context mb-1 text-xs">Replying to <span class="np-post-reply-handle">@{tweet.replyToHandle}</span></p>
       )}
 
       {/* Content — full width, no indent */}
@@ -1532,17 +1532,17 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
       {/* Quoted tweet */}
       {quoted && (
         <div
-          class="np-post-quote mt-2 rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors p-3 cursor-default"
+          class="np-post-quote mt-2 overflow-hidden rounded-xl p-3 cursor-default"
           onClick={(e) => e.stopPropagation()}
         >
           <div class="flex items-center gap-2 mb-1">
             {quoted.authorAvatar && (
               <img src={imgProxy(quoted.authorAvatar)} alt="" class="w-5 h-5 rounded-full" />
             )}
-            <span class="text-sm font-semibold text-zinc-200">{quoted.authorName}</span>
-            <span class="text-xs text-zinc-500">@{quoted.authorHandle}</span>
+            <span class="np-copy-strong text-sm font-semibold">{quoted.authorName}</span>
+            <span class="np-copy-muted text-xs">@{quoted.authorHandle}</span>
           </div>
-          <div class="text-sm text-zinc-400">
+          <div class="np-copy-subtle text-sm">
             <TweetContent text={quoted.content} hideUrls={!!quoted.card} forceExpanded={forceExpandedText} onExpandRequest={onExpandRequest} />
           </div>
           <MediaGrid media={quoted.media || []} onPhotoClick={setQuotedLightbox} />
@@ -1558,11 +1558,11 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
       )}
 
       {/* Engagement */}
-      <div class="np-post-actions flex flex-wrap items-center justify-between gap-y-1 mt-2 text-xs text-zinc-500">
+      <div class="np-post-actions mt-2 flex flex-wrap items-center justify-between gap-y-1 text-xs">
             <span class="flex items-center gap-3">
             <button
               type="button"
-              class="flex items-center gap-1 hover:text-blue-400 transition-colors"
+              class="np-action-accent flex items-center gap-1"
               onClick={(e) => { e.stopPropagation(); setShowReplies(true) }}
             >
               <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -1573,7 +1573,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
             {showThreadButton && (
               <button
                 type="button"
-                class="flex items-center gap-1 hover:text-emerald-400 transition-colors"
+                class="np-action-accent flex items-center gap-1"
                 onClick={(e) => { e.stopPropagation(); setShowThread(true) }}
                 title="View thread"
               >
@@ -1617,7 +1617,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
                 <span class="flex items-center gap-0.5">
                   <button
                     type="button"
-                    class={`p-0.5 rounded transition-colors ${nudge === 'up' ? 'text-emerald-400' : 'hover:text-emerald-400'}`}
+                    class={`p-0.5 rounded transition-colors ${nudge === 'up' ? 'np-score-high' : 'np-nudge-up'}`}
                     onClick={(e) => { e.stopPropagation(); onNudge(tweet.id, 'up') }}
                     title="Show more like this"
                   >
@@ -1627,7 +1627,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
                   </button>
                   <button
                     type="button"
-                    class={`p-0.5 rounded transition-colors ${nudge === 'down' ? 'text-red-400' : 'hover:text-red-400'}`}
+                    class={`p-0.5 rounded transition-colors ${nudge === 'down' ? 'np-score-low' : 'np-nudge-down'}`}
                     onClick={(e) => { e.stopPropagation(); onNudge(tweet.id, 'down') }}
                     title="Show less like this"
                   >
@@ -1638,7 +1638,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
                 </span>
               )}
               {score != null && (
-                <span class={`np-post-score text-[10px] font-medium px-1 py-0.5 rounded-sm ${minScore != null && score < minScore ? 'text-red-500' : score >= 70 ? 'text-emerald-500' : score >= 50 ? 'text-yellow-500' : 'text-zinc-600'}`}>
+                <span class={`np-post-score rounded-sm px-1 py-0.5 text-[10px] font-medium ${minScore != null && score < minScore ? 'np-score-low' : score >= 70 ? 'np-score-high' : score >= 50 ? 'np-score-mid' : 'np-score-cutoff'}`}>
                   {score}
                 </span>
               )}
@@ -1647,7 +1647,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
                 href={tweet.url}
                 target="_blank"
                 rel="noopener"
-                class="flex items-center gap-1 hover:text-zinc-300 transition-colors whitespace-nowrap"
+                class="np-action-strong flex items-center gap-1 whitespace-nowrap"
                 onClick={(e) => e.stopPropagation()}
                 title="View on X"
               >
@@ -1871,10 +1871,10 @@ Karpathy's framing around personal research knowledge bases and Farza's prototyp
 [[tweet:fx-6]]`
 
   return (
-    <div class="min-h-screen bg-zinc-950 text-zinc-100">
-      <nav class="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur px-3 sm:px-4 py-3">
+    <div class="app-shell">
+      <nav class="app-nav sticky top-0 z-30 px-3 sm:px-4 py-3">
         <div class="mx-auto max-w-xl w-full flex items-center justify-between gap-2">
-          <span class="text-lg font-bold tracking-tight">Omens Fixture</span>
+          <span class="app-brand">Omens Fixture</span>
         </div>
       </nav>
       <main class="mx-auto w-full py-4 pb-16 overflow-hidden">
@@ -1891,30 +1891,6 @@ Karpathy's framing around personal research knowledge bases and Farza's prototyp
     </div>
   )
 }
-
-export function renderReportContent(
-  text: string,
-  refTweets: Map<string, Tweet>,
-): preact.ComponentChildren[] {
-  const cleaned = text.replace(/\\([^\\])/g, '$1')
-  const result: preact.ComponentChildren[] = []
-
-  for (const [i, line] of cleaned.split('\n').entries()) {
-    const tweetMatch = line.match(/\[\[tweet:([^\]]+)\]\]/)
-    if (tweetMatch) {
-      const tweet = refTweets.get(tweetMatch[1])
-      result.push(tweet
-        ? <div key={`t-${i}`} class="my-1.5 overflow-hidden max-w-full"><TweetCard tweet={tweet} /></div>
-        : <div key={`t-${i}`} class="my-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-500 italic overflow-hidden">Referenced post is no longer available</div>
-      )
-      continue
-    }
-    result.push(renderMarkdownLine(line, i))
-  }
-
-  return result
-}
-
 
 type SectionItem = { type: 'text' | 'tweet'; line: string; tweet?: Tweet }
 type TextFragment =
@@ -2276,7 +2252,9 @@ function NewspaperContent({ text, refTweets, reportDate, tweetCount: totalTweetC
       {showMasthead && (
         <>
           <div class="np-masthead">
-            <div class="np-masthead-title">The Daily Omens</div>
+            <Link href="/" class="np-masthead-title np-masthead-home">
+              The Daily Omens
+            </Link>
             <div class="np-masthead-subrow">
               {leftControls ? (
                 <div class="np-masthead-left-controls">
@@ -2331,11 +2309,67 @@ function ElapsedTime({ since }: { since: number }) {
     return () => clearInterval(id)
   }, [])
   const s = Math.floor((now - since) / 1000)
-  return <span class="text-xs text-zinc-600 tabular-nums">{Math.floor(s / 60)}:{(s % 60).toString().padStart(2, '0')}</span>
+  return <span class="np-copy-muted text-xs tabular-nums">{Math.floor(s / 60)}:{(s % 60).toString().padStart(2, '0')}</span>
 }
 
 function getBriefingLabel(date: Date) {
   return `Your AI-Curated ${date.getHours() < 12 ? 'Morning' : date.getHours() < 17 ? 'Afternoon' : 'Evening'} Briefing`
+}
+
+export function NewspaperReportPage({
+  text,
+  refTweets,
+  reportDate,
+  tweetCount,
+  issueNumber,
+  showIssueNumber = true,
+  leftControls,
+  rightControls,
+  historyPanel,
+  preContent,
+  postContent,
+}: {
+  text: string
+  refTweets: Map<string, Tweet>
+  reportDate: string
+  tweetCount: number
+  issueNumber: number
+  showIssueNumber?: boolean
+  leftControls?: preact.ComponentChildren
+  rightControls?: preact.ComponentChildren
+  historyPanel?: preact.ComponentChildren
+  preContent?: preact.ComponentChildren
+  postContent?: preact.ComponentChildren
+}) {
+  const date = new Date(reportDate)
+  const metaRow = (
+    <div class="np-masthead-meta">
+      <span>{date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+      {showIssueNumber && <span>No. {issueNumber}</span>}
+      <span>{tweetCount} sources &middot; {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+    </div>
+  )
+
+  return (
+    <NewspaperShell
+      leftControls={leftControls}
+      rightControls={rightControls}
+      metaRow={metaRow}
+      subtitle={getBriefingLabel(date)}
+    >
+      {historyPanel}
+      {preContent}
+      <NewspaperContent
+        text={text}
+        refTweets={refTweets}
+        reportDate={reportDate}
+        tweetCount={tweetCount}
+        issueNumber={issueNumber}
+        showMasthead={false}
+      />
+      {postContent}
+    </NewspaperShell>
+  )
 }
 
 function AiReportView({ demo }: { demo?: boolean } = {}) {
@@ -2343,21 +2377,12 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
   const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number; reportAtHour?: number; nextReportAt?: number | null }>(demo ? null : '/ai/settings')
   const { data, loading, refetch } = useApi<{ report: AiReportData | null }>(`${prefix}/report`)
   const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>(`${prefix}/reports`)
-  const [newspaperMode, setNewspaperMode] = useState(() => localStorage.getItem('omens-newspaper-mode') === '1')
-  useNewspaperActive(newspaperMode)
-  const toggleNewspaperMode = useCallback(() => {
-    setNewspaperMode((prev) => {
-      const next = !prev
-      localStorage.setItem('omens-newspaper-mode', next ? '1' : '0')
-      return next
-    })
-  }, [])
+  useNewspaperActive()
   const [generating, setGenerating] = useState(false)
   const [streamContent, setStreamContent] = useState('')
   const [streamTweets, setStreamTweets] = useState<Map<string, Tweet>>(new Map())
   const [genStatus, setGenStatus] = useState('Generating...')
   const [genStartedAt, setGenStartedAt] = useState(0)
-  const [genTweetCount, setGenTweetCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [viewingReportId, setViewingReportId] = useState<string | null>(null)
   const [viewingReport, setViewingReport] = useState<AiReportData | null>(null)
@@ -2446,7 +2471,6 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
         if (s.error) { setError(s.error); return }
         if (s.generating) {
           setGenerating(true)
-          setGenTweetCount(s.tweetCount)
           setGenStatus(s.status || 'Generating...')
           setGenStartedAt(s.startedAt ? new Date(s.startedAt).getTime() : Date.now())
           connectStream()
@@ -2495,7 +2519,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     setViewingReport(null)
   }
 
-  if (((!demo && settingsLoading) || loading) && newspaperMode) {
+  if ((!demo && settingsLoading) || loading) {
     return (
       <NewspaperShell
         leftControls={<NewspaperRouteControls current="report" showSettings={!demo} />}
@@ -2507,7 +2531,6 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
       </NewspaperShell>
     )
   }
-  if ((!demo && settingsLoading) || loading) return <Spinner />
   if (!demo && !settings?.configured) return <AiSection onSave={refetchSettings} />
 
   const activeReport = viewingReportId ? viewingReport : data?.report
@@ -2515,7 +2538,6 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
   if (activeReport?.refTweets) {
     for (const t of activeReport.refTweets) refTweetMap.set(t.id, t)
   }
-  const activeReportDate = activeReport ? new Date(activeReport.createdAt) : null
   const reportIssueNumber = activeReport
     ? (pastData ? pastData.reports.length - (pastData.reports.findIndex((r) => r.id === (viewingReportId || activeReport.id))) : 1)
     : 1
@@ -2525,31 +2547,29 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     const totalPages = Math.ceil(reports.length / PAGE_SIZE)
     const visible = reports.slice((historyPage - 1) * PAGE_SIZE, historyPage * PAGE_SIZE)
     return (
-      <div class={newspaperMode ? 'np-history-panel' : 'mb-3 rounded-lg border border-zinc-800 bg-zinc-900'}>
-        <div class={newspaperMode ? 'np-history-list' : 'divide-y divide-zinc-800'}>
+      <div class="np-history-panel">
+        <div class="np-history-list">
           {visible.map((r) => (
             <button
               key={r.id}
               type="button"
               onClick={() => viewPastReport(r.id)}
-              class={newspaperMode
-                ? `np-history-item ${viewingReportId === r.id ? 'np-history-item-active' : ''}`
-                : `w-full text-left px-3 py-2 text-sm hover:bg-zinc-800 transition-colors ${viewingReportId === r.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400'}`}
+              class={`np-history-item ${viewingReportId === r.id ? 'np-history-item-active' : ''}`}
             >
-              <div class={newspaperMode ? 'np-history-row' : 'flex items-center justify-between'}>
-                <span class={newspaperMode ? 'np-history-time' : ''}>{new Date(r.createdAt).toLocaleString()}</span>
-                <span class={newspaperMode ? 'np-history-count' : 'text-xs text-zinc-600'}>{r.tweetCount} posts</span>
+              <div class="np-history-row">
+                <span class="np-history-time">{new Date(r.createdAt).toLocaleString()}</span>
+                <span class="np-history-count">{r.tweetCount} posts</span>
               </div>
             </button>
           ))}
         </div>
         {totalPages > 1 && (
-          <div class={newspaperMode ? 'np-history-pager' : 'flex items-center justify-center gap-3 px-3 py-2 border-t border-zinc-800'}>
+          <div class="np-history-pager">
             <button type="button" onClick={() => setHistoryPage((p) => Math.max(1, p - 1))} disabled={historyPage <= 1}
-              class="text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-30">Prev</button>
-            <span class={newspaperMode ? 'np-history-page' : 'text-xs text-zinc-600'}>{historyPage}/{totalPages}</span>
+              class="np-link-muted text-xs disabled:opacity-30">Prev</button>
+            <span class="np-history-page">{historyPage}/{totalPages}</span>
             <button type="button" onClick={() => setHistoryPage((p) => Math.min(totalPages, p + 1))} disabled={historyPage >= totalPages}
-              class="text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-30">Next</button>
+              class="np-link-muted text-xs disabled:opacity-30">Next</button>
           </div>
         )}
       </div>
@@ -2560,7 +2580,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
       <CopyShareButton url={`${window.location.origin}/report/${viewingReportId || activeReport.id}`} iconOnly />
       {pastData && pastData.reports.length > 1 && (
         <button type="button" onClick={() => setShowPastReports(!showPastReports)}
-          class={showPastReports ? 'text-zinc-100' : ''}
+          class={showPastReports ? 'np-history-toggle-active' : ''}
           title="Report history">
           <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -2587,22 +2607,15 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     </>
   ) : null
   const newspaperLeftControls = <NewspaperRouteControls current="report" showSettings={!demo} />
-  const reportMetaRow = activeReportDate ? (
-    <div class="np-masthead-meta">
-      <span>{activeReportDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
-      <span>No. {reportIssueNumber}</span>
-      <span>{activeReport.tweetCount} sources &middot; {activeReportDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
-    </div>
-  ) : undefined
-  const renderGenerationPanel = (newspaperStyle: boolean) => (
-    <div class={newspaperStyle ? 'np-status-panel' : 'mb-4'}>
-      <div class={newspaperStyle ? 'np-status-head' : 'flex items-center gap-2 text-sm text-zinc-400 mb-2'}>
-        <div class={newspaperStyle ? 'np-status-title' : 'flex items-center gap-2'}>
+  const renderGenerationPanel = () => (
+    <div class="np-status-panel">
+      <div class="np-status-head">
+        <div class="np-status-title">
           <span class="np-status-indicator" aria-hidden="true" />
-          <span>{genStatus}</span>
+          <span class="np-status-label">{genStatus}</span>
         </div>
         {genStartedAt > 0 && (
-          <div class={newspaperStyle ? 'np-status-meta' : ''}>
+          <div class="np-status-meta">
             <ElapsedTime since={genStartedAt} />
           </div>
         )}
@@ -2611,6 +2624,26 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
   )
 
   if (generating && !activeReport) {
+    if (streamContent) {
+      return (
+        <NewspaperReportPage
+          text={streamContent}
+          refTweets={streamTweets}
+          reportDate={new Date().toISOString()}
+          tweetCount={streamTweets.size}
+          issueNumber={(pastData?.reports.length || 0) + 1}
+          leftControls={newspaperLeftControls}
+          rightControls={newspaperControls}
+          preContent={
+            <>
+              {error && <p class="np-alert np-alert-error text-center mb-3">{error}</p>}
+              {renderGenerationPanel()}
+            </>
+          }
+        />
+      )
+    }
+
     return (
       <NewspaperShell
         leftControls={newspaperLeftControls}
@@ -2618,126 +2651,61 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
         showMeta={false}
         subtitle={getBriefingLabel(new Date())}
       >
-        {error && <p class="text-red-400 text-sm text-center mb-3">{error}</p>}
-        {renderGenerationPanel(true)}
-        {streamContent && (
-          <NewspaperContent
-            text={streamContent}
-            refTweets={streamTweets}
-            reportDate={new Date().toISOString()}
-            tweetCount={streamTweets.size}
-            issueNumber={(pastData?.reports.length || 0) + 1}
-            showMasthead={false}
-          />
-        )}
+        {error && <p class="np-alert np-alert-error text-center mb-3">{error}</p>}
+        {renderGenerationPanel()}
       </NewspaperShell>
     )
   }
 
   return (
     <div>
-      {error && <p class="text-red-400 text-sm text-center mb-3">{error}</p>}
-
-      {generating && (
-        <>
-          {renderGenerationPanel(newspaperMode)}
-          {streamContent && !newspaperMode && (
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden">
-              {renderReportContent(streamContent, streamTweets)}
-            </div>
-          )}
-        </>
-      )}
+      {error && <p class="np-alert np-alert-error text-center mb-3">{error}</p>}
 
       {activeReport && (
-        <div>
-          {!newspaperMode && historyPanel}
-          {!newspaperMode && <div class="flex items-center justify-between gap-2 mb-2 text-xs text-zinc-500">
-              <span>{new Date(activeReport.createdAt).toLocaleString()} &middot; {activeReport.tweetCount} posts{!viewingReportId && settings?.nextReportAt ? (
-                  <Countdown targetMs={settings.nextReportAt} format="hm" prefix=" &middot; next in " />
-                ) : null}</span>
-              <span class="flex items-center gap-1.5 shrink-0">
-                <button type="button" onClick={toggleNewspaperMode}
-                  class={`hover:text-zinc-300 transition-colors ${newspaperMode ? 'text-zinc-100' : ''}`}
-                  title={newspaperMode ? 'Exit newspaper mode' : 'Newspaper mode'}>
-                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
-                  </svg>
-                </button>
-                <CopyShareButton url={`${window.location.origin}/report/${viewingReportId || activeReport.id}`} />
-                {pastData && pastData.reports.length > 1 && (
-                  <button type="button" onClick={() => setShowPastReports(!showPastReports)}
-                    class={`hover:text-zinc-300 ${showPastReports ? 'text-zinc-300' : ''}`}
-                    title="Report history">
-                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </button>
-                )}
-                {viewingReportId && (
-                  <button type="button" onClick={backToLatest} class="hover:text-zinc-300" title="Back to latest">
-                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-                    </svg>
-                  </button>
-                )}
-                {!demo && <button
-                  type="button"
-                  onClick={generate}
-                  disabled={generating}
-                  class="hover:text-zinc-300 disabled:opacity-50"
-                  title={generating ? 'Generating...' : 'Generate new report'}
-                >
-                  <svg class={`w-3.5 h-3.5 ${generating ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                </button>}
-              </span>
-            </div>}
-          <div class={newspaperMode ? '' : 'rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden'}>
-            {newspaperMode
-              ? <NewspaperShell
-                  leftControls={newspaperLeftControls}
-                  rightControls={newspaperControls}
-                  metaRow={reportMetaRow}
-                  subtitle={getBriefingLabel(activeReportDate || new Date())}
-                >
-                  {historyPanel}
-                  <NewspaperContent
-                    text={activeReport.content}
-                    refTweets={refTweetMap}
-                    reportDate={activeReport.createdAt}
-                    tweetCount={activeReport.tweetCount}
-                    issueNumber={reportIssueNumber}
-                    showMasthead={false}
-                  />
-                </NewspaperShell>
-              : renderReportContent(activeReport.content, refTweetMap)}
-          </div>
-        </div>
+        <NewspaperReportPage
+          text={activeReport.content}
+          refTweets={refTweetMap}
+          reportDate={activeReport.createdAt}
+          tweetCount={activeReport.tweetCount}
+          issueNumber={reportIssueNumber}
+          leftControls={newspaperLeftControls}
+          rightControls={newspaperControls}
+          historyPanel={historyPanel}
+          preContent={generating ? renderGenerationPanel() : undefined}
+        />
       )}
 
       {!activeReport && !generating && (
-        <div class="flex flex-col items-center justify-center py-24">
-          <svg class="w-12 h-12 text-zinc-700 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
-            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
-          </svg>
-          {demo ? (
-            <p class="text-zinc-400">No reports available yet.</p>
-          ) : (
-            <>
-              <p class="text-zinc-400 mb-4">Generate an AI report from your last 24 hours of posts</p>
-              <button
-                type="button"
-                onClick={generate}
-                disabled={generating}
-                class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
-              >
-                Generate report
-              </button>
-            </>
-          )}
-        </div>
+        <NewspaperShell
+          leftControls={newspaperLeftControls}
+          rightControls={newspaperControls}
+          showMeta={false}
+        >
+          <div class="np-page-grid">
+            <article class="np-article np-article-lead">
+              <div class="flex flex-col items-center justify-center py-24">
+                <svg class="np-empty-icon w-12 h-12 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+                  <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+                </svg>
+                {demo ? (
+                  <p class="np-empty-copy">No reports available yet.</p>
+                ) : (
+                  <>
+                    <p class="np-empty-copy mb-4">Generate an AI report from your last 24 hours of posts</p>
+                    <button
+                      type="button"
+                      onClick={generate}
+                      disabled={generating}
+                      class="np-button np-button-primary disabled:opacity-50"
+                    >
+                      Generate report
+                    </button>
+                  </>
+                )}
+              </div>
+            </article>
+          </div>
+        </NewspaperShell>
       )}
     </div>
   )
@@ -2788,48 +2756,6 @@ function usePaginatedFeed(url: string, resetKey: number) {
   const loadMore = useCallback(() => loadPage(page + 1, false), [loadPage, page])
 
   return { allTweets, loading, loadingMore, error, remaining, loadMore }
-}
-
-function LoadMore({ remaining, loading, onLoad }: { remaining: number; loading: boolean; onLoad: () => void }) {
-  if (remaining <= 0) return null
-  return (
-    <div class="mt-6 flex justify-center">
-      <button
-        type="button"
-        onClick={onLoad}
-        disabled={loading}
-        class="rounded-lg bg-zinc-800 border border-zinc-700 px-5 py-2.5 text-sm text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 disabled:opacity-50 transition-colors"
-      >
-        {loading ? (
-          <span class="flex items-center gap-2">
-            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.219-8.56" /></svg>
-            Loading...
-          </span>
-        ) : (
-          `Load more (${remaining} remaining)`
-        )}
-      </button>
-    </div>
-  )
-}
-
-function EndOfFeed() {
-  return (
-    <div class="mt-10 mb-6 flex flex-col items-center select-none">
-      <pre class="text-zinc-700 text-[10px] leading-tight font-mono">{`
-        .  *  .  *  .
-     *                *
-    .    _________    .
-    *   /         \\   *
-    .  |  () _ ()  |  .
-    *  |    (_)    |  *
-    .   \\_________/   .
-     *                *
-        .  *  .  *  .
-      `}</pre>
-      <p class="text-zinc-600 text-xs mt-2">You've seen all the omens.</p>
-    </div>
-  )
 }
 
 // === Exported Pages ===
@@ -2951,17 +2877,38 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
   ) : null
 
   return (
-    <NewspaperShell
-      leftControls={<NewspaperRouteControls current="filtered" showSettings={!demo} />}
+    <NewspaperFeedShell
+      current="filtered"
+      showSettings={!demo}
       rightControls={rightControls}
-      showMeta={false}
+      toast={feedback}
+      loading={loading}
+      error={
+        <>
+          {filterError && <p class="np-alert np-alert-error text-center mb-2">{filterError}</p>}
+          {error && <p class="np-alert np-alert-error text-center">{error}</p>}
+        </>
+      }
+      hasTweets={allTweets.length > 0}
+      emptyState={pendingCount === 0 ? (
+        <FeedLeadArticle>
+          {demo ? (
+            <p class="np-empty-copy py-20">No filtered posts available yet.</p>
+          ) : !aiConfigured ? <AiSection onSave={() => window.location.reload()} /> : (
+            <div class="flex flex-col items-center justify-center py-20">
+              <p class="np-empty-copy mb-4">No posts to show yet. Fetch your feed first.</p>
+              <button type="button" onClick={refresh} disabled={fetchingPosts}
+                class="np-button np-button-primary disabled:opacity-50">
+                {fetchingPosts ? 'Fetching...' : 'Fetch posts'}
+              </button>
+            </div>
+          )}
+        </FeedLeadArticle>
+      ) : undefined}
+      remaining={remaining}
+      loadingMore={loadingMore}
+      onLoadMore={loadMore}
     >
-      {feedback && (
-        <div class="np-toast">
-          {feedback}
-        </div>
-      )}
-
       {/* Scoring progress */}
       {scoringActive && (() => {
         // Progress based on batch completion, not total scored ratio
@@ -2971,9 +2918,11 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
             <div class="np-status-head">
               <div class="np-status-title">
                 <span class="np-status-indicator" aria-hidden="true" />
-                {scoringTotalBatches > 0
-                  ? `Scoring batch ${scoringBatch} of ${scoringTotalBatches}`
-                  : 'Scoring posts...'}
+                <span class="np-status-label">
+                  {scoringTotalBatches > 0
+                    ? `Scoring batch ${scoringBatch} of ${scoringTotalBatches}`
+                    : 'Scoring posts...'}
+                </span>
               </div>
               <div class="flex items-center gap-2">
                 <span class="np-status-meta tabular-nums">{pendingCount} pending</span>
@@ -3036,28 +2985,6 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
         </div>
       )}
 
-      {loading && <Spinner />}
-      {filterError && <p class="text-red-400 text-sm text-center mb-2">{filterError}</p>}
-      {error && <p class="text-red-400 text-center">{error}</p>}
-
-      {allTweets.length === 0 && !loading && pendingCount === 0 && (
-        <div class="np-page-grid">
-          <article class="np-article np-article-lead">
-            {demo ? (
-              <p class="text-zinc-400 text-center py-20">No filtered posts available yet.</p>
-            ) : !aiConfigured ? <AiSection onSave={() => window.location.reload()} /> : (
-              <div class="flex flex-col items-center justify-center py-20">
-                <p class="text-zinc-400 mb-4">No posts to show yet. Fetch your feed first.</p>
-                <button type="button" onClick={refresh} disabled={fetchingPosts}
-                  class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
-                  {fetchingPosts ? 'Fetching...' : 'Fetch posts'}
-                </button>
-              </div>
-            )}
-          </article>
-        </div>
-      )}
-
       <div class="feed-masonry">
         {tweets.map((tweet: any) => (
           <div key={tweet.id} class="feed-masonry-item">
@@ -3065,9 +2992,7 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
           </div>
         ))}
       </div>
-      <LoadMore remaining={remaining} loading={loadingMore} onLoad={loadMore} />
-      {remaining === 0 && allTweets.length > 0 && !loading && <EndOfFeed />}
-    </NewspaperShell>
+    </NewspaperFeedShell>
   )
 }
 
@@ -3115,41 +3040,41 @@ export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise
   ) : null
 
   return (
-    <NewspaperShell
-      leftControls={<NewspaperRouteControls current="feed" showSettings={!demo} />}
+    <NewspaperFeedShell
+      current="feed"
+      showSettings={!demo}
       rightControls={rightControls}
-      showMeta={false}
+      toast={refreshCount !== null ? (refreshCount > 0 ? `+${refreshCount} posts` : 'Nothing new') : feedback}
+      loading={loading}
+      error={
+        <>
+          {refreshError && <p class="np-alert np-alert-error text-center mb-2">{refreshError}</p>}
+          {error && <p class="np-alert np-alert-error text-center">{error}</p>}
+        </>
+      }
+      hasTweets={allTweets.length > 0}
+      emptyState={(
+        <FeedLeadArticle>
+          {demo ? (
+            <p class="np-empty-copy py-20">No posts available yet.</p>
+          ) : (
+            <div class="flex flex-col items-center justify-center py-20">
+              <svg class="np-empty-icon w-10 h-10 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+                <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
+              </svg>
+              <p class="np-empty-copy mb-4">No posts yet. Fetch your X feed to get started.</p>
+              <button type="button" onClick={refresh} disabled={refreshing}
+                class="np-button np-button-primary disabled:opacity-50">
+                {refreshing ? 'Fetching...' : 'Fetch posts'}
+              </button>
+            </div>
+          )}
+        </FeedLeadArticle>
+      )}
+      remaining={remaining}
+      loadingMore={loadingMore}
+      onLoadMore={loadMore}
     >
-      {(feedback || refreshCount !== null) && (
-        <div class="np-toast">
-          {refreshCount !== null ? (refreshCount > 0 ? `+${refreshCount} posts` : 'Nothing new') : feedback}
-        </div>
-      )}
-      {loading && <Spinner />}
-      {refreshError && <p class="text-red-400 text-sm text-center mb-2">{refreshError}</p>}
-      {error && <p class="text-red-400 text-center">{error}</p>}
-
-      {allTweets.length === 0 && !loading && (
-        <div class="np-page-grid">
-          <article class="np-article np-article-lead">
-            {demo ? (
-              <p class="text-zinc-400 text-center py-20">No posts available yet.</p>
-            ) : (
-              <div class="flex flex-col items-center justify-center py-20">
-                <svg class="w-10 h-10 text-zinc-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
-                  <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
-                </svg>
-                <p class="text-zinc-400 mb-4">No posts yet. Fetch your X feed to get started.</p>
-                <button type="button" onClick={refresh} disabled={refreshing}
-                  class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
-                  {refreshing ? 'Fetching...' : 'Fetch posts'}
-                </button>
-              </div>
-            )}
-          </article>
-        </div>
-      )}
-
       <div class="feed-masonry">
         {tweets.map((tweet) => (
           <div key={tweet.id} class="feed-masonry-item">
@@ -3157,8 +3082,6 @@ export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise
           </div>
         ))}
       </div>
-      <LoadMore remaining={remaining} loading={loadingMore} onLoad={loadMore} />
-      {remaining === 0 && allTweets.length > 0 && !loading && <EndOfFeed />}
-    </NewspaperShell>
+    </NewspaperFeedShell>
   )
 }

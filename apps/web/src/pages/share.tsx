@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'preact/hooks'
 import { api } from '../helpers/api'
+import { SharePromoArticle } from '../helpers/share-promo'
+import { NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
 import { Spinner } from '../helpers/spinner'
-import { TweetCard, renderReportContent, type Tweet } from './feed'
+import { NewspaperReportPage, TweetCard, type Tweet } from './feed'
 
 interface SharedTweet {
   tweetId: string
@@ -22,6 +24,7 @@ interface SharedTweet {
 }
 
 export function SharePage({ handle, tweetId }: { handle: string; tweetId: string }) {
+  useNewspaperActive()
   const [tweet, setTweet] = useState<SharedTweet | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -35,18 +38,28 @@ export function SharePage({ handle, tweetId }: { handle: string; tweetId: string
 
   if (loading) {
     return (
-      <div class="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <Spinner />
-      </div>
+      <NewspaperShell showMeta={false}>
+        <div class="mx-auto w-full max-w-[34rem] min-h-[18rem]">
+          <Spinner />
+        </div>
+      </NewspaperShell>
     )
   }
 
   if (error || !tweet) {
     return (
-      <div class="min-h-screen bg-zinc-950 flex flex-col items-center justify-center gap-4 text-zinc-100">
-        <p class="text-zinc-400">This post could not be found.</p>
-        <a href="/" class="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium hover:bg-emerald-500 no-underline">Try Omens</a>
-      </div>
+      <NewspaperShell showMeta={false}>
+        <div class="mx-auto w-full max-w-[34rem]">
+          <article class="np-article np-article-lead">
+            <div class="flex flex-col items-center justify-center gap-4 py-20 text-center">
+              <p class="np-empty-copy">This post could not be found.</p>
+            </div>
+          </article>
+          <div class="np-page-grid np-share-promo-section">
+            <SharePromoArticle />
+          </div>
+        </div>
+      </NewspaperShell>
     )
   }
 
@@ -75,22 +88,18 @@ export function SharePage({ handle, tweetId }: { handle: string; tweetId: string
   }
 
   return (
-    <div class="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
-      <main class="flex-1 flex flex-col items-center justify-center px-4 py-8">
-        <div class="max-w-lg w-full">
-          <TweetCard tweet={tweetObj} embedded />
+    <NewspaperShell showMeta={false}>
+      <div class="mx-auto w-full max-w-[34rem]">
+        <div>
+          <div class="mx-auto w-full">
+            <TweetCard tweet={tweetObj} embedded />
+          </div>
+          <div class="np-page-grid np-share-promo-section">
+            <SharePromoArticle />
+          </div>
         </div>
-        <div class="mt-8 text-center">
-          <p class="text-sm text-zinc-500 mb-4">Your algorithm, your feed.</p>
-          <a
-            href="/"
-            class="inline-block rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 no-underline transition-colors"
-          >
-            Try Omens
-          </a>
-        </div>
-      </main>
-    </div>
+      </div>
+    </NewspaperShell>
   )
 }
 
@@ -107,6 +116,7 @@ interface SharedReport {
 }
 
 export function ReportSharePage({ id }: { id: string }) {
+  useNewspaperActive()
   const [report, setReport] = useState<SharedReport | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -120,49 +130,47 @@ export function ReportSharePage({ id }: { id: string }) {
 
   if (loading) {
     return (
-      <div class="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <Spinner />
-      </div>
+      <NewspaperShell showMeta={false}>
+        <div class="min-h-[18rem]">
+          <Spinner />
+        </div>
+      </NewspaperShell>
     )
   }
 
   if (error || !report) {
     return (
-      <div class="min-h-screen bg-zinc-950 flex flex-col items-center justify-center gap-4 text-zinc-100">
-        <p class="text-zinc-400">This report could not be found.</p>
-        <a href="/" class="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium hover:bg-emerald-500 no-underline">Try Omens</a>
-      </div>
+      <NewspaperShell showMeta={false}>
+        <div class="np-page-grid">
+          <article class="np-article np-article-lead">
+            <div class="flex flex-col items-center justify-center gap-4 py-20 text-center">
+              <p class="np-empty-copy">This report could not be found.</p>
+            </div>
+          </article>
+          <SharePromoArticle />
+        </div>
+      </NewspaperShell>
     )
   }
-
-  const date = new Date(report.createdAt).toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric', year: 'numeric',
-  })
 
   const refTweetMap = new Map<string, Tweet>()
   for (const t of report.refTweets) refTweetMap.set(t.id, t)
 
   return (
-    <div class="min-h-screen bg-zinc-950 text-zinc-100">
-      <main class="max-w-2xl mx-auto px-4 py-8">
-        <article class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden">
-          <div class="flex items-center justify-between mb-3 pb-3 border-b border-zinc-800">
-            <span class="text-xs text-zinc-500">{date} &middot; {report.tweetCount} posts analyzed</span>
-            <span class="text-xs font-medium text-emerald-500">Omens Report</span>
+    <div>
+      <NewspaperReportPage
+        text={report.content}
+        refTweets={refTweetMap}
+        reportDate={report.createdAt}
+        tweetCount={report.tweetCount}
+        issueNumber={1}
+        showIssueNumber={false}
+        postContent={(
+          <div class="np-page-grid np-share-promo-section">
+            <SharePromoArticle />
           </div>
-          {renderReportContent(report.content, refTweetMap)}
-        </article>
-
-        <div class="mt-8 text-center">
-          <p class="text-sm text-zinc-500 mb-4">Your algorithm, your feed.</p>
-          <a
-            href="/"
-            class="inline-block rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 no-underline transition-colors"
-          >
-            Try Omens
-          </a>
-        </div>
-      </main>
+        )}
+      />
     </div>
   )
 }

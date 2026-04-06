@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
-import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, sql } from 'drizzle-orm'
 import { aiReports, aiSettings, getDb, tweets, tweetScores, userTweets, users } from '@omens/db'
 import env from '../env'
+import { buildPagination, hydrateFeedRows } from '../helpers/feed'
 import { parsePagination } from '../helpers/http'
+import { hydrateReport } from '../helpers/report'
 
 const demoRouter = new Hono()
 
@@ -11,22 +13,15 @@ async function getDemoUserId(): Promise<string | null> {
   if (!env.DEMO_USER_EMAIL) return null
   if (_demoUserId !== undefined) return _demoUserId
   const db = getDb(env.DATABASE_URL)
-  const [user] = await db.select({ id: users.id }).from(users)
+  let [user] = await db.select({ id: users.id }).from(users)
     .where(eq(users.email, env.DEMO_USER_EMAIL)).limit(1)
+  if (!user) {
+    ;[user] = await db.insert(users)
+      .values({ email: env.DEMO_USER_EMAIL })
+      .returning({ id: users.id })
+  }
   _demoUserId = user?.id ?? null
   return _demoUserId
-}
-
-function resolveParents(result: { tweet: typeof tweets.$inferSelect }[]) {
-  const replyIds = result.map((r) => r.tweet.replyToTweetId).filter((id): id is string => !!id)
-  if (replyIds.length === 0) return Promise.resolve(new Map<string, typeof tweets.$inferSelect>())
-  const db = getDb(env.DATABASE_URL)
-  return db.select().from(tweets).where(inArray(tweets.tweetId, replyIds))
-    .then((parents) => {
-      const map = new Map<string, typeof tweets.$inferSelect>()
-      for (const p of parents) map.set(p.tweetId, p)
-      return map
-    })
 }
 
 // Feed
@@ -47,14 +42,11 @@ demoRouter.get('/feed', async (c) => {
   const [{ count }] = await db.select({ count: sql<number>`count(*)` })
     .from(userTweets).where(eq(userTweets.userId, userId))
 
-  const parentMap = await resolveParents(result)
+  const data = await hydrateFeedRows(db, result)
 
   return c.json({
-    data: result.map((r) => ({
-      ...r.tweet, score: r.score,
-      parentTweet: r.tweet.replyToTweetId ? parentMap.get(r.tweet.replyToTweetId) ?? null : null,
-    })),
-    pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
+    data,
+    pagination: buildPagination(page, limit, count),
   })
 })
 
@@ -83,14 +75,11 @@ demoRouter.get('/filtered-feed', async (c) => {
     .innerJoin(tweetScores, and(eq(tweetScores.tweetId, tweets.id), eq(tweetScores.userId, userId)))
     .where(and(eq(userTweets.userId, userId), gte(tweetScores.score, minScore)))
 
-  const parentMap = await resolveParents(result)
+  const data = await hydrateFeedRows(db, result)
 
   return c.json({
-    data: result.map((r) => ({
-      ...r.tweet, score: r.score,
-      parentTweet: r.tweet.replyToTweetId ? parentMap.get(r.tweet.replyToTweetId) ?? null : null,
-    })),
-    pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
+    data,
+    pagination: buildPagination(page, limit, count),
   })
 })
 
@@ -106,12 +95,7 @@ demoRouter.get('/report', async (c) => {
 
   if (!report) return c.json({ report: null })
 
-  const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
-  const refTweets = tweetRefIds.length > 0
-    ? await db.select().from(tweets).where(inArray(tweets.id, tweetRefIds))
-    : []
-
-  return c.json({ report: { id: report.id, content: report.content, model: report.model, tweetCount: report.tweetCount, tweetRefs: tweetRefIds, refTweets, createdAt: report.createdAt } })
+  return c.json({ report: await hydrateReport(db, report) })
 })
 
 // Report list
@@ -142,12 +126,7 @@ demoRouter.get('/report/:id', async (c) => {
 
   if (!report) return c.json({ error: 'Report not found' }, 404)
 
-  const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
-  const refTweets = tweetRefIds.length > 0
-    ? await db.select().from(tweets).where(inArray(tweets.id, tweetRefIds))
-    : []
-
-  return c.json({ report: { id: report.id, content: report.content, model: report.model, tweetCount: report.tweetCount, tweetRefs: tweetRefIds, refTweets, createdAt: report.createdAt } })
+  return c.json({ report: await hydrateReport(db, report) })
 })
 
 export default demoRouter

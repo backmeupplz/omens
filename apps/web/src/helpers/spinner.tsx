@@ -24,7 +24,7 @@ export function Spinner({ class: cls }: { class?: string }) {
 
   return (
     <div class={`flex flex-col items-center justify-center py-8 select-none ${cls || ''}`}>
-      <pre class="text-zinc-600 text-sm leading-tight font-mono">{`  /\\_/\\
+      <pre class="np-copy-muted text-sm leading-tight font-mono">{`  /\\_/\\
  ${faces[frame]}
   > ^ <`}</pre>
     </div>

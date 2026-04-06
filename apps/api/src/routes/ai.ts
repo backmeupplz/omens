@@ -13,7 +13,9 @@ import { aiSettingsSchema, nudgeSchema, promptChangeSchema } from '@omens/shared
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import env from '../env'
+import { buildPagination, hydrateFeedRows } from '../helpers/feed'
 import { parsePagination } from '../helpers/http'
+import { hydrateReport } from '../helpers/report'
 import {
   DEFAULT_SYSTEM_PROMPT,
   FILTER_SYSTEM_PROMPT,
@@ -56,23 +58,6 @@ async function getUserMinScore(userId: string): Promise<number> {
   const [settings] = await db.select({ minScore: aiSettings.minScore })
     .from(aiSettings).where(eq(aiSettings.userId, userId)).limit(1)
   return settings?.minScore ?? 50
-}
-
-async function hydrateReport(report: typeof aiReports.$inferSelect) {
-  const db = getDb(env.DATABASE_URL)
-  const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
-  const refTweets = tweetRefIds.length > 0
-    ? await db.select().from(tweets).where(inArray(tweets.id, tweetRefIds))
-    : []
-  return {
-    id: report.id,
-    content: report.content,
-    model: report.model,
-    tweetCount: report.tweetCount,
-    tweetRefs: tweetRefIds,
-    refTweets,
-    createdAt: report.createdAt,
-  }
 }
 
 // ==================== SETTINGS ====================
@@ -686,20 +671,11 @@ aiRouter.get('/filtered-feed', async (c) => {
     ))
     .where(and(eq(userTweets.userId, user.id), gte(tweetScores.score, minScore)))
 
-  // Resolve parent tweets for replies
-  const replyIds = result.map((r) => r.tweet.replyToTweetId).filter((id): id is string => !!id)
-  const parentMap = new Map<string, typeof tweets.$inferSelect>()
-  if (replyIds.length > 0) {
-    const parents = await db.select().from(tweets).where(inArray(tweets.tweetId, replyIds))
-    for (const p of parents) parentMap.set(p.tweetId, p)
-  }
+  const data = await hydrateFeedRows(db, result)
 
   return c.json({
-    data: result.map((r) => ({
-      ...r.tweet, score: r.score,
-      parentTweet: r.tweet.replyToTweetId ? parentMap.get(r.tweet.replyToTweetId) ?? null : null,
-    })),
-    pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
+    data,
+    pagination: buildPagination(page, limit, count),
   })
 })
 
@@ -920,7 +896,7 @@ aiRouter.get('/report', async (c) => {
 
   if (!report) return c.json({ report: null })
 
-  return c.json({ report: await hydrateReport(report) })
+  return c.json({ report: await hydrateReport(db, report) })
 })
 
 // --- Past reports list ---
@@ -957,7 +933,7 @@ aiRouter.get('/report/:id', async (c) => {
 
   if (!report) return c.json({ error: 'Report not found' }, 404)
 
-  return c.json({ report: await hydrateReport(report) })
+  return c.json({ report: await hydrateReport(db, report) })
 })
 
 export default aiRouter

@@ -4,7 +4,7 @@
  */
 
 import { getDb, aiSettings, nudges, promptChanges } from '@omens/db'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import env from '../env'
 import { regeneratePromptForUser } from '../routes/ai'
 

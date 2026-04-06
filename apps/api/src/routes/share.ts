@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
-import { eq, inArray } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { aiReports, articles, getDb, tweets } from '@omens/db'
 import env from '../env'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { hydrateReport } from '../helpers/report'
 import {
   extractReportSummary,
   generateReportOgPng,
@@ -83,7 +84,7 @@ function spaWithOg(meta: { title: string; description: string; url: string; imag
 export const shareDataRouter = new Hono()
 
 shareDataRouter.get('/tweet/:handle/:tweetId', async (c) => {
-  const { handle, tweetId } = c.req.param()
+  const tweetId = c.req.param('tweetId')
   const db = getDb(env.DATABASE_URL)
   const [tweet] = await db.select().from(tweets)
     .where(eq(tweets.tweetId, tweetId)).limit(1)
@@ -123,13 +124,7 @@ shareDataRouter.get('/report/:id/data', async (c) => {
   const db = getDb(env.DATABASE_URL)
   const [report] = await db.select().from(aiReports).where(eq(aiReports.id, id)).limit(1)
   if (!report) return c.json({ error: 'Report not found' }, 404)
-  const tweetRefIds: string[] = report.tweetRefs ? JSON.parse(report.tweetRefs) : []
-  const refTweets = tweetRefIds.length > 0
-    ? await db.select().from(tweets).where(inArray(tweets.id, tweetRefIds))
-    : []
-  return c.json({
-    report: { id: report.id, content: report.content, model: report.model, tweetCount: report.tweetCount, tweetRefs: tweetRefIds, refTweets, createdAt: report.createdAt },
-  })
+  return c.json({ report: await hydrateReport(db, report) })
 })
 
 // === Public HTML/OG routes (mounted at root) ===
@@ -138,7 +133,7 @@ const shareRouter = new Hono()
 
 // OG image for shared tweets (PNG)
 shareRouter.get('/:handle/status/:tweetId/og.png', async (c) => {
-  const { handle, tweetId } = c.req.param()
+  const tweetId = c.req.param('tweetId')
   const db = getDb(env.DATABASE_URL)
   const [tweet] = await db.select().from(tweets)
     .where(eq(tweets.tweetId, tweetId)).limit(1)
@@ -164,7 +159,8 @@ shareRouter.get('/:handle/status/:tweetId/og.png', async (c) => {
 })
 
 shareRouter.get('/:handle/status/:tweetId', async (c) => {
-  const { handle, tweetId } = c.req.param()
+  const handle = c.req.param('handle')
+  const tweetId = c.req.param('tweetId')
   const db = getDb(env.DATABASE_URL)
   const [tweet] = await db.select().from(tweets)
     .where(eq(tweets.tweetId, tweetId)).limit(1)

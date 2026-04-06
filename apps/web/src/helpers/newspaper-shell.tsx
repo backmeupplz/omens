@@ -53,7 +53,9 @@ export function NewspaperShell({
   return (
     <div class="newspaper np-outer">
       <div class="np-masthead">
-        <div class="np-masthead-title">The Daily Omens</div>
+        <Link href="/" class="np-masthead-title np-masthead-home">
+          The Daily Omens
+        </Link>
         <div class="np-masthead-subrow">
           {leftControls ? (
             <div class="np-masthead-left-controls">

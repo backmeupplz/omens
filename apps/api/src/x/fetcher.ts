@@ -3,7 +3,7 @@
  */
 
 import { aiSettings, getDb, tweets, userTweets, xSessions } from '@omens/db'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import env from '../env'
 import { decrypt } from '../helpers/crypto'
 import { scoreUnscoredTweets } from '../routes/ai'

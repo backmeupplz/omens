@@ -18,5 +18,5 @@ export default cleanEnv(process.env, {
   POLL_INTERVAL_MINUTES: num({ default: 5 }),
   CORS_ORIGIN: str({ default: '' }),
   WEB_DIR: str({ default: '' }),
-  DEMO_USER_EMAIL: str({ default: '' }),
+  DEMO_USER_EMAIL: str({ default: isDev ? 'n@bdut.ch' : '' }),
 })

@@ -113,6 +113,25 @@ function XGuard({
   return <>{children}</>
 }
 
+function ProtectedXPage({
+  auth,
+  demo,
+  demoPage,
+  children,
+}: {
+  auth: AuthState
+  demo: boolean
+  demoPage: preact.ComponentChildren
+  children: preact.ComponentChildren
+}) {
+  if (demo) return <>{demoPage}</>
+  return (
+    <AuthGuard auth={auth}>
+      <XGuard auth={auth}>{children}</XGuard>
+    </AuthGuard>
+  )
+}
+
 function ScrollToTop() {
   const [show, setShow] = useState(false)
   useEffect(() => {
@@ -125,7 +144,7 @@ function ScrollToTop() {
     <button
       type="button"
       onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-      class="fixed bottom-4 right-4 z-40 rounded-full bg-zinc-800 border border-zinc-700 p-2 sm:p-2.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 shadow-lg transition-colors"
+      class="np-scroll-top fixed bottom-4 right-4 z-40 rounded-full p-2 sm:p-2.5 transition-colors"
       title="Scroll to top"
     >
       <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -168,11 +187,11 @@ export function App() {
   }
 
   return (
-    <div class="min-h-screen bg-zinc-950 text-zinc-100">
-      <nav class="app-nav sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur px-3 sm:px-4 py-3">
+    <div class="app-shell">
+      <nav class="app-nav sticky top-0 z-30 px-3 sm:px-4 py-3">
         <div class="mx-auto max-w-xl w-full flex items-center justify-between gap-2">
           <div class="flex items-center gap-2">
-            <Link href="/" class="text-lg font-bold tracking-tight">
+            <Link href="/" class="app-brand">
               Omens
             </Link>
             {showFeed && !isDemo && (location === '/feed' || location === '/filtered') && (
@@ -180,7 +199,7 @@ export function App() {
                 type="button"
                 onClick={handleRefresh}
                 disabled={refreshing}
-                class="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+                class="app-nav-button disabled:opacity-50"
                 title="Refresh feed"
               >
                 <svg
@@ -201,11 +220,7 @@ export function App() {
             {showFeed && (
               <Link
                 href="/"
-                class={`p-1.5 rounded-lg transition-colors ${
-                  location === '/'
-                    ? 'text-zinc-100 bg-zinc-800'
-                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
-                }`}
+                class={`app-nav-button ${location === '/' ? 'app-nav-button-active' : ''}`}
                 title="AI Report"
               >
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -216,11 +231,7 @@ export function App() {
             {showFeed && (
               <Link
                 href="/filtered"
-                class={`p-1.5 rounded-lg transition-colors ${
-                  location === '/filtered'
-                    ? 'text-zinc-100 bg-zinc-800'
-                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
-                }`}
+                class={`app-nav-button ${location === '/filtered' ? 'app-nav-button-active' : ''}`}
                 title="AI-Filtered Feed"
               >
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -231,11 +242,7 @@ export function App() {
             {showFeed && (
               <Link
                 href="/feed"
-                class={`p-1.5 rounded-lg transition-colors ${
-                  location === '/feed'
-                    ? 'text-zinc-100 bg-zinc-800'
-                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
-                }`}
+                class={`app-nav-button ${location === '/feed' ? 'app-nav-button-active' : ''}`}
                 title="All Posts"
               >
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -246,11 +253,7 @@ export function App() {
             {auth.loggedIn && (
               <Link
                 href="/settings"
-                class={`p-1.5 rounded-lg transition-colors ${
-                  location.startsWith('/settings')
-                    ? 'text-zinc-100 bg-zinc-800'
-                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
-                }`}
+                class={`app-nav-button ${location.startsWith('/settings') ? 'app-nav-button-active' : ''}`}
                 title="Settings"
               >
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -260,7 +263,7 @@ export function App() {
               </Link>
             )}
             {!auth.singleUser && auth.checked && !auth.loggedIn && (
-              <Link href="/login" class="text-sm text-zinc-400 hover:text-zinc-100">
+              <Link href="/login" class="app-nav-link">
                 Login
               </Link>
             )}
@@ -269,48 +272,38 @@ export function App() {
       </nav>
       <main class="mx-auto max-w-xl w-full px-3 sm:px-4 py-4 pb-16 overflow-hidden">
         {isDemo && location !== '/login' && location !== '/register' && (
-          <div class="mb-4 rounded-lg border border-emerald-900/50 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-300 flex items-center justify-between gap-3">
-            <span>You're viewing a demo feed.</span>
-            <Link href="/register" class="shrink-0 rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500 transition-colors">
-              Sign up for your own
-            </Link>
+          <div class="demo-notice-wrap">
+            <div class="demo-notice">
+              <div class="demo-notice-copy">
+                <div class="demo-notice-kicker">Public Demo Edition</div>
+                <div class="demo-notice-title">You&apos;re viewing a sample Omens feed.</div>
+                <p class="demo-notice-text">
+                  Connect your own X account and AI provider to generate a personal briefing from the people you actually follow.
+                </p>
+              </div>
+              <Link href="/register" class="demo-notice-cta">
+                Create Your Own
+              </Link>
+            </div>
           </div>
         )}
         <Switch>
           <Route path="/login" component={Login} />
           <Route path="/register" component={Register} />
           <Route path="/">
-            {isDemo ? (
-              <AiReportPage demo />
-            ) : (
-              <AuthGuard auth={auth}>
-                <XGuard auth={auth}>
-                  <AiReportPage />
-                </XGuard>
-              </AuthGuard>
-            )}
+            <ProtectedXPage auth={auth} demo={isDemo} demoPage={<AiReportPage demo />}>
+              <AiReportPage />
+            </ProtectedXPage>
           </Route>
           <Route path="/filtered">
-            {isDemo ? (
-              <FilteredFeed demo />
-            ) : (
-              <AuthGuard auth={auth}>
-                <XGuard auth={auth}>
-                  <FilteredFeed onRefreshRef={(fn) => setRefreshFn(() => fn)} />
-                </XGuard>
-              </AuthGuard>
-            )}
+            <ProtectedXPage auth={auth} demo={isDemo} demoPage={<FilteredFeed demo />}>
+              <FilteredFeed onRefreshRef={(fn) => setRefreshFn(() => fn)} />
+            </ProtectedXPage>
           </Route>
           <Route path="/feed">
-            {isDemo ? (
-              <Feed demo />
-            ) : (
-              <AuthGuard auth={auth}>
-                <XGuard auth={auth}>
-                  <Feed onRefreshRef={(fn) => setRefreshFn(() => fn)} />
-                </XGuard>
-              </AuthGuard>
-            )}
+            <ProtectedXPage auth={auth} demo={isDemo} demoPage={<Feed demo />}>
+              <Feed onRefreshRef={(fn) => setRefreshFn(() => fn)} />
+            </ProtectedXPage>
           </Route>
           <Route path="/settings">
             <AuthGuard auth={auth}>

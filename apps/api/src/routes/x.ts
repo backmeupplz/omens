@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator'
-import { articles, getDb, nudges, promptChanges, tweets, tweetScores, userTweets, xSessions } from '@omens/db'
+import { articles, getDb, nudges, promptChanges, tweetScores, userTweets, xSessions } from '@omens/db'
 import { xLoginSchema } from '@omens/shared'
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
