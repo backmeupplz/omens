@@ -1,9 +1,11 @@
+import { createPortal } from 'preact/compat'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { api, API_BASE } from '../helpers/api'
 import { Countdown } from '../helpers/components'
 import { fmt, safeParse, timeAgo } from '../helpers/format'
 import { useApi } from '../helpers/hooks'
 import { renderMarkdownLine } from '../helpers/markdown'
+import { NewspaperRouteControls, NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
 import { Spinner } from '../helpers/spinner'
 import { AiSection } from './settings'
 
@@ -54,7 +56,7 @@ function Lightbox({
 
   const item = items[cur]
 
-  return (
+  const lightbox = (
     <div
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
       onClick={(e: Event) => { e.stopPropagation(); onClose() }}
@@ -116,6 +118,8 @@ function Lightbox({
       )}
     </div>
   )
+
+  return typeof document !== 'undefined' ? createPortal(lightbox, document.body) : lightbox
 }
 
 interface MediaItem {
@@ -189,7 +193,7 @@ function RepliesModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  return (
+  const modal = (
     <div
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
       onClick={(e: Event) => { e.stopPropagation(); onClose() }}
@@ -256,6 +260,8 @@ function RepliesModal({
       </div>
     </div>
   )
+
+  return typeof document !== 'undefined' ? createPortal(modal, document.body) : modal
 }
 
 // === Thread Modal ===
@@ -312,7 +318,7 @@ function ThreadModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  return (
+  const modal = (
     <div
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
       onClick={(e: Event) => { e.stopPropagation(); onClose() }}
@@ -344,6 +350,8 @@ function ThreadModal({
       </div>
     </div>
   )
+
+  return typeof document !== 'undefined' ? createPortal(modal, document.body) : modal
 }
 
 function ThreadTweetItem({ tweet, isLast }: { tweet: ThreadTweet; isLast: boolean }) {
@@ -617,7 +625,7 @@ function isTweetUrl(text: string): string | null {
 function ArticleBodyPlainText({ body }: { body: string }) {
   const paragraphs = body.split(/\n/)
   return (
-    <div>
+    <div class="np-post-shell">
       {paragraphs.map((p, i) => {
         const trimmed = p.trim()
         if (!trimmed) return null
@@ -711,7 +719,7 @@ function ArticleModal({
     }
   }
 
-  return (
+  const modal = (
     <div
       class="fixed inset-0 z-50 flex items-start justify-center bg-black/80 overflow-y-auto py-8 px-3 cursor-default"
       onClick={(e: Event) => { e.stopPropagation(); if (!lightboxUrl) onClose() }}
@@ -789,6 +797,8 @@ function ArticleModal({
       )}
     </div>
   )
+
+  return typeof document !== 'undefined' ? createPortal(modal, document.body) : modal
 }
 
 function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl?: string; tweetUrl?: string }) {
@@ -812,11 +822,13 @@ function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl
         )}
         <button
           type="button"
-          class="mt-2 block w-full text-left rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors"
+          class="np-post-link-card mt-2 block w-full text-left rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors"
           onClick={(e) => { e.stopPropagation(); setShowArticle(true) }}
         >
           {data.thumbnail && (
-            <img src={imgProxy(data.thumbnail!)} alt="" class="w-full max-w-full rounded-t-xl" loading="lazy" />
+            <div class="np-link-thumb">
+              <img src={imgProxy(data.thumbnail!)} alt="" class="w-full h-full object-cover rounded-t-xl" loading="lazy" />
+            </div>
           )}
           <div class="p-2.5">
             <p class="text-sm font-medium text-zinc-200 line-clamp-2">{data.title}</p>
@@ -835,11 +847,13 @@ function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl
       href={url}
       target="_blank"
       rel="noopener"
-      class="mt-2 block rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors"
+      class="np-post-link-card mt-2 block rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors"
       onClick={(e) => e.stopPropagation()}
     >
       {data.thumbnail && (
-        <img src={imgProxy(data.thumbnail!)} alt="" class="w-full max-w-full rounded-t-xl" loading="lazy" />
+        <div class="np-link-thumb">
+          <img src={imgProxy(data.thumbnail!)} alt="" class="w-full h-full object-cover rounded-t-xl" loading="lazy" />
+        </div>
       )}
       <div class="p-2.5">
         <p class="text-sm font-medium text-zinc-200 line-clamp-2">{data.title}</p>
@@ -860,10 +874,12 @@ function OgEmbed({
   onLoaded: () => void
 }) {
   const [card, setCard] = useState<CardData | null>(null)
+  const [attempted, setAttempted] = useState(false)
 
   useEffect(() => {
     const match = text.match(/https?:\/\/[^\s]+/)
     if (!match) return
+    setAttempted(true)
     api<CardData | null>(`/og?url=${encodeURIComponent(match[0])}`)
       .then((data) => {
         if (data) {
@@ -874,17 +890,29 @@ function OgEmbed({
       .catch(() => {})
   }, [text, onLoaded])
 
-  if (!card) return null
+  if (!card) {
+    return attempted ? (
+      <div class="mt-2 rounded-xl border border-zinc-700 overflow-hidden bg-zinc-900/90">
+        <div class="np-link-thumb np-skeleton" />
+        <div class="p-2.5 space-y-1.5">
+          <div class="h-4 w-[78%] rounded bg-zinc-800" />
+          <div class="h-3 w-full rounded bg-zinc-800/80" />
+          <div class="h-3 w-[68%] rounded bg-zinc-800/60" />
+        </div>
+      </div>
+    ) : null
+  }
   return <LinkCard data={card} />
 }
 
 // === Shared Media Grid ===
 
-function InlineVideo({ item, sizeClass, fit }: { item: MediaItem; sizeClass: string; fit: string }) {
+function InlineVideo({ item, frameClass, fit }: { item: MediaItem; frameClass: string; fit: string }) {
   const isGif = item.type === 'gif'
   const [playing, setPlaying] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const posterUrl = imgProxy(`${item.thumbnail}?name=medium`)
 
   useEffect(() => {
     const v = videoRef.current
@@ -895,15 +923,17 @@ function InlineVideo({ item, sizeClass, fit }: { item: MediaItem; sizeClass: str
   }, [isGif])
 
   if (playing || isGif) {
-    const posterUrl = imgProxy(`${item.thumbnail}?name=medium`)
     return (
       <div
-        class="relative overflow-hidden rounded-lg border border-zinc-700 bg-black"
-        style={!loaded ? { backgroundImage: `url(${posterUrl})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } : undefined}
+        class={`relative overflow-hidden rounded-lg border border-zinc-700 bg-black ${frameClass}`}
       >
-        {/* Hidden thumbnail to hold layout dimensions until video loads */}
         {!loaded && (
-          <img src={posterUrl} alt="" class={`${fit} ${sizeClass} invisible`} />
+          <img
+            src={posterUrl}
+            alt=""
+            class={`${fit} absolute inset-0 h-full w-full`}
+            loading="lazy"
+          />
         )}
         <video
           ref={isGif ? videoRef : undefined}
@@ -914,7 +944,8 @@ function InlineVideo({ item, sizeClass, fit }: { item: MediaItem; sizeClass: str
           loop={isGif}
           muted={isGif}
           playsinline
-          class={`${fit} ${sizeClass}${!loaded ? ' absolute inset-0 w-full h-full' : ''}`}
+          preload="metadata"
+          class={`${fit} absolute inset-0 h-full w-full transition-opacity ${loaded ? 'opacity-100' : 'opacity-0'}`}
           onClick={(e) => e.stopPropagation()}
           onLoadedData={() => setLoaded(true)}
         />
@@ -930,13 +961,13 @@ function InlineVideo({ item, sizeClass, fit }: { item: MediaItem; sizeClass: str
   return (
     <button
       type="button"
-      class="relative overflow-hidden rounded-lg border border-zinc-700 hover:border-zinc-500 transition-colors"
+      class={`relative overflow-hidden rounded-lg border border-zinc-700 hover:border-zinc-500 transition-colors ${frameClass}`}
       onClick={(e) => { e.stopPropagation(); setPlaying(true) }}
     >
       <img
-        src={imgProxy(`${item.thumbnail}?name=medium`)}
+        src={posterUrl}
         alt=""
-        class={`${fit} ${sizeClass}`}
+        class={`${fit} absolute inset-0 h-full w-full`}
         loading="lazy"
       />
       <div class="absolute inset-0 flex items-center justify-center bg-black/30">
@@ -957,24 +988,24 @@ function MediaGrid({
 }) {
   if (media.length === 0) return null
   const single = media.length === 1
-  const sizeClass = single ? 'max-h-72 w-full' : 'w-full h-32 sm:h-36'
+  const frameClass = single ? 'w-full aspect-[4/3] sm:aspect-[16/10] bg-black' : 'w-full h-32 sm:h-36'
   const fit = single ? 'object-contain' : 'object-cover'
   return (
-    <div class={`mt-2 grid gap-1.5 overflow-hidden ${single ? 'grid-cols-1' : 'grid-cols-2'}`}>
+    <div class={`np-post-media mt-2 grid gap-1.5 overflow-hidden ${single ? 'grid-cols-1' : 'grid-cols-2'}`}>
       {media.slice(0, 4).map((item, i) =>
         item.type !== 'photo' ? (
-          <InlineVideo key={item.thumbnail} item={item} sizeClass={sizeClass} fit={fit} />
+          <InlineVideo key={item.thumbnail} item={item} frameClass={frameClass} fit={fit} />
         ) : (
           <button
             key={item.thumbnail}
             type="button"
-            class="relative overflow-hidden rounded-lg border border-zinc-700 hover:border-zinc-500 transition-colors"
+            class={`relative overflow-hidden rounded-lg border border-zinc-700 hover:border-zinc-500 transition-colors ${frameClass}`}
             onClick={(e) => { e.stopPropagation(); onPhotoClick?.(i) }}
           >
             <img
               src={imgProxy(`${item.thumbnail}?name=medium`)}
               alt=""
-              class={`${fit} ${sizeClass}`}
+              class={`${fit} absolute inset-0 h-full w-full`}
               loading="lazy"
             />
           </button>
@@ -1031,11 +1062,13 @@ function TweetContent({
   hideUrls,
   forceExpanded,
   onExpandRequest,
+  className,
 }: {
   text: string
   hideUrls?: boolean
   forceExpanded?: boolean
   onExpandRequest?: () => void
+  className?: string
 }) {
   const [expanded, setExpanded] = useState(false)
   let cleaned = text
@@ -1054,7 +1087,7 @@ function TweetContent({
   }
 
   return (
-    <div class="overflow-hidden">
+    <div class={`np-post-content overflow-hidden ${className || ''}`}>
       <p class="text-[15px] text-zinc-200 whitespace-pre-wrap leading-relaxed break-words">
         {linkify(display)}
       </p>
@@ -1075,24 +1108,45 @@ function TweetContent({
   )
 }
 
-function CopyShareButton({ url }: { url: string }) {
+function CopyShareButton({ url, iconOnly }: { url: string; iconOnly?: boolean }) {
   const [copied, setCopied] = useState(false)
+  const [burstId, setBurstId] = useState(0)
+  const resetTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current)
+    }
+  }, [])
+
   return (
     <button
       type="button"
-      class="flex items-center gap-1 hover:text-zinc-300 transition-colors"
+      class="relative flex items-center gap-1 overflow-visible hover:text-zinc-300 transition-colors"
       onClick={(e) => {
         e.stopPropagation()
         navigator.clipboard.writeText(url)
         setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
+        setBurstId((id) => id + 1)
+        if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current)
+        resetTimerRef.current = window.setTimeout(() => {
+          setCopied(false)
+          resetTimerRef.current = null
+        }, 1500)
       }}
       title="Copy share link"
     >
+      {burstId > 0 && (
+        <span key={burstId} class="share-burst-icon" aria-hidden="true">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
+          </svg>
+        </span>
+      )}
       <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
         <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
       </svg>
-      {copied ? <span class="text-white font-medium">Copied!</span> : 'Share'}
+      {!iconOnly && (copied ? <span class="text-white font-medium">Copied!</span> : 'Share')}
     </button>
   )
 }
@@ -1169,14 +1223,14 @@ function TweetDetailModal({
 
   return (
     <div
-      class="fixed inset-0 z-50 flex items-start justify-center bg-black/80 overflow-y-auto py-8 px-3"
+      class="np-post-modal fixed inset-0 z-50 flex items-start justify-center bg-black/80 overflow-y-auto py-8 px-3"
       onClick={(e: Event) => { e.stopPropagation(); onClose() }}
     >
-      <div class="w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
+      <div class="np-post-modal-body w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
         <TweetCard tweet={tweet} nudge={nudge} onNudge={onNudge} score={score} minScore={minScore} embedded forceExpandedText={forceExpandedText} />
 
         {/* Replies section */}
-        <div class="mt-2 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
+        <div class="np-post-modal-replies mt-2 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
           <h4 class="text-sm font-semibold text-zinc-300 mb-3">Replies</h4>
           {repliesLoading && <Spinner class="py-4" />}
           {repliesError && <p class="text-red-400 text-sm py-4 text-center">{repliesError}</p>}
@@ -1258,10 +1312,8 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
     setShowDetailExpanded(false)
   }, [])
   const onExpandRequest = !embedded && expandBehavior === 'detail' ? () => openDetail(true) : undefined
-
-  return (
-    <div>
-    {!embedded && showDetail && (
+  const detailModal = !embedded && showDetail && typeof document !== 'undefined'
+    ? createPortal(
       <TweetDetailModal
         tweet={tweet}
         onClose={closeDetail}
@@ -1270,10 +1322,16 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
         score={score}
         minScore={minScore}
         forceExpandedText={showDetailExpanded}
-      />
-    )}
+      />,
+      document.body,
+    )
+    : null
+
+  return (
+    <div>
+    {detailModal}
     {tweet.parentTweet && !isThread && (
-      <div class="rounded-t-xl border border-b-0 border-zinc-800 bg-zinc-950 px-3 sm:px-4 py-2.5 flex items-start gap-2.5 overflow-hidden">
+      <div class="np-post-context rounded-t-xl border border-b-0 border-zinc-800 bg-zinc-950 px-3 sm:px-4 py-2.5 flex items-start gap-2.5 overflow-hidden">
         {tweet.parentTweet.authorAvatar && (
           <img src={imgProxy(tweet.parentTweet.authorAvatar)} alt="" class="w-5 h-5 rounded-full mt-0.5 shrink-0" />
         )}
@@ -1289,7 +1347,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
       </div>
     )}
     <div
-      class={`${tweet.parentTweet && !isThread ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} border border-zinc-800 bg-zinc-900 px-3 sm:px-4 py-3 hover:border-zinc-700 transition-colors${embedded ? '' : ' cursor-pointer'}`}
+      class={`np-post ${tweet.parentTweet && !isThread ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} border border-zinc-800 bg-zinc-900 px-3 sm:px-4 py-3 hover:border-zinc-700 transition-colors${embedded ? '' : ' cursor-pointer'}`}
       onClick={embedded ? undefined : () => {
         if (lightbox !== null || quotedLightbox !== null || parentLightbox !== null || showReplies || showThread) return
         openDetail(false)
@@ -1333,7 +1391,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
         />
       )}
       {isThread && tweet.parentTweet && (
-        <div class="pb-2 mb-2 border-b border-zinc-800">
+        <div class="np-post-thread pb-2 mb-2 border-b border-zinc-800">
           <div class="flex items-center gap-2 mb-1">
             {tweet.parentTweet.authorAvatar ? (
               <img src={imgProxy(tweet.parentTweet.authorAvatar)} alt="" class="w-5 h-5 rounded-full bg-zinc-700" loading="lazy" />
@@ -1408,7 +1466,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
       )}
 
       {/* Author row: avatar + repost label + name */}
-      <div class={`flex gap-2.5 mb-1 group/author relative ${tweet.isRetweet ? '' : 'items-center'}`}>
+      <div class={`np-post-author flex gap-2.5 mb-1 group/author relative ${tweet.isRetweet ? '' : 'items-center'}`}>
         {tweet.authorAvatar ? (
           <img
             src={imgProxy(tweet.authorAvatar)}
@@ -1462,7 +1520,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
 
       {/* Reply context */}
       {tweet.replyToHandle && !tweet.parentTweet && (
-        <p class="text-xs text-zinc-500 mb-1">Replying to <span class="text-emerald-500">@{tweet.replyToHandle}</span></p>
+        <p class="np-post-reply-context text-xs text-zinc-500 mb-1">Replying to <span class="np-post-reply-handle text-emerald-500">@{tweet.replyToHandle}</span></p>
       )}
 
       {/* Content — full width, no indent */}
@@ -1474,7 +1532,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
       {/* Quoted tweet */}
       {quoted && (
         <div
-          class="mt-2 rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors p-3 cursor-default"
+          class="np-post-quote mt-2 rounded-xl border border-zinc-700 overflow-hidden hover:border-zinc-500 transition-colors p-3 cursor-default"
           onClick={(e) => e.stopPropagation()}
         >
           <div class="flex items-center gap-2 mb-1">
@@ -1500,7 +1558,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
       )}
 
       {/* Engagement */}
-      <div class="flex flex-wrap items-center justify-between gap-y-1 mt-2 text-xs text-zinc-500">
+      <div class="np-post-actions flex flex-wrap items-center justify-between gap-y-1 mt-2 text-xs text-zinc-500">
             <span class="flex items-center gap-3">
             <button
               type="button"
@@ -1580,24 +1638,24 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
                 </span>
               )}
               {score != null && (
-                <span class={`text-[10px] font-medium px-1 py-0.5 rounded-sm ${minScore != null && score < minScore ? 'text-red-500' : score >= 70 ? 'text-emerald-500' : score >= 50 ? 'text-yellow-500' : 'text-zinc-600'}`}>
+                <span class={`np-post-score text-[10px] font-medium px-1 py-0.5 rounded-sm ${minScore != null && score < minScore ? 'text-red-500' : score >= 70 ? 'text-emerald-500' : score >= 50 ? 'text-yellow-500' : 'text-zinc-600'}`}>
                   {score}
                 </span>
               )}
-              <CopyShareButton url={`${window.location.origin}/${tweet.authorHandle}/status/${tweet.tweetId}`} />
+              <CopyShareButton url={`${window.location.origin}/${tweet.authorHandle}/status/${tweet.tweetId}`} iconOnly />
               <a
                 href={tweet.url}
                 target="_blank"
                 rel="noopener"
                 class="flex items-center gap-1 hover:text-zinc-300 transition-colors whitespace-nowrap"
                 onClick={(e) => e.stopPropagation()}
+                title="View on X"
               >
                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                   <polyline points="15 3 21 3 21 9" />
                   <line x1="10" y1="14" x2="21" y2="3" />
                 </svg>
-                View on X
               </a>
             </span>
       </div>
@@ -1671,6 +1729,169 @@ interface AiReportData {
   createdAt: string
 }
 
+function fixtureAvatar(label: string, bg: string) {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
+      <rect width="80" height="80" rx="40" fill="${bg}"/>
+      <text x="40" y="49" text-anchor="middle" font-size="32" font-family="Georgia, serif" fill="#f5efe1">${label}</text>
+    </svg>`,
+  )}`
+}
+
+function fixtureThumb(bg: string, accent: string, label: string) {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop stop-color="${bg}" offset="0"/>
+          <stop stop-color="${accent}" offset="1"/>
+        </linearGradient>
+      </defs>
+      <rect width="1600" height="900" fill="url(#g)"/>
+      <circle cx="1210" cy="260" r="150" fill="rgba(255,255,255,.13)"/>
+      <text x="110" y="760" font-size="120" font-family="Georgia, serif" fill="rgba(255,255,255,.85)">${label}</text>
+    </svg>`,
+  )}`
+}
+
+function createFixtureTweet(overrides: Partial<Tweet> & Pick<Tweet, 'id' | 'tweetId' | 'authorName' | 'authorHandle' | 'content'>): Tweet {
+  return {
+    authorAvatar: fixtureAvatar(overrides.authorName[0] || 'O', '#8b5e3c'),
+    authorFollowers: 125000,
+    authorBio: null,
+    mediaUrls: null,
+    isRetweet: null,
+    card: null,
+    quotedTweet: null,
+    replyToHandle: null,
+    replyToTweetId: null,
+    parentTweet: null,
+    url: `https://x.com/${overrides.authorHandle}/status/${overrides.tweetId}`,
+    likes: 1200,
+    retweets: 140,
+    replies: 28,
+    views: 82000,
+    publishedAt: '2026-04-05T09:02:00.000Z',
+    ...overrides,
+  }
+}
+
+export function NewspaperFixturePage() {
+  useNewspaperActive()
+
+  const fixtureTweets = [
+    createFixtureTweet({
+      id: 'fx-1',
+      tweetId: '1001',
+      authorName: 'Peter Steinberger',
+      authorHandle: 'steipete',
+      content: 'Anthropic now blocks first-party harness use too.\n\nclaude -p --append-system-prompt "A personal assistant running inside OpenClaw." is clawd here?\n\nSo yeah: bring your own coin.',
+    }),
+    createFixtureTweet({
+      id: 'fx-2',
+      tweetId: '1002',
+      authorName: 'M. Lynch',
+      authorHandle: 'mtlynch',
+      content: `Claude Code found a Linux vulnerability hidden for 23 years.\n\nClaude Code has gotten extremely good at finding security vulnerabilities, and this is only the beginning.`,
+      card: JSON.stringify({
+        title: 'Claude Code Found a Linux Vulnerability Hidden for 23 Years',
+        description: 'Security audits are becoming a compelling agent workflow.',
+        thumbnail: fixtureThumb('#111827', '#2563eb', 'Bugs Found'),
+        domain: 'mtlynch.io',
+        url: 'https://mtlynch.io/linux-vuln',
+      }),
+    }),
+    createFixtureTweet({
+      id: 'fx-3',
+      tweetId: '1003',
+      authorName: 'Hesam',
+      authorHandle: 'Hesamation',
+      content: 'A group of North Korean hackers possibly exploited a VSCode/Cursor vulnerability to steal $285M.\n> they posed as a trading firm for 6 months\n> shared repo that likely compromised a contributor\n> opening a cloned repo auto-executes a malicious .vscode/tasks.json',
+      card: JSON.stringify({
+        title: 'Incident Background Update',
+        description: 'Drift is working with law enforcement and forensic partners.',
+        thumbnail: fixtureThumb('#4a1d0d', '#f59e0b', 'Incident'),
+        domain: 'x.com',
+        url: 'https://x.com/driftprotocol/status/1',
+      }),
+    }),
+    createFixtureTweet({
+      id: 'fx-4',
+      tweetId: '1004',
+      authorName: 'levelsio',
+      authorHandle: 'levelsio',
+      content: 'The 2026 vibe jam is back.\n\nI am building an FPV drone sim as a demo: city ruins, FBX imports, heat vision, drones hunting players, and live iteration over five-hour sessions.',
+    }),
+    createFixtureTweet({
+      id: 'fx-5',
+      tweetId: '1005',
+      authorName: 'Andrej Karpathy',
+      authorHandle: 'karpathy',
+      content: 'Using LLMs to build personal knowledge bases for research topics is becoming a large fraction of my recent token throughput.\n\nExplicit inspectable memory artifacts feel much better than opaque context stuffing.',
+    }),
+    createFixtureTweet({
+      id: 'fx-6',
+      tweetId: '1006',
+      authorName: 'Farza',
+      authorHandle: 'FarzaTV',
+      content: 'This is Farzapedia.\n\nAn LLM took thousands of my notes and chats to produce a personal wiki with explicit editable pages.',
+      card: JSON.stringify({
+        title: 'Farzapedia',
+        description: 'A personal wiki built from long-lived notes and conversations.',
+        thumbnail: fixtureThumb('#1f2937', '#14b8a6', 'Wiki'),
+        domain: 'farza.dev',
+        url: 'https://farza.dev/wiki',
+      }),
+    }),
+  ]
+
+  const refTweets = new Map(fixtureTweets.map((tweet) => [tweet.id, tweet] as const))
+  const text = `# AI CODING INFRASTRUCTURE: POLICY SHIFTS AND SECURITY REVELATIONS
+Anthropic quietly changed its terms to block first-party harness use, routing "extra usage" to third-party app limits rather than plan limits, a move that breaks existing CLI workflows and forces developers to pay per-token.
+
+This lands as Claude Code independently uncovered a Linux vulnerability hidden for 23 years, demonstrating the security audit potential of agentic coding tools. Meanwhile, security researchers warn that North Korean hackers exploited VS Code and Cursor's default workspace trust settings to steal hundreds of millions from crypto firms by auto-executing malicious .vscode/tasks.json files when contributors cloned repos.
+
+[[tweet:fx-1]]
+[[tweet:fx-2]]
+[[tweet:fx-3]]
+
+# THE 2026 VIBEJAM: AI-NATIVE GAME DEVELOPMENT GOES MAINSTREAM
+Pieter Levels launched the second annual Vibe Coding Game Jam with $35,000 in prizes, requiring 90% AI-written code and attracting participants ranging from indie developers to a 10-year-old using Cursor.
+
+Levels is building an FPV drone sim as a demonstration: starting from basic physics, adding FBX city ruins for atmosphere, implementing heat-vision multiplayer where drones hunt hiding players, and iterating live over five-hour sessions. The event signals a shift where AI-assisted game development is becoming a spectator sport and a legitimate path for non-coders to build complex interactive experiences.
+
+[[tweet:fx-4]]
+
+# KNOWLEDGE OBJECTS INSTEAD OF CONTEXT WINDOWS
+Technical writers and researchers are converging on a more inspectable model for AI memory. Instead of shoving everything into opaque context windows, they are building explicit knowledge artifacts that can be edited, versioned, and reused across workflows.
+
+Karpathy's framing around personal research knowledge bases and Farza's prototype wiki both point in the same direction: memory that behaves more like a newspaper morgue or card catalog than a bottomless prompt buffer. That is both more legible and more portable, and it creates natural surfaces for collaboration.
+
+[[tweet:fx-5]]
+[[tweet:fx-6]]`
+
+  return (
+    <div class="min-h-screen bg-zinc-950 text-zinc-100">
+      <nav class="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur px-3 sm:px-4 py-3">
+        <div class="mx-auto max-w-xl w-full flex items-center justify-between gap-2">
+          <span class="text-lg font-bold tracking-tight">Omens Fixture</span>
+        </div>
+      </nav>
+      <main class="mx-auto w-full py-4 pb-16 overflow-hidden">
+        <div class="newspaper np-outer">
+          <NewspaperContent
+            text={text}
+            refTweets={refTweets}
+            reportDate="2026-04-05T09:02:00.000Z"
+            tweetCount={fixtureTweets.length}
+            issueNumber={7}
+          />
+        </div>
+      </main>
+    </div>
+  )
+}
+
 export function renderReportContent(
   text: string,
   refTweets: Map<string, Tweet>,
@@ -1696,6 +1917,17 @@ export function renderReportContent(
 
 
 type SectionItem = { type: 'text' | 'tweet'; line: string; tweet?: Tweet }
+type TextFragment =
+  | { type: 'paragraph'; text: string }
+  | { type: 'list'; ordered: boolean; entries: string[] }
+  | { type: 'spacer' }
+type ArticleTile =
+  | { type: 'text'; fragments: TextFragment[]; charCount: number; lead: boolean }
+  | { type: 'tweet'; tweet?: Tweet }
+type ArticlePackageKind = 'lead' | 'feature' | 'standard' | 'brief'
+
+const NP_GRID_ROW_FALLBACK = 4
+const NP_GRID_ROW_GAP_FALLBACK = 10
 
 function parseBoldText(text: string): preact.ComponentChildren[] {
   const parts: preact.ComponentChildren[] = []
@@ -1711,24 +1943,303 @@ function parseBoldText(text: string): preact.ComponentChildren[] {
   return parts
 }
 
-function getArticleColumnWidth(items: SectionItem[]) {
+function getArticleMaxColumns(items: SectionItem[]) {
   const tweetCount = items.filter((item) => item.type === 'tweet').length
   const textLength = items.reduce((total, item) => total + (item.type === 'text' ? item.line.trim().length : 0), 0)
 
-  if (tweetCount >= 6) return '17.5rem'
-  if (tweetCount >= 4) return '18.5rem'
-  if (tweetCount >= 2) return textLength > 1400 ? '19.5rem' : '18.75rem'
-  if (textLength > 2200) return '20.5rem'
-  if (textLength > 1200) return '22rem'
-  return '24rem'
+  if (tweetCount >= 5) return 3
+  if (tweetCount >= 1 || textLength > 1100) return 2
+  return 1
 }
 
-function NewspaperContent({ text, refTweets, reportDate, tweetCount: totalTweetCount, issueNumber }: {
+function splitParagraphForTiles(text: string) {
+  const trimmed = text.trim()
+  if (trimmed.length <= 260) return [text]
+
+  const sentences = trimmed.split(/(?<=[.!?])\s+/).filter(Boolean)
+  if (sentences.length <= 1) return [text]
+
+  const parts: string[] = []
+  let current = ''
+  for (const sentence of sentences) {
+    const next = current ? `${current} ${sentence}` : sentence
+    if (next.length > 260 && current) {
+      parts.push(current)
+      current = sentence
+    } else {
+      current = next
+    }
+  }
+  if (current) parts.push(current)
+  return parts.length > 1 ? parts : [text]
+}
+
+function buildArticleTiles(items: SectionItem[]) {
+  const tiles: ArticleTile[] = []
+  let fragments: TextFragment[] = []
+  let charCount = 0
+  let paragraphCount = 0
+  let leadAssigned = false
+
+  const flushText = () => {
+    if (fragments.length === 0) return
+    while (fragments[fragments.length - 1]?.type === 'spacer') fragments.pop()
+    if (fragments.length === 0) return
+    tiles.push({ type: 'text', fragments, charCount, lead: !leadAssigned })
+    leadAssigned = true
+    fragments = []
+    charCount = 0
+    paragraphCount = 0
+  }
+
+  for (let ii = 0; ii < items.length; ii++) {
+    const item = items[ii]
+    if (item.type === 'tweet') {
+      flushText()
+      tiles.push({ type: 'tweet', tweet: item.tweet })
+      continue
+    }
+
+    const line = item.line.trim()
+    if (!line) {
+      if (fragments.length > 0 && fragments[fragments.length - 1]?.type !== 'spacer') {
+        fragments.push({ type: 'spacer' })
+      }
+      continue
+    }
+
+    const unordered = item.line.match(/^[-*]\s+(.*)/)
+    const ordered = item.line.match(/^\d+\.\s+(.*)/)
+    if (unordered || ordered) {
+      const orderedList = !!ordered
+      const entries: string[] = []
+      for (; ii < items.length; ii++) {
+        const next = items[ii]
+        if (next.type !== 'text') {
+          ii--
+          break
+        }
+        const match = orderedList
+          ? next.line.match(/^\d+\.\s+(.*)/)
+          : next.line.match(/^[-*]\s+(.*)/)
+        if (!match) {
+          ii--
+          break
+        }
+        entries.push(match[1])
+      }
+      fragments.push({ type: 'list', ordered: orderedList, entries })
+      charCount += entries.reduce((total, entry) => total + entry.length, 0)
+      paragraphCount += entries.length
+      if (charCount >= 420 || paragraphCount >= 4) flushText()
+      continue
+    }
+
+    for (const paragraph of splitParagraphForTiles(item.line)) {
+      fragments.push({ type: 'paragraph', text: paragraph })
+      charCount += paragraph.trim().length
+      paragraphCount += 1
+      if (charCount >= 420 || paragraphCount >= 3) flushText()
+    }
+  }
+
+  flushText()
+  return tiles
+}
+
+function arrangeArticleTiles(tiles: ArticleTile[]) {
+  const textTiles = tiles.filter((tile): tile is Extract<ArticleTile, { type: 'text' }> => tile.type === 'text')
+  const tweetTiles = tiles.filter((tile): tile is Extract<ArticleTile, { type: 'tweet' }> => tile.type === 'tweet')
+  const arranged: ArticleTile[] = []
+
+  if (textTiles.length > 0) arranged.push(textTiles.shift()!)
+  if (tweetTiles.length > 0) arranged.push(tweetTiles.shift()!)
+  if (textTiles.length > 0) arranged.push(textTiles.shift()!)
+  if (tweetTiles.length > 0) arranged.push(tweetTiles.shift()!)
+
+  while (textTiles.length > 0 || tweetTiles.length > 0) {
+    if (tweetTiles.length > textTiles.length && tweetTiles.length > 0) arranged.push(tweetTiles.shift()!)
+    if (textTiles.length > 0) arranged.push(textTiles.shift()!)
+    if (tweetTiles.length > 0) arranged.push(tweetTiles.shift()!)
+    if (tweetTiles.length > textTiles.length && tweetTiles.length > 0) arranged.push(tweetTiles.shift()!)
+  }
+
+  return arranged
+}
+
+function getArticlePackageKind(items: SectionItem[], index: number): ArticlePackageKind {
+  const tweetCount = items.filter((item) => item.type === 'tweet').length
+  const textLength = items.reduce((total, item) => total + (item.type === 'text' ? item.line.trim().length : 0), 0)
+  const contentWeight = textLength + tweetCount * 360
+
+  if (index === 0) return 'lead'
+  if (contentWeight >= 1700 || tweetCount >= 4 || textLength > 1050) return 'feature'
+  if (contentWeight >= 780 || tweetCount >= 2 || textLength > 520) return 'standard'
+  return 'brief'
+}
+
+function getTextTileSpan(tile: Extract<ArticleTile, { type: 'text' }>, columns: number) {
+  if (columns <= 1) return 1
+  const hasList = tile.fragments.some((fragment) => fragment.type === 'list')
+
+  if (columns === 2) {
+    return 1
+  }
+
+  if (tile.lead && tile.charCount > 200) return 2
+  if (tile.charCount > 520 || hasList) return 2
+  return 1
+}
+
+function renderTextTileFragments(fragments: TextFragment[], lead: boolean, prefix: string) {
+  let dropCapPending = lead
+  return fragments.map((fragment, index) => {
+    if (fragment.type === 'spacer') return <div key={`${prefix}s-${index}`} class="np-text-fragment np-text-spacer" />
+    if (fragment.type === 'list') {
+      return fragment.ordered ? (
+        <ol key={`${prefix}ol-${index}`} class="np-text-fragment np-text-list list-decimal">
+          {fragment.entries.map((entry, li) => <li key={`${prefix}ol-${index}-${li}`}>{parseBoldText(entry)}</li>)}
+        </ol>
+      ) : (
+        <ul key={`${prefix}ul-${index}`} class="np-text-fragment np-text-list list-disc">
+          {fragment.entries.map((entry, li) => <li key={`${prefix}ul-${index}-${li}`}>{parseBoldText(entry)}</li>)}
+        </ul>
+      )
+    }
+    const className = dropCapPending ? 'np-text-fragment np-text-paragraph np-dropcap' : 'np-text-fragment np-text-paragraph'
+    dropCapPending = false
+    return <p key={`${prefix}p-${index}`} class={className}>{parseBoldText(fragment.text)}</p>
+  })
+}
+
+function MeasuredGridItem({
+  className,
+  colSpan,
+  children,
+}: {
+  className: string
+  colSpan: number
+  children: preact.ComponentChildren
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [rowSpan, setRowSpan] = useState(1)
+
+  useEffect(() => {
+    const node = ref.current
+    if (!node) return
+    let frame = 0
+
+    const update = () => {
+      frame = 0
+      const parent = node.parentElement
+      const styles = parent ? window.getComputedStyle(parent) : null
+      const rowSize = styles ? parseFloat(styles.getPropertyValue('--np-grid-row')) || NP_GRID_ROW_FALLBACK : NP_GRID_ROW_FALLBACK
+      const gap = styles ? parseFloat(styles.getPropertyValue('--np-grid-gap-y')) || NP_GRID_ROW_GAP_FALLBACK : NP_GRID_ROW_GAP_FALLBACK
+      const height = node.getBoundingClientRect().height
+      setRowSpan(Math.max(1, Math.ceil((height + gap) / (rowSize + gap))))
+    }
+
+    const schedule = () => {
+      if (frame) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(update)
+    }
+
+    schedule()
+    const observer = new ResizeObserver(schedule)
+    observer.observe(node)
+    window.addEventListener('resize', schedule)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', schedule)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [colSpan])
+
+  return (
+    <div
+      class={className}
+      style={{ gridColumn: `span ${colSpan}`, gridRow: `span ${rowSpan}` }}
+    >
+      <div ref={ref} class="np-grid-tile-inner">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefix: string }) {
+  const gridRef = useRef<HTMLDivElement>(null)
+  const [columns, setColumns] = useState(1)
+  const maxColumns = getArticleMaxColumns(items)
+  const tiles = arrangeArticleTiles(buildArticleTiles(items))
+
+  useEffect(() => {
+    const node = gridRef.current
+    if (!node) return
+
+    const updateColumns = () => {
+      const width = node.getBoundingClientRect().width
+      let next = 1
+      if (maxColumns >= 3 && width >= 960) next = 3
+      else if (maxColumns >= 2 && width >= 520) next = 2
+      setColumns((prev) => (prev === next ? prev : next))
+    }
+
+    updateColumns()
+    const observer = new ResizeObserver(updateColumns)
+    observer.observe(node)
+    window.addEventListener('resize', updateColumns)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', updateColumns)
+    }
+  }, [maxColumns])
+
+  return (
+    <div
+      ref={gridRef}
+      class="np-article-grid"
+      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+    >
+      {tiles.map((tile, index) => {
+        if (tile.type === 'tweet') {
+          return tile.tweet ? (
+            <MeasuredGridItem key={`${prefix}t-${index}`} className="np-grid-tile np-grid-tile-tweet" colSpan={1}>
+              <TweetCard tweet={tile.tweet} expandBehavior="detail" />
+            </MeasuredGridItem>
+          ) : (
+            <MeasuredGridItem key={`${prefix}t-${index}`} className="np-grid-tile np-grid-tile-fallback" colSpan={1}>
+              <div class="np-tweet">Referenced post is no longer available</div>
+            </MeasuredGridItem>
+          )
+        }
+
+        return (
+          <MeasuredGridItem
+            key={`${prefix}x-${index}`}
+            className="np-grid-tile np-grid-tile-text"
+            colSpan={getTextTileSpan(tile, columns)}
+          >
+            <div class="np-text-tile">
+              {renderTextTileFragments(tile.fragments, tile.lead, `${prefix}${index}-`)}
+            </div>
+          </MeasuredGridItem>
+        )
+      })}
+    </div>
+  )
+}
+
+function NewspaperContent({ text, refTweets, reportDate, tweetCount: totalTweetCount, issueNumber, leftControls, controls, historyPanel, showMasthead = true }: {
   text: string
   refTweets: Map<string, Tweet>
   reportDate: string
   tweetCount: number
   issueNumber: number
+  leftControls?: preact.ComponentChildren
+  controls?: preact.ComponentChildren
+  historyPanel?: preact.ComponentChildren
+  showMasthead?: boolean
 }) {
   const cleaned = text.replace(/\\([^\\])/g, '$1')
   const lines = cleaned.split('\n')
@@ -1760,100 +2271,55 @@ function NewspaperContent({ text, refTweets, reportDate, tweetCount: totalTweetC
   const dateStr = d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 
-  const renderArticleFlow = (items: SectionItem[], prefix: string) => {
-    const blocks: preact.ComponentChildren[] = []
-    let firstParagraph = true
-
-    for (let ii = 0; ii < items.length; ii++) {
-      const item = items[ii]
-      if (item.type === 'tweet') {
-        blocks.push(
-          item.tweet
-            ? <div key={`${prefix}t-${ii}`} class="np-flow-tweet"><TweetCard tweet={item.tweet} expandBehavior="detail" /></div>
-            : <div key={`${prefix}t-${ii}`} class="np-tweet np-flow-tweet" style={{ fontStyle: 'italic', color: 'var(--np-text-muted)' }}>Referenced post is no longer available</div>,
-        )
-        continue
-      }
-
-      const line = item.line.trim()
-      if (!line) {
-        blocks.push(<div key={`${prefix}s-${ii}`} class="np-spacer np-flow-spacer" />)
-        continue
-      }
-
-      const unordered = item.line.match(/^[-*]\s+(.*)/)
-      const ordered = item.line.match(/^\d+\.\s+(.*)/)
-      if (unordered || ordered) {
-        const orderedList = !!ordered
-        const entries: string[] = []
-        for (; ii < items.length; ii++) {
-          const next = items[ii]
-          if (next.type !== 'text') {
-            ii--
-            break
-          }
-          const match = orderedList
-            ? next.line.match(/^\d+\.\s+(.*)/)
-            : next.line.match(/^[-*]\s+(.*)/)
-          if (!match) {
-            ii--
-            break
-          }
-          entries.push(match[1])
-        }
-
-        blocks.push(
-          orderedList
-            ? (
-                <ol key={`${prefix}l-${ii}`} class="np-flow-list list-decimal">
-                  {entries.map((entry, li) => <li key={`${prefix}ol-${ii}-${li}`}>{parseBoldText(entry)}</li>)}
-                </ol>
-              )
-            : (
-                <ul key={`${prefix}l-${ii}`} class="np-flow-list list-disc">
-                  {entries.map((entry, li) => <li key={`${prefix}ul-${ii}-${li}`}>{parseBoldText(entry)}</li>)}
-                </ul>
-              ),
-        )
-        continue
-      }
-
-      const className = firstParagraph ? 'np-flow-paragraph np-dropcap' : 'np-flow-paragraph'
-      blocks.push(<p key={`${prefix}p-${ii}`} class={className}>{parseBoldText(item.line)}</p>)
-      firstParagraph = false
-    }
-
-    return blocks
-  }
-
   return (
     <div>
-      <div class="np-masthead">
-        <div class="np-masthead-title">The Daily Omens</div>
-        <div class="np-masthead-sub">Your AI-Curated {d.getHours() < 12 ? 'Morning' : d.getHours() < 17 ? 'Afternoon' : 'Evening'} Briefing</div>
-        <div class="np-masthead-rule" />
-        <div class="np-masthead-meta">
-          <span>{dateStr}</span>
-          <span>No. {issueNumber}</span>
-          <span>{totalTweetCount} sources &middot; {timeStr}</span>
-        </div>
-      </div>
+      {showMasthead && (
+        <>
+          <div class="np-masthead">
+            <div class="np-masthead-title">The Daily Omens</div>
+            <div class="np-masthead-subrow">
+              {leftControls ? (
+                <div class="np-masthead-left-controls">
+                  {leftControls}
+                </div>
+              ) : (
+                <div aria-hidden="true" />
+              )}
+              <div class="np-masthead-sub">Your AI-Curated {d.getHours() < 12 ? 'Morning' : d.getHours() < 17 ? 'Afternoon' : 'Evening'} Briefing</div>
+              {controls ? (
+                <div class="np-masthead-controls">
+                  {controls}
+                </div>
+              ) : (
+                <div aria-hidden="true" />
+              )}
+            </div>
+            <div class="np-masthead-rule" />
+            <div class="np-masthead-meta">
+              <span>{dateStr}</span>
+              <span>No. {issueNumber}</span>
+              <span>{totalTweetCount} sources &middot; {timeStr}</span>
+            </div>
+          </div>
+          {historyPanel}
+        </>
+      )}
 
-      {/* Articles: one after another, top to bottom */}
-      {articles.map((article, ai) => (
-        <article
-          key={ai}
-          class="np-article"
-          style={{ ['--np-column-width' as any]: getArticleColumnWidth(article.items) }}
-        >
-          <div class={`np-article-header np-section-header ${ai === 0 ? 'np-section-header-lg' : article.headerLevel <= 2 ? 'np-section-header-md' : 'np-section-header-sm'}`}>
-            {article.header}
-          </div>
-          <div class="np-body np-article-flow">
-            {renderArticleFlow(article.items, `${ai}-`)}
-          </div>
-        </article>
-      ))}
+      <div class="np-page-grid">
+        {articles.map((article, ai) => {
+          const packageKind = getArticlePackageKind(article.items, ai)
+          return (
+            <article key={ai} class={`np-article np-article-${packageKind}`}>
+              <div class={`np-article-header np-section-header ${ai === 0 ? 'np-section-header-lg' : article.headerLevel <= 2 ? 'np-section-header-md' : 'np-section-header-sm'}`}>
+                {article.header}
+              </div>
+              <div class="np-body">
+                <NewspaperArticleLayout items={article.items} prefix={`${ai}-`} />
+              </div>
+            </article>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -1868,16 +2334,17 @@ function ElapsedTime({ since }: { since: number }) {
   return <span class="text-xs text-zinc-600 tabular-nums">{Math.floor(s / 60)}:{(s % 60).toString().padStart(2, '0')}</span>
 }
 
+function getBriefingLabel(date: Date) {
+  return `Your AI-Curated ${date.getHours() < 12 ? 'Morning' : date.getHours() < 17 ? 'Afternoon' : 'Evening'} Briefing`
+}
+
 function AiReportView({ demo }: { demo?: boolean } = {}) {
   const prefix = demo ? '/demo' : '/ai'
   const { data: settings, loading: settingsLoading, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number; reportAtHour?: number; nextReportAt?: number | null }>(demo ? null : '/ai/settings')
   const { data, loading, refetch } = useApi<{ report: AiReportData | null }>(`${prefix}/report`)
   const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>(`${prefix}/reports`)
   const [newspaperMode, setNewspaperMode] = useState(() => localStorage.getItem('omens-newspaper-mode') === '1')
-  useEffect(() => {
-    document.documentElement.classList.toggle('newspaper-active', newspaperMode)
-    return () => document.documentElement.classList.remove('newspaper-active')
-  }, [newspaperMode])
+  useNewspaperActive(newspaperMode)
   const toggleNewspaperMode = useCallback(() => {
     setNewspaperMode((prev) => {
       const next = !prev
@@ -2028,6 +2495,18 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     setViewingReport(null)
   }
 
+  if (((!demo && settingsLoading) || loading) && newspaperMode) {
+    return (
+      <NewspaperShell
+        leftControls={<NewspaperRouteControls current="report" showSettings={!demo} />}
+        showMeta={false}
+      >
+        <div class="min-h-[18rem]">
+          <Spinner />
+        </div>
+      </NewspaperShell>
+    )
+  }
   if ((!demo && settingsLoading) || loading) return <Spinner />
   if (!demo && !settings?.configured) return <AiSection onSave={refetchSettings} />
 
@@ -2036,67 +2515,144 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
   if (activeReport?.refTweets) {
     for (const t of activeReport.refTweets) refTweetMap.set(t.id, t)
   }
+  const activeReportDate = activeReport ? new Date(activeReport.createdAt) : null
+  const reportIssueNumber = activeReport
+    ? (pastData ? pastData.reports.length - (pastData.reports.findIndex((r) => r.id === (viewingReportId || activeReport.id))) : 1)
+    : 1
+  const historyPanel = showPastReports && pastData ? (() => {
+    const PAGE_SIZE = 5
+    const reports = pastData.reports
+    const totalPages = Math.ceil(reports.length / PAGE_SIZE)
+    const visible = reports.slice((historyPage - 1) * PAGE_SIZE, historyPage * PAGE_SIZE)
+    return (
+      <div class={newspaperMode ? 'np-history-panel' : 'mb-3 rounded-lg border border-zinc-800 bg-zinc-900'}>
+        <div class={newspaperMode ? 'np-history-list' : 'divide-y divide-zinc-800'}>
+          {visible.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => viewPastReport(r.id)}
+              class={newspaperMode
+                ? `np-history-item ${viewingReportId === r.id ? 'np-history-item-active' : ''}`
+                : `w-full text-left px-3 py-2 text-sm hover:bg-zinc-800 transition-colors ${viewingReportId === r.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400'}`}
+            >
+              <div class={newspaperMode ? 'np-history-row' : 'flex items-center justify-between'}>
+                <span class={newspaperMode ? 'np-history-time' : ''}>{new Date(r.createdAt).toLocaleString()}</span>
+                <span class={newspaperMode ? 'np-history-count' : 'text-xs text-zinc-600'}>{r.tweetCount} posts</span>
+              </div>
+            </button>
+          ))}
+        </div>
+        {totalPages > 1 && (
+          <div class={newspaperMode ? 'np-history-pager' : 'flex items-center justify-center gap-3 px-3 py-2 border-t border-zinc-800'}>
+            <button type="button" onClick={() => setHistoryPage((p) => Math.max(1, p - 1))} disabled={historyPage <= 1}
+              class="text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-30">Prev</button>
+            <span class={newspaperMode ? 'np-history-page' : 'text-xs text-zinc-600'}>{historyPage}/{totalPages}</span>
+            <button type="button" onClick={() => setHistoryPage((p) => Math.min(totalPages, p + 1))} disabled={historyPage >= totalPages}
+              class="text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-30">Next</button>
+          </div>
+        )}
+      </div>
+    )
+  })() : null
+  const newspaperControls = activeReport ? (
+    <>
+      <CopyShareButton url={`${window.location.origin}/report/${viewingReportId || activeReport.id}`} iconOnly />
+      {pastData && pastData.reports.length > 1 && (
+        <button type="button" onClick={() => setShowPastReports(!showPastReports)}
+          class={showPastReports ? 'text-zinc-100' : ''}
+          title="Report history">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </button>
+      )}
+      {viewingReportId && (
+        <button type="button" onClick={backToLatest} title="Back to latest">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
+        </button>
+      )}
+      {!demo && <button
+        type="button"
+        onClick={generate}
+        disabled={generating}
+        title={generating ? 'Generating...' : 'Generate new report'}
+      >
+        <svg class={`w-3.5 h-3.5 ${generating ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      </button>}
+    </>
+  ) : null
+  const newspaperLeftControls = <NewspaperRouteControls current="report" showSettings={!demo} />
+  const reportMetaRow = activeReportDate ? (
+    <div class="np-masthead-meta">
+      <span>{activeReportDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+      <span>No. {reportIssueNumber}</span>
+      <span>{activeReport.tweetCount} sources &middot; {activeReportDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+    </div>
+  ) : undefined
+  const renderGenerationPanel = (newspaperStyle: boolean) => (
+    <div class={newspaperStyle ? 'np-status-panel' : 'mb-4'}>
+      <div class={newspaperStyle ? 'np-status-head' : 'flex items-center gap-2 text-sm text-zinc-400 mb-2'}>
+        <div class={newspaperStyle ? 'np-status-title' : 'flex items-center gap-2'}>
+          <span class="np-status-indicator" aria-hidden="true" />
+          <span>{genStatus}</span>
+        </div>
+        {genStartedAt > 0 && (
+          <div class={newspaperStyle ? 'np-status-meta' : ''}>
+            <ElapsedTime since={genStartedAt} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  if (generating && !activeReport) {
+    return (
+      <NewspaperShell
+        leftControls={newspaperLeftControls}
+        rightControls={newspaperControls}
+        showMeta={false}
+        subtitle={getBriefingLabel(new Date())}
+      >
+        {error && <p class="text-red-400 text-sm text-center mb-3">{error}</p>}
+        {renderGenerationPanel(true)}
+        {streamContent && (
+          <NewspaperContent
+            text={streamContent}
+            refTweets={streamTweets}
+            reportDate={new Date().toISOString()}
+            tweetCount={streamTweets.size}
+            issueNumber={(pastData?.reports.length || 0) + 1}
+            showMasthead={false}
+          />
+        )}
+      </NewspaperShell>
+    )
+  }
 
   return (
     <div>
       {error && <p class="text-red-400 text-sm text-center mb-3">{error}</p>}
 
       {generating && (
-        <div class="mb-4">
-          <div class="flex items-center gap-2 text-sm text-zinc-400 mb-2">
-            <svg class="w-4 h-4 animate-spin shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            <span>{genStatus}</span>
-            {genStartedAt > 0 && <ElapsedTime since={genStartedAt} />}
-          </div>
-          {streamContent && (
+        <>
+          {renderGenerationPanel(newspaperMode)}
+          {streamContent && !newspaperMode && (
             <div class="rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden">
               {renderReportContent(streamContent, streamTweets)}
             </div>
           )}
-        </div>
+        </>
       )}
 
       {activeReport && (
         <div>
-
-      {/* Past reports dropdown with pagination */}
-      {showPastReports && pastData && (() => {
-        const PAGE_SIZE = 5
-        const reports = pastData.reports
-        const totalPages = Math.ceil(reports.length / PAGE_SIZE)
-        const visible = reports.slice((historyPage - 1) * PAGE_SIZE, historyPage * PAGE_SIZE)
-        return (
-          <div class="mb-3 rounded-lg border border-zinc-800 bg-zinc-900">
-            <div class="divide-y divide-zinc-800">
-              {visible.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => viewPastReport(r.id)}
-                  class={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-800 transition-colors ${viewingReportId === r.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400'}`}
-                >
-                  <div class="flex items-center justify-between">
-                    <span>{new Date(r.createdAt).toLocaleString()}</span>
-                    <span class="text-xs text-zinc-600">{r.tweetCount} posts</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-            {totalPages > 1 && (
-              <div class="flex items-center justify-center gap-3 px-3 py-2 border-t border-zinc-800">
-                <button type="button" onClick={() => setHistoryPage((p) => Math.max(1, p - 1))} disabled={historyPage <= 1}
-                  class="text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-30">Prev</button>
-                <span class="text-xs text-zinc-600">{historyPage}/{totalPages}</span>
-                <button type="button" onClick={() => setHistoryPage((p) => Math.min(totalPages, p + 1))} disabled={historyPage >= totalPages}
-                  class="text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-30">Next</button>
-              </div>
-            )}
-          </div>
-        )
-      })()}
-          <div class="flex items-center justify-between gap-2 mb-2 text-xs text-zinc-500">
+          {!newspaperMode && historyPanel}
+          {!newspaperMode && <div class="flex items-center justify-between gap-2 mb-2 text-xs text-zinc-500">
               <span>{new Date(activeReport.createdAt).toLocaleString()} &middot; {activeReport.tweetCount} posts{!viewingReportId && settings?.nextReportAt ? (
                   <Countdown targetMs={settings.nextReportAt} format="hm" prefix=" &middot; next in " />
                 ) : null}</span>
@@ -2137,16 +2693,25 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
                   </svg>
                 </button>}
               </span>
-            </div>
-          <div class={newspaperMode ? 'newspaper np-outer' : 'rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden'}>
+            </div>}
+          <div class={newspaperMode ? '' : 'rounded-xl border border-zinc-800 bg-zinc-900 px-3 sm:px-5 py-4 sm:py-5 overflow-hidden'}>
             {newspaperMode
-              ? <NewspaperContent
-                  text={activeReport.content}
-                  refTweets={refTweetMap}
-                  reportDate={activeReport.createdAt}
-                  tweetCount={activeReport.tweetCount}
-                  issueNumber={pastData ? pastData.reports.length - (pastData.reports.findIndex((r) => r.id === (viewingReportId || activeReport.id))) : 1}
-                />
+              ? <NewspaperShell
+                  leftControls={newspaperLeftControls}
+                  rightControls={newspaperControls}
+                  metaRow={reportMetaRow}
+                  subtitle={getBriefingLabel(activeReportDate || new Date())}
+                >
+                  {historyPanel}
+                  <NewspaperContent
+                    text={activeReport.content}
+                    refTweets={refTweetMap}
+                    reportDate={activeReport.createdAt}
+                    tweetCount={activeReport.tweetCount}
+                    issueNumber={reportIssueNumber}
+                    showMasthead={false}
+                  />
+                </NewspaperShell>
               : renderReportContent(activeReport.content, refTweetMap)}
           </div>
         </div>
@@ -2280,6 +2845,7 @@ function useAiSettings(demo?: boolean): { minScore: number; configured: boolean 
 }
 
 export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise<void>) => void; demo?: boolean }) {
+  useNewspaperActive()
   const { nudges, onNudge, feedback } = useNudges(demo)
   const { minScore, configured: aiConfigured } = useAiSettings(demo)
   const [feedKey, setFeedKey] = useState(0) // bump to re-fetch feed
@@ -2370,11 +2936,28 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
     setScoringBaseline(null)
     setFeedKey((k) => k + 1)
   }
+  const tweets = dedupThreads(allTweets)
+  const rightControls = !demo ? (
+    <button
+      type="button"
+      onClick={refresh}
+      disabled={fetchingPosts}
+      title={fetchingPosts ? 'Refreshing...' : 'Refresh filtered feed'}
+    >
+      <svg class={`w-3.5 h-3.5 ${fetchingPosts ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+    </button>
+  ) : null
 
   return (
-    <div>
+    <NewspaperShell
+      leftControls={<NewspaperRouteControls current="filtered" showSettings={!demo} />}
+      rightControls={rightControls}
+      showMeta={false}
+    >
       {feedback && (
-        <div class="fixed top-16 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-200 shadow-lg">
+        <div class="np-toast">
           {feedback}
         </div>
       )}
@@ -2384,55 +2967,53 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
         // Progress based on batch completion, not total scored ratio
         const pct = scoringTotalBatches > 0 ? ((scoringBatch - 1) / scoringTotalBatches) * 100 : 0
         return (
-          <div class="mb-3 rounded-lg bg-zinc-900 border border-zinc-800 px-4 py-3">
-            <div class="flex items-center justify-between text-sm mb-2">
-              <div class="flex items-center gap-2 text-zinc-300">
-                <svg class="w-4 h-4 animate-spin shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path d="M21 12a9 9 0 11-6.219-8.56" />
-                </svg>
+          <div class="np-status-panel">
+            <div class="np-status-head">
+              <div class="np-status-title">
+                <span class="np-status-indicator" aria-hidden="true" />
                 {scoringTotalBatches > 0
                   ? `Scoring batch ${scoringBatch} of ${scoringTotalBatches}`
                   : 'Scoring posts...'}
               </div>
               <div class="flex items-center gap-2">
-                <span class="text-xs text-zinc-400 tabular-nums">{pendingCount} pending</span>
+                <span class="np-status-meta tabular-nums">{pendingCount} pending</span>
                 <button
                   type="button"
-                  class="text-xs text-zinc-500 hover:text-zinc-300"
+                  class="np-status-meta hover:text-[var(--np-text)]"
                   onClick={() => setShowScoringDetails((v) => !v)}
                 >
                   {showScoringDetails ? 'Hide' : 'Details'}
                 </button>
               </div>
             </div>
-            <div class="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div class="np-progress-track">
               <div
-                class="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                class="np-progress-bar"
                 style={{ width: `${pct}%` }}
               />
             </div>
             {showScoringDetails && scoringDetails && (
               <>
-                <div class="mt-2 pt-2 border-t border-zinc-800 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                  <span class="text-zinc-500">Total posts</span>
-                  <span class="text-zinc-300 text-right tabular-nums">{scoringDetails.total}</span>
-                  <span class="text-zinc-500">Scored</span>
-                  <span class="text-zinc-300 text-right tabular-nums">{scoringDetails.scored}</span>
-                  <span class="text-zinc-500">Pending</span>
-                  <span class="text-zinc-300 text-right tabular-nums">{scoringDetails.pending}</span>
-                  <span class="text-zinc-500">Above threshold</span>
-                  <span class="text-emerald-400 text-right tabular-nums">{scoringDetails.aboveThreshold}</span>
+                <div class="np-stats-grid">
+                  <span class="np-stat-label">Total posts</span>
+                  <span class="np-stat-value tabular-nums">{scoringDetails.total}</span>
+                  <span class="np-stat-label">Scored</span>
+                  <span class="np-stat-value tabular-nums">{scoringDetails.scored}</span>
+                  <span class="np-stat-label">Pending</span>
+                  <span class="np-stat-value tabular-nums">{scoringDetails.pending}</span>
+                  <span class="np-stat-label">Above threshold</span>
+                  <span class="np-stat-value np-stat-value-accent tabular-nums">{scoringDetails.aboveThreshold}</span>
                   {scoringTotalBatches > 0 && (
                     <>
-                      <span class="text-zinc-500">Current batch</span>
-                      <span class="text-zinc-300 text-right tabular-nums">{scoringBatch} / {scoringTotalBatches}</span>
+                      <span class="np-stat-label">Current batch</span>
+                      <span class="np-stat-value np-stat-value-strong tabular-nums">{scoringBatch} / {scoringTotalBatches}</span>
                     </>
                   )}
                 </div>
                 {scoringLog.length > 0 && (
-                  <div class="mt-2 pt-2 border-t border-zinc-800 space-y-0.5 max-h-32 overflow-y-auto scrollbar-dark">
+                  <div class="np-log scrollbar-dark">
                     {scoringLog.map((entry, i) => (
-                      <p key={i} class="text-[11px] text-zinc-500 font-mono break-all">{entry}</p>
+                      <p key={i} class="np-log-line">{entry}</p>
                     ))}
                   </div>
                 )}
@@ -2448,7 +3029,7 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
           <button
             type="button"
             onClick={showNewPosts}
-            class="rounded-full bg-emerald-600 px-4 py-1.5 text-xs text-white font-medium hover:bg-emerald-500 transition-colors shadow-lg pointer-events-auto"
+            class="np-new-pill pointer-events-auto"
           >
             Show {newReady} new post{newReady !== 1 ? 's' : ''}
           </button>
@@ -2460,31 +3041,38 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
       {error && <p class="text-red-400 text-center">{error}</p>}
 
       {allTweets.length === 0 && !loading && pendingCount === 0 && (
-        demo ? (
-          <p class="text-zinc-400 text-center py-20">No filtered posts available yet.</p>
-        ) : !aiConfigured ? <AiSection onSave={() => window.location.reload()} /> : (
-          <div class="flex flex-col items-center justify-center py-20">
-            <p class="text-zinc-400 mb-4">No posts to show yet. Fetch your feed first.</p>
-            <button type="button" onClick={refresh} disabled={fetchingPosts}
-              class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
-              {fetchingPosts ? 'Fetching...' : 'Fetch posts'}
-            </button>
-          </div>
-        )
+        <div class="np-page-grid">
+          <article class="np-article np-article-lead">
+            {demo ? (
+              <p class="text-zinc-400 text-center py-20">No filtered posts available yet.</p>
+            ) : !aiConfigured ? <AiSection onSave={() => window.location.reload()} /> : (
+              <div class="flex flex-col items-center justify-center py-20">
+                <p class="text-zinc-400 mb-4">No posts to show yet. Fetch your feed first.</p>
+                <button type="button" onClick={refresh} disabled={fetchingPosts}
+                  class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
+                  {fetchingPosts ? 'Fetching...' : 'Fetch posts'}
+                </button>
+              </div>
+            )}
+          </article>
+        </div>
       )}
 
-      <div class="flex flex-col gap-2">
-        {allTweets.length > 0 && dedupThreads(allTweets).map((tweet: any) => (
-          <TweetCard key={tweet.id} tweet={tweet} nudge={demo ? undefined : nudges.get(tweet.id) || null} onNudge={demo ? undefined : onNudge} score={tweet.score} minScore={minScore} />
+      <div class="feed-masonry">
+        {tweets.map((tweet: any) => (
+          <div key={tweet.id} class="feed-masonry-item">
+            <TweetCard tweet={tweet} nudge={demo ? undefined : nudges.get(tweet.id) || null} onNudge={demo ? undefined : onNudge} score={tweet.score} minScore={minScore} />
+          </div>
         ))}
       </div>
       <LoadMore remaining={remaining} loading={loadingMore} onLoad={loadMore} />
       {remaining === 0 && allTweets.length > 0 && !loading && <EndOfFeed />}
-    </div>
+    </NewspaperShell>
   )
 }
 
 export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise<void>) => void; demo?: boolean }) {
+  useNewspaperActive()
   const { nudges, onNudge, feedback } = useNudges(demo)
   const { minScore } = useAiSettings(demo)
   const [feedKey, setFeedKey] = useState(0)
@@ -2512,11 +3100,28 @@ export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise
   useEffect(() => {
     onRefreshRef?.(refresh)
   }, [refresh, onRefreshRef])
+  const tweets = dedupThreads(allTweets)
+  const rightControls = !demo ? (
+    <button
+      type="button"
+      onClick={refresh}
+      disabled={refreshing}
+      title={refreshing ? 'Refreshing...' : 'Refresh feed'}
+    >
+      <svg class={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+    </button>
+  ) : null
 
   return (
-    <div>
+    <NewspaperShell
+      leftControls={<NewspaperRouteControls current="feed" showSettings={!demo} />}
+      rightControls={rightControls}
+      showMeta={false}
+    >
       {(feedback || refreshCount !== null) && (
-        <div class="fixed top-16 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-200 shadow-lg">
+        <div class="np-toast">
           {refreshCount !== null ? (refreshCount > 0 ? `+${refreshCount} posts` : 'Nothing new') : feedback}
         </div>
       )}
@@ -2525,29 +3130,35 @@ export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise
       {error && <p class="text-red-400 text-center">{error}</p>}
 
       {allTweets.length === 0 && !loading && (
-        demo ? (
-          <p class="text-zinc-400 text-center py-20">No posts available yet.</p>
-        ) : (
-          <div class="flex flex-col items-center justify-center py-20">
-            <svg class="w-10 h-10 text-zinc-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
-              <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
-            </svg>
-            <p class="text-zinc-400 mb-4">No posts yet. Fetch your X feed to get started.</p>
-            <button type="button" onClick={refresh} disabled={refreshing}
-              class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
-              {refreshing ? 'Fetching...' : 'Fetch posts'}
-            </button>
-          </div>
-        )
+        <div class="np-page-grid">
+          <article class="np-article np-article-lead">
+            {demo ? (
+              <p class="text-zinc-400 text-center py-20">No posts available yet.</p>
+            ) : (
+              <div class="flex flex-col items-center justify-center py-20">
+                <svg class="w-10 h-10 text-zinc-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+                  <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
+                </svg>
+                <p class="text-zinc-400 mb-4">No posts yet. Fetch your X feed to get started.</p>
+                <button type="button" onClick={refresh} disabled={refreshing}
+                  class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50">
+                  {refreshing ? 'Fetching...' : 'Fetch posts'}
+                </button>
+              </div>
+            )}
+          </article>
+        </div>
       )}
 
-      <div class="flex flex-col gap-2">
-        {allTweets.length > 0 && dedupThreads(allTweets).map((tweet) => (
-          <TweetCard key={tweet.id} tweet={tweet} nudge={demo ? undefined : nudges.get(tweet.id) || null} onNudge={demo ? undefined : onNudge} score={(tweet as any).score} minScore={minScore} />
+      <div class="feed-masonry">
+        {tweets.map((tweet) => (
+          <div key={tweet.id} class="feed-masonry-item">
+            <TweetCard tweet={tweet} nudge={demo ? undefined : nudges.get(tweet.id) || null} onNudge={demo ? undefined : onNudge} score={(tweet as any).score} minScore={minScore} />
+          </div>
         ))}
       </div>
       <LoadMore remaining={remaining} loading={loadingMore} onLoad={loadMore} />
       {remaining === 0 && allTweets.length > 0 && !loading && <EndOfFeed />}
-    </div>
+    </NewspaperShell>
   )
 }

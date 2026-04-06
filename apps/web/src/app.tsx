@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'preact/hooks'
 import { Link, Redirect, Route, Switch, useLocation } from 'wouter-preact'
 import { api, setDemoMode } from './helpers/api'
 import { Spinner } from './helpers/spinner'
-import { AiReportPage, Feed, FilteredFeed } from './pages/feed'
+import { AiReportPage, Feed, FilteredFeed, NewspaperFixturePage } from './pages/feed'
 import { Login, Register } from './pages/login'
 import { Settings } from './pages/settings'
 import { ReportSharePage, SharePage } from './pages/share'
@@ -163,10 +163,13 @@ export function App() {
   if (reportMatch) {
     return <ReportSharePage id={reportMatch[1]} />
   }
+  if (location === '/fixture/newspaper') {
+    return <NewspaperFixturePage />
+  }
 
   return (
     <div class="min-h-screen bg-zinc-950 text-zinc-100">
-      <nav class="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur px-3 sm:px-4 py-3">
+      <nav class="app-nav sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur px-3 sm:px-4 py-3">
         <div class="mx-auto max-w-xl w-full flex items-center justify-between gap-2">
           <div class="flex items-center gap-2">
             <Link href="/" class="text-lg font-bold tracking-tight">

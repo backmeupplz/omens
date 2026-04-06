@@ -3,6 +3,7 @@ import { useLocation } from 'wouter-preact'
 import { api, API_BASE } from '../helpers/api'
 import { Countdown } from '../helpers/components'
 import { useApi } from '../helpers/hooks'
+import { NewspaperRouteControls, NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
 import { Spinner } from '../helpers/spinner'
 
 // === X Section ===
@@ -122,14 +123,23 @@ function XSection({ onXChange }: { onXChange: () => void }) {
               value={totp}
               onInput={(e) => setTotp((e.target as HTMLInputElement).value)}
             />
-            <button
-              type="button"
-              onClick={connect}
-              disabled={loading || !username || !password}
-              class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
-            >
-              {loading ? 'Reconnecting...' : 'Update credentials'}
-            </button>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={connect}
+                disabled={loading || !username || !password}
+                class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {loading ? 'Reconnecting...' : 'Update credentials'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowReconnect(false)}
+                class="rounded border border-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -635,8 +645,6 @@ function AiTuningSection() {
   const hasPending = internals.pendingNudges.length > 0 || internals.pendingInstructions.length > 0
 
   return (
-    <>
-    <hr class="border-zinc-800" />
     <div class="space-y-4">
       <h3 class="font-medium">AI Tuning</h3>
 
@@ -844,7 +852,6 @@ function AiTuningSection() {
         )}
       </div>
     </div>
-    </>
   )
 }
 
@@ -968,43 +975,47 @@ export function Settings({
   singleUser: boolean
   onLogout: () => void
 }) {
+  useNewspaperActive()
   return (
-    <div>
-      <div class="space-y-8">
-        <XSection onXChange={onXChange} />
+    <NewspaperShell leftControls={<NewspaperRouteControls current="settings" />} showMeta={false}>
+      <div class="np-settings-grid">
+        <article class="np-article np-settings-card">
+          <XSection onXChange={onXChange} />
+        </article>
         {xConnected && (
           <>
-            <hr class="border-zinc-800" />
-            <FetchIntervalSection />
-            <hr class="border-zinc-800" />
-            <AiSection />
-            <AiTuningSection />
-            <hr class="border-zinc-800" />
-            <ApiKeysSection />
+            <article class="np-article np-settings-card">
+              <FetchIntervalSection />
+            </article>
+            <article class="np-article np-settings-card">
+              <AiSection />
+            </article>
+            <article class="np-article np-settings-card np-settings-card-wide">
+              <AiTuningSection />
+            </article>
+            <article class="np-article np-settings-card">
+              <ApiKeysSection />
+            </article>
           </>
         )}
         {!singleUser && (
-          <>
-            <hr class="border-zinc-800" />
-            <div>
-              <button
-                type="button"
-                onClick={onLogout}
-                class="rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
-              >
-                Log out
-              </button>
+          <article class="np-article np-settings-card">
+            <div class="space-y-4">
+              <h3 class="font-medium">Session</h3>
+              <p class="text-sm text-zinc-500">Sign out of this Omens session on this device.</p>
+              <div>
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  class="rounded bg-zinc-800 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
+                >
+                  Log out
+                </button>
+              </div>
             </div>
-          </>
+          </article>
         )}
-        <VersionInfo />
       </div>
-    </div>
+    </NewspaperShell>
   )
-}
-
-function VersionInfo() {
-  const { data } = useApi<{ version: string }>('/version')
-  if (!data) return null
-  return <p class="text-xs text-zinc-700 text-center">Omens v{data.version}</p>
 }
