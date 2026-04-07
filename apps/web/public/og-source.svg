@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="paperGlow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1d1a17"/>
+      <stop offset="100%" stop-color="#141311"/>
+    </linearGradient>
+    <radialGradient id="spotlight" cx="50%" cy="12%" r="78%">
+      <stop offset="0%" stop-color="#fff6da" stop-opacity="0.07"/>
+      <stop offset="100%" stop-color="#fff6da" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="accentRule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#6f3a31" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#c95a47" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#6f3a31" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#paperGlow)"/>
+  <rect width="1200" height="630" fill="url(#spotlight)"/>
+
+  <rect x="46" y="38" width="1108" height="554" fill="none" stroke="#2a2621" stroke-width="2"/>
+  <line x1="62" y1="132" x2="1138" y2="132" stroke="#474139" stroke-width="4"/>
+  <line x1="62" y1="510" x2="1138" y2="510" stroke="url(#accentRule)" stroke-width="3"/>
+
+  <circle cx="188" cy="91" r="34" fill="none" stroke="#bcb4a6" stroke-opacity="0.48" stroke-width="5"/>
+  <circle cx="188" cy="91" r="24" fill="none" stroke="#c95a47" stroke-width="8"/>
+
+  <text x="600" y="92" text-anchor="middle" fill="#e6e0d2" font-family="Georgia, 'Times New Roman', serif" font-size="58" font-weight="700" letter-spacing="5">
+    THE DAILY OMENS
+  </text>
+  <text x="600" y="118" text-anchor="middle" fill="#777064" font-family="Arial, Helvetica, sans-serif" font-size="18" letter-spacing="5">
+    YOUR AI-CURATED MORNING BRIEFING
+  </text>
+
+  <text x="600" y="208" text-anchor="middle" fill="#c95a47" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" letter-spacing="3.2">
+    AI-FILTERED FEED FOR X
+  </text>
+  <text x="78" y="304" fill="#e6e0d2" font-family="Georgia, 'Times New Roman', serif" font-size="72" font-weight="700" letter-spacing="1.6">
+    BRING YOUR OWN AI.
+  </text>
+  <text x="78" y="390" fill="#e6e0d2" font-family="Georgia, 'Times New Roman', serif" font-size="72" font-weight="700" letter-spacing="1.6">
+    FILTER YOUR OWN X FEED.
+  </text>
+
+  <text x="78" y="460" fill="#bcb4a6" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="500">
+    Turn the people you follow into a personal newspaper.
+  </text>
+  <text x="78" y="538" fill="#c95a47" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" letter-spacing="2.2">
+    OMENS.ONLINE
+  </text>
+</svg>

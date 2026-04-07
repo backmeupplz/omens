@@ -19,6 +19,7 @@
     "envalid": "^8",
     "hono": "^4",
     "jose": "^6",
+    "satori": "^0.26.0",
     "zod": "^3.25"
   },
   "devDependencies": {

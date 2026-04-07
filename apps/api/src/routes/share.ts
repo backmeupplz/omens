@@ -192,7 +192,7 @@ shareRouter.get('/report/:id/og.png', async (c) => {
   const [report] = await db.select().from(aiReports).where(eq(aiReports.id, id)).limit(1)
   if (!report) return c.text('Not found', 404)
 
-  const png = generateReportOgPng({
+  const png = await generateReportOgPng({
     id: report.id,
     content: report.content,
     model: report.model,
