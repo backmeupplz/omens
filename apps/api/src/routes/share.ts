@@ -86,6 +86,16 @@ function spaWithOg(meta: { title: string; description: string; url: string; imag
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }
 
+function pngResponse(png: Uint8Array, maxAge: number, includeBody = true): Response {
+  return new Response(includeBody ? Buffer.from(png) : null, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Content-Length': String(png.byteLength),
+      'Cache-Control': `public, max-age=${maxAge}`,
+    },
+  })
+}
+
 // === JSON data endpoints (mounted under /api) ===
 
 export const shareDataRouter = new Hono()
@@ -157,12 +167,28 @@ shareRouter.get('/:handle/status/:tweetId/og.png', async (c) => {
     publishedAt: tweet.publishedAt,
   })
 
-  return new Response(Buffer.from(png), {
-    headers: {
-      'Content-Type': 'image/png',
-      'Cache-Control': 'public, max-age=604800',
-    },
+  return pngResponse(png, 604800)
+})
+
+shareRouter.on('HEAD', '/:handle/status/:tweetId/og.png', async (c) => {
+  const tweetId = c.req.param('tweetId')
+  const db = getDb(env.DATABASE_URL)
+  const [tweet] = await db.select().from(tweets)
+    .where(eq(tweets.tweetId, tweetId)).limit(1)
+  if (!tweet) return c.body(null, 404)
+
+  const png = await generateTweetOgPng({
+    tweetId: tweet.tweetId,
+    authorName: tweet.authorName,
+    authorHandle: tweet.authorHandle,
+    authorAvatar: tweet.authorAvatar,
+    content: tweet.content,
+    mediaUrls: tweet.mediaUrls,
+    card: tweet.card,
+    publishedAt: tweet.publishedAt,
   })
+
+  return pngResponse(png, 604800, false)
 })
 
 shareRouter.get('/:handle/status/:tweetId', async (c) => {
@@ -217,12 +243,24 @@ shareRouter.get('/report/:id/og.png', async (c) => {
     createdAt: report.createdAt,
   })
 
-  return new Response(Buffer.from(png), {
-    headers: {
-      'Content-Type': 'image/png',
-      'Cache-Control': 'public, max-age=86400',
-    },
+  return pngResponse(png, 86400)
+})
+
+shareRouter.on('HEAD', '/report/:id/og.png', async (c) => {
+  const id = c.req.param('id')
+  const db = getDb(env.DATABASE_URL)
+  const [report] = await db.select().from(aiReports).where(eq(aiReports.id, id)).limit(1)
+  if (!report) return c.body(null, 404)
+
+  const png = await generateReportOgPng({
+    id: report.id,
+    content: report.content,
+    model: report.model,
+    tweetCount: report.tweetCount,
+    createdAt: report.createdAt,
   })
+
+  return pngResponse(png, 86400, false)
 })
 
 shareRouter.get('/report/:id', async (c) => {

@@ -223,9 +223,9 @@ function ThemeSection() {
       <h3 class="font-medium">Edition Theme</h3>
       <p class="np-copy-muted text-sm">Choose the newspaper palette for Omens across report, feed, and settings.</p>
       <div class="np-inline-card np-inline-card-row">
-        <span class="np-copy-subtle text-sm">
+        <p class="np-copy-subtle text-sm">
           Current theme: <span class="np-copy-strong font-medium">{theme === 'light' ? 'Light' : 'Dark'}</span>
-        </span>
+        </p>
         <div class="flex flex-wrap gap-2">
           {THEME_OPTIONS.map((option) => (
             <button
@@ -243,6 +243,19 @@ function ThemeSection() {
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+function VersionSection() {
+  const { data: versionData } = useApi<{ version: string }>('/version')
+
+  if (!versionData?.version) return null
+
+  return (
+    <div class="np-inline-card">
+      <p class="np-copy-subtle text-sm">Build version</p>
+      <p class="np-copy-muted text-xs mt-1">Running Docker build v{versionData.version}</p>
     </div>
   )
 }
@@ -526,7 +539,6 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
 
 function SettingsOverview({ xConnected }: { xConnected: boolean }) {
   const { data: aiSettings } = useApi<Pick<AiSettingsData, 'configured' | 'provider' | 'model'>>('/ai/settings')
-  const { data: versionData } = useApi<{ version: string }>('/version')
   const aiReady = !!aiSettings?.configured
   const providerName = aiSettings?.provider
     ? (AI_PROVIDERS.find((p) => p.id === aiSettings.provider)?.name || aiSettings.provider)
@@ -570,9 +582,7 @@ function SettingsOverview({ xConnected }: { xConnected: boolean }) {
       steps={steps}
     >
       <ThemeSection />
-      {versionData?.version && (
-        <p class="np-copy-muted text-xs">Running Docker build v{versionData.version}</p>
-      )}
+      <VersionSection />
     </SetupStateBlock>
   )
 }

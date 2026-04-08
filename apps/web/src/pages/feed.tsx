@@ -1912,6 +1912,130 @@ Karpathy's framing around personal research knowledge bases and Farza's prototyp
 }
 
 type SectionItem = { type: 'text' | 'tweet'; line: string; tweet?: Tweet }
+type ParsedReportSection = {
+  header: string | null
+  headerLevel: number
+  items: SectionItem[]
+  anchorId?: string
+}
+
+function slugifyHeadline(text: string): string {
+  const slug = text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug || 'section'
+}
+
+function parseReportSections(text: string, refTweets: Map<string, Tweet>): ParsedReportSection[] {
+  const cleaned = text.replace(/\\([^\\])/g, '$1')
+  const lines = cleaned.split('\n')
+  const sections: ParsedReportSection[] = []
+  let current: ParsedReportSection = { header: null, headerLevel: 0, items: [] }
+  const slugCounts = new Map<string, number>()
+
+  for (const line of lines) {
+    const h1 = line.match(/^# (.+)/)
+    const h2 = line.match(/^## (.+)/)
+    const h3 = line.match(/^### (.+)/)
+    if (h1 || h2 || h3) {
+      if (current.items.length > 0 || current.header) sections.push(current)
+      const header = (h1 || h2 || h3)![1]
+      const baseSlug = slugifyHeadline(header)
+      const seen = slugCounts.get(baseSlug) || 0
+      slugCounts.set(baseSlug, seen + 1)
+      current = {
+        header,
+        headerLevel: h1 ? 1 : h2 ? 2 : 3,
+        items: [],
+        anchorId: seen === 0 ? `report-${baseSlug}` : `report-${baseSlug}-${seen + 1}`,
+      }
+      continue
+    }
+    const tweetMatch = line.match(/\[\[tweet:([^\]]+)\]\]/)
+    if (tweetMatch) current.items.push({ type: 'tweet', line, tweet: refTweets.get(tweetMatch[1]) || undefined })
+    else current.items.push({ type: 'text', line })
+  }
+
+  if (current.items.length > 0 || current.header) sections.push(current)
+  return sections
+}
+
+function ReportOutlineMenu({ sections }: { sections: Array<{ header: string; anchorId: string; headerLevel: number }> }) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => setOpen(false), [sections])
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  const scrollToSection = (anchorId: string) => {
+    const el = document.getElementById(anchorId)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setOpen(false)
+  }
+
+  if (sections.length === 0) return null
+
+  return (
+    <div ref={menuRef} class={`np-outline-menu ${open ? 'np-outline-menu-open' : ''}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        class={open ? 'np-history-toggle-active' : ''}
+        title="Headlines"
+        aria-label="Headlines"
+        aria-expanded={open}
+      >
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+      {open && (
+        <div class="np-outline-panel">
+          <div class="np-outline-panel-head">
+            <span aria-hidden="true" class="np-outline-close-spacer" />
+            <div class="np-outline-panel-title">Headlines</div>
+            <button
+              type="button"
+              class="np-outline-close"
+              onClick={() => setOpen(false)}
+              aria-label="Close headlines"
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+          <div class="np-outline-list">
+            {sections.map((section) => (
+              <button
+                key={section.anchorId}
+                type="button"
+                onClick={() => scrollToSection(section.anchorId)}
+                class={`np-outline-item np-outline-item-level-${Math.min(section.headerLevel, 3)}`}
+              >
+                {section.header}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 type TextFragment =
   | { type: 'paragraph'; text: string }
   | { type: 'list'; ordered: boolean; entries: string[] }
@@ -2193,29 +2317,7 @@ function NewspaperContent({ text, refTweets, reportDate, tweetCount: totalTweetC
   historyPanel?: preact.ComponentChildren
   showMasthead?: boolean
 }) {
-  const cleaned = text.replace(/\\([^\\])/g, '$1')
-  const lines = cleaned.split('\n')
-
-  // Parse into sections
-  const sections: Array<{ header: string | null; headerLevel: number; items: SectionItem[] }> = []
-  let current: typeof sections[0] = { header: null, headerLevel: 0, items: [] }
-  for (const line of lines) {
-    const h1 = line.match(/^# (.+)/)
-    const h2 = line.match(/^## (.+)/)
-    const h3 = line.match(/^### (.+)/)
-    if (h1 || h2 || h3) {
-      if (current.items.length > 0 || current.header) sections.push(current)
-      current = { header: (h1 || h2 || h3)![1], headerLevel: h1 ? 1 : h2 ? 2 : 3, items: [] }
-      continue
-    }
-    const tweetMatch = line.match(/\[\[tweet:([^\]]+)\]\]/)
-    if (tweetMatch) {
-      current.items.push({ type: 'tweet', line, tweet: refTweets.get(tweetMatch[1]) || undefined })
-    } else {
-      current.items.push({ type: 'text', line })
-    }
-  }
-  if (current.items.length > 0 || current.header) sections.push(current)
+  const sections = useMemo(() => parseReportSections(text, refTweets), [text, refTweets])
 
   const articles = sections.filter((s) => s.header)
   const renderArticlePackage = (
@@ -2224,7 +2326,7 @@ function NewspaperContent({ text, refTweets, reportDate, tweetCount: totalTweetC
   ) => {
     const packageKind = getArticlePackageKind(article.items, index)
     return (
-      <article key={index} class={`np-article np-article-${packageKind}`}>
+      <article key={article.anchorId || index} id={article.anchorId} class={`np-article np-article-${packageKind} np-report-article`}>
         <div class={`np-article-header np-section-header ${index === 0 ? 'np-section-header-lg' : article.headerLevel <= 2 ? 'np-section-header-md' : 'np-section-header-sm'}`}>
           {article.header}
         </div>
@@ -2335,9 +2437,18 @@ export function NewspaperReportPage({
   postContent?: preact.ComponentChildren
 }) {
   const date = new Date(reportDate)
+  const outlineSections = useMemo(
+    () => parseReportSections(text, refTweets)
+      .filter((section): section is ParsedReportSection & { header: string; anchorId: string } => !!section.header && !!section.anchorId)
+      .map((section) => ({ header: section.header, anchorId: section.anchorId, headerLevel: section.headerLevel })),
+    [text, refTweets],
+  )
   const metaRow = (
     <div class="np-masthead-meta">
-      <span>{date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+      <span class="np-meta-with-outline">
+        <ReportOutlineMenu sections={outlineSections} />
+        <span>{date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+      </span>
       {showIssueNumber && <span>No. {issueNumber}</span>}
       <span>{tweetCount} sources &middot; {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
     </div>
