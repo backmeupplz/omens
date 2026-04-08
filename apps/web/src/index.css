@@ -1067,8 +1067,6 @@ html.newspaper-active #root > div {
 
 .np-article-masonry-item > .np-article {
   width: 100%;
-  content-visibility: auto;
-  contain-intrinsic-size: 1400px;
 }
 
 .np-share-promo {
