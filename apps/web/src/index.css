@@ -10,6 +10,312 @@
   --np-border-light: #282520;
   --np-rule: #474139;
   --np-accent: #c95a47;
+  --np-page-radial: rgba(255, 248, 224, 0.04);
+  --np-page-linear: rgba(255, 248, 224, 0.02);
+  --np-nav-bg:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.025), rgba(255, 248, 224, 0.008)),
+    rgba(20, 19, 17, 0.94);
+  --np-nav-hover: rgba(255, 248, 224, 0.045);
+  --np-inline-card-bg:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.025), rgba(255, 248, 224, 0.01)),
+    rgba(0, 0, 0, 0.08);
+  --np-inline-code-bg: rgba(17, 15, 13, 0.82);
+  --np-alert-bg: rgba(255, 248, 224, 0.03);
+  --np-alert-error-border: rgba(181, 101, 87, 0.34);
+  --np-alert-error-bg: rgba(97, 34, 29, 0.18);
+  --np-alert-error-text: #ddb0a7;
+  --np-alert-success-border: rgba(128, 154, 118, 0.34);
+  --np-alert-success-bg: rgba(71, 94, 66, 0.18);
+  --np-alert-success-text: #d4e1c8;
+  --np-copy-danger: #ddb0a7;
+  --np-link-accent: #d88b6d;
+  --np-link-accent-hover: #efb096;
+  --np-control-bg: rgba(17, 15, 13, 0.78);
+  --np-control-focus: rgba(201, 90, 71, 0.52);
+  --np-button-primary-border: rgba(201, 90, 71, 0.42);
+  --np-button-primary-border-hover: rgba(201, 90, 71, 0.7);
+  --np-button-primary-bg:
+    linear-gradient(180deg, rgba(201, 90, 71, 0.2), rgba(201, 90, 71, 0.08)),
+    rgba(255, 248, 224, 0.025);
+  --np-button-primary-bg-hover:
+    linear-gradient(180deg, rgba(201, 90, 71, 0.28), rgba(201, 90, 71, 0.12)),
+    rgba(255, 248, 224, 0.035);
+  --np-button-primary-text: #ece4d5;
+  --np-button-primary-text-hover: #f5edde;
+  --np-button-secondary-bg: rgba(31, 28, 24, 0.9);
+  --np-button-secondary-bg-hover: rgba(45, 40, 34, 0.95);
+  --np-panel-bg:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.025), rgba(255, 248, 224, 0.01)),
+    rgba(0, 0, 0, 0.08);
+  --np-panel-bg-strong:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.04), rgba(255, 248, 224, 0.015)),
+    rgba(0, 0, 0, 0.12);
+  --np-button-danger-bg: rgba(97, 34, 29, 0.2);
+  --np-button-danger-bg-hover: rgba(97, 34, 29, 0.3);
+  --np-button-danger-border: rgba(181, 101, 87, 0.34);
+  --np-button-danger-border-hover: rgba(181, 101, 87, 0.56);
+  --np-button-danger-text: #ddb0a7;
+  --np-button-danger-text-hover: #ead2cc;
+  --np-setup-done-border: rgba(128, 154, 118, 0.34);
+  --np-setup-done-bg: rgba(71, 94, 66, 0.18);
+  --np-setup-done-text: #d4e1c8;
+  --np-setup-active-border: rgba(201, 90, 71, 0.38);
+  --np-setup-active-bg: rgba(201, 90, 71, 0.12);
+  --np-setup-active-text: #f0d5cf;
+  --np-setup-pending-bg: rgba(255, 248, 224, 0.03);
+  --np-overlay-bg: rgba(10, 9, 8, 0.82);
+  --np-overlay-panel-bg:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.03), rgba(255, 248, 224, 0.01)),
+    rgba(23, 21, 18, 0.98);
+  --np-lightbox-nav-border: rgba(90, 81, 69, 0.42);
+  --np-lightbox-nav-bg:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.04), rgba(255, 248, 224, 0.015)),
+    rgba(28, 26, 23, 0.94);
+  --np-lightbox-nav-border-hover: rgba(124, 106, 89, 0.54);
+  --np-lightbox-nav-bg-hover:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.055), rgba(255, 248, 224, 0.02)),
+    rgba(38, 34, 29, 0.96);
+  --np-avatar-bg: rgba(255, 248, 224, 0.09);
+  --np-thread-line: rgba(255, 248, 224, 0.12);
+  --np-quote-border: rgba(124, 106, 89, 0.56);
+  --np-skeleton-border: rgba(90, 81, 69, 0.34);
+  --np-skeleton-bg:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.025), rgba(255, 248, 224, 0.008)),
+    rgba(23, 21, 18, 0.94);
+  --np-skeleton-line: rgba(255, 248, 224, 0.08);
+  --np-media-border: rgba(90, 81, 69, 0.34);
+  --np-media-border-hover: rgba(124, 106, 89, 0.48);
+  --np-media-bg: #0f0d0b;
+  --np-media-play-bg: rgba(10, 9, 8, 0.3);
+  --np-media-play-text: rgba(245, 237, 222, 0.92);
+  --np-media-badge-bg: rgba(10, 9, 8, 0.66);
+  --np-popover-bg:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.04), rgba(255, 248, 224, 0.012)),
+    rgba(28, 26, 23, 0.98);
+  --np-link-thumb-bg:
+    linear-gradient(135deg, rgba(255, 248, 224, 0.08), rgba(255, 248, 224, 0.02)),
+    #1c1c1c;
+  --np-score-low-color: #ddb0a7;
+  --np-score-mid-color: #d9c48d;
+  --np-score-high-color: #c4d1b7;
+  --np-demo-border: rgba(123, 114, 97, 0.34);
+  --np-demo-bg:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.025), rgba(255, 248, 224, 0.008)),
+    rgba(20, 19, 17, 0.96);
+  --np-demo-kicker: #8f8678;
+  --np-demo-title: #ece4d5;
+  --np-demo-text: #aaa090;
+  --np-post-border-color: rgba(90, 81, 69, 0.36);
+  --np-post-bg:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.028), rgba(255, 248, 224, 0.008)),
+    #171512;
+  --np-post-context-bg:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.024), rgba(255, 248, 224, 0.008)),
+    #151311;
+  --np-post-bg-hover:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.038), rgba(255, 248, 224, 0.012)),
+    #1b1814;
+  --np-post-border-hover: rgba(126, 110, 91, 0.48);
+  --np-post-thread-border: rgba(90, 81, 69, 0.28);
+  --np-post-thread-bg: rgba(255, 248, 224, 0.032);
+  --np-post-thread-shadow: inset 0 1px 0 rgba(112, 96, 77, 0.48);
+  --np-post-thread-bg-hover: rgba(255, 248, 224, 0.05);
+  --np-post-heading: #ebe4d7;
+  --np-post-copy: #e3dccf;
+  --np-post-copy-secondary: #cfc7ba;
+  --np-post-link: #d88b6d;
+  --np-post-link-hover: #efb096;
+  --np-post-link-border: rgba(216, 139, 109, 0.35);
+  --np-post-link-border-hover: rgba(239, 176, 150, 0.6);
+  --np-post-button-link: #d4a08a;
+  --np-post-link-card-bg: rgba(255, 248, 224, 0.025);
+  --np-post-link-card-bg-hover: rgba(255, 248, 224, 0.04);
+  --np-post-link-card-border-hover: rgba(124, 106, 89, 0.46);
+  --np-post-actions-border: rgba(90, 81, 69, 0.38);
+  --np-post-score-border: rgba(90, 81, 69, 0.42);
+  --np-post-score-bg: rgba(255, 248, 224, 0.04);
+  --np-modal-button-bg: rgba(255, 248, 224, 0.05);
+  --np-modal-button-bg-hover: rgba(255, 248, 224, 0.07);
+  --np-share-promo-border: rgba(90, 81, 69, 0.52);
+  --np-share-promo-bg:
+    linear-gradient(180deg, rgba(255, 248, 224, 0.04), rgba(255, 248, 224, 0.015)),
+    rgba(0, 0, 0, 0.12);
+  --np-share-promo-rule: rgba(201, 90, 71, 0.48);
+  --np-shimmer-highlight: rgba(255, 255, 255, 0.05);
+  --np-status-indicator-border: rgba(201, 90, 71, 0.45);
+  --np-status-indicator-bg: rgba(201, 90, 71, 0.08);
+  --np-status-indicator-ring: rgba(201, 90, 71, 0.22);
+  --np-progress-track: rgba(255, 248, 224, 0.08);
+  --np-progress-bar-start: #7f4a3d;
+  --np-progress-bar-end: #c95a47;
+  --np-stat-accent: #d98674;
+  --np-history-item-hover-bg: rgba(255, 248, 224, 0.03);
+  --np-history-item-active-bg: rgba(255, 248, 224, 0.04);
+  --np-scrollbar-thumb: #3f3f46;
+  --np-scrollbar-thumb-hover: #52525b;
+  --np-range-track: #3f3f46;
+  --np-range-thumb: #10b981;
+  --np-range-thumb-border: #09090b;
+  --np-form-accent: #b8614f;
+}
+
+html.np-theme-light {
+  --np-bg: #ece8df;
+  --np-bg-alt: #f5f1e8;
+  --np-text: #21160f;
+  --np-text-secondary: #4e4134;
+  --np-text-muted: #857665;
+  --np-border: #c7b9a5;
+  --np-border-light: #d8ccb9;
+  --np-rule: #8d785f;
+  --np-accent: #b14d36;
+  --np-page-radial: rgba(137, 121, 97, 0.08);
+  --np-page-linear: rgba(162, 145, 121, 0.035);
+  --np-nav-bg:
+    linear-gradient(180deg, rgba(255, 255, 252, 0.9), rgba(241, 236, 227, 0.72)),
+    rgba(245, 240, 232, 0.94);
+  --np-nav-hover: rgba(137, 111, 84, 0.08);
+  --np-inline-card-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(247, 238, 223, 0.76)),
+    rgba(243, 233, 216, 0.78);
+  --np-inline-code-bg: rgba(244, 236, 223, 0.92);
+  --np-alert-bg: rgba(255, 252, 244, 0.82);
+  --np-alert-error-border: rgba(177, 77, 54, 0.26);
+  --np-alert-error-bg: rgba(177, 77, 54, 0.08);
+  --np-alert-error-text: #8f3b2a;
+  --np-alert-success-border: rgba(94, 122, 86, 0.28);
+  --np-alert-success-bg: rgba(94, 122, 86, 0.09);
+  --np-alert-success-text: #38533a;
+  --np-copy-danger: #8f3b2a;
+  --np-link-accent: #9c4b34;
+  --np-link-accent-hover: #7d3724;
+  --np-control-bg: rgba(255, 252, 246, 0.9);
+  --np-control-focus: rgba(177, 77, 54, 0.44);
+  --np-button-primary-border: rgba(177, 77, 54, 0.3);
+  --np-button-primary-border-hover: rgba(157, 63, 40, 0.46);
+  --np-button-primary-bg:
+    linear-gradient(180deg, rgba(177, 77, 54, 0.12), rgba(177, 77, 54, 0.04)),
+    rgba(255, 252, 244, 0.88);
+  --np-button-primary-bg-hover:
+    linear-gradient(180deg, rgba(177, 77, 54, 0.18), rgba(177, 77, 54, 0.08)),
+    rgba(252, 247, 239, 0.94);
+  --np-button-primary-text: #6c2818;
+  --np-button-primary-text-hover: #562013;
+  --np-button-secondary-bg: rgba(245, 236, 223, 0.92);
+  --np-button-secondary-bg-hover: rgba(237, 226, 210, 0.98);
+  --np-panel-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(242, 237, 228, 0.76)),
+    rgba(239, 234, 225, 0.8);
+  --np-panel-bg-strong:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(239, 234, 225, 0.86)),
+    rgba(235, 230, 221, 0.92);
+  --np-button-danger-bg: rgba(177, 77, 54, 0.09);
+  --np-button-danger-bg-hover: rgba(177, 77, 54, 0.15);
+  --np-button-danger-border: rgba(177, 77, 54, 0.28);
+  --np-button-danger-border-hover: rgba(177, 77, 54, 0.42);
+  --np-button-danger-text: #8f3b2a;
+  --np-button-danger-text-hover: #7b3122;
+  --np-setup-done-border: rgba(94, 122, 86, 0.26);
+  --np-setup-done-bg: rgba(94, 122, 86, 0.09);
+  --np-setup-done-text: #38533a;
+  --np-setup-active-border: rgba(177, 77, 54, 0.24);
+  --np-setup-active-bg: rgba(177, 77, 54, 0.09);
+  --np-setup-active-text: #8f3b2a;
+  --np-setup-pending-bg: rgba(255, 252, 244, 0.66);
+  --np-overlay-bg: rgba(70, 56, 39, 0.28);
+  --np-overlay-panel-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(242, 237, 228, 0.92)),
+    rgba(245, 240, 232, 0.98);
+  --np-lightbox-nav-border: rgba(141, 120, 95, 0.28);
+  --np-lightbox-nav-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(242, 237, 228, 0.9)),
+    rgba(245, 240, 232, 0.94);
+  --np-lightbox-nav-border-hover: rgba(141, 120, 95, 0.42);
+  --np-lightbox-nav-bg-hover:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(239, 234, 225, 0.96)),
+    rgba(238, 232, 222, 0.96);
+  --np-avatar-bg: rgba(141, 120, 95, 0.12);
+  --np-thread-line: rgba(141, 120, 95, 0.18);
+  --np-quote-border: rgba(141, 120, 95, 0.46);
+  --np-skeleton-border: rgba(141, 120, 95, 0.24);
+  --np-skeleton-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(247, 238, 223, 0.86)),
+    rgba(246, 238, 225, 0.9);
+  --np-skeleton-line: rgba(141, 120, 95, 0.16);
+  --np-media-border: rgba(141, 120, 95, 0.26);
+  --np-media-border-hover: rgba(141, 120, 95, 0.4);
+  --np-media-bg: #efe7da;
+  --np-media-play-bg: rgba(70, 56, 39, 0.12);
+  --np-media-play-text: rgba(33, 22, 15, 0.85);
+  --np-media-badge-bg: rgba(247, 240, 228, 0.92);
+  --np-popover-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 238, 223, 0.95)),
+    rgba(247, 240, 228, 0.98);
+  --np-link-thumb-bg:
+    linear-gradient(135deg, rgba(234, 223, 208, 0.72), rgba(246, 238, 225, 0.94)),
+    #efe7da;
+  --np-score-low-color: #8f3b2a;
+  --np-score-mid-color: #8a6a1d;
+  --np-score-high-color: #38533a;
+  --np-demo-border: rgba(141, 120, 95, 0.28);
+  --np-demo-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(247, 238, 223, 0.86)),
+    rgba(247, 240, 228, 0.94);
+  --np-demo-kicker: #8d785f;
+  --np-demo-title: #21160f;
+  --np-demo-text: #675846;
+  --np-post-border-color: rgba(141, 120, 95, 0.24);
+  --np-post-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(247, 238, 223, 0.86)),
+    rgba(246, 238, 225, 0.92);
+  --np-post-context-bg:
+    linear-gradient(180deg, rgba(252, 247, 239, 0.88), rgba(245, 236, 223, 0.9)),
+    rgba(244, 236, 223, 0.92);
+  --np-post-bg-hover:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(244, 234, 218, 0.9)),
+    rgba(243, 232, 214, 0.94);
+  --np-post-border-hover: rgba(141, 120, 95, 0.38);
+  --np-post-thread-border: rgba(141, 120, 95, 0.2);
+  --np-post-thread-bg: rgba(248, 240, 229, 0.78);
+  --np-post-thread-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --np-post-thread-bg-hover: rgba(243, 233, 216, 0.92);
+  --np-post-heading: #2a1c13;
+  --np-post-copy: #3a2b21;
+  --np-post-copy-secondary: #5e4d40;
+  --np-post-link: #9c4b34;
+  --np-post-link-hover: #7d3724;
+  --np-post-link-border: rgba(156, 75, 52, 0.28);
+  --np-post-link-border-hover: rgba(125, 55, 36, 0.44);
+  --np-post-button-link: #9c4b34;
+  --np-post-link-card-bg: rgba(252, 247, 239, 0.82);
+  --np-post-link-card-bg-hover: rgba(245, 236, 223, 0.92);
+  --np-post-link-card-border-hover: rgba(141, 120, 95, 0.36);
+  --np-post-actions-border: rgba(141, 120, 95, 0.22);
+  --np-post-score-border: rgba(141, 120, 95, 0.28);
+  --np-post-score-bg: rgba(252, 247, 239, 0.8);
+  --np-modal-button-bg: rgba(247, 238, 223, 0.92);
+  --np-modal-button-bg-hover: rgba(243, 232, 214, 0.96);
+  --np-share-promo-border: rgba(141, 120, 95, 0.34);
+  --np-share-promo-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(244, 234, 218, 0.86)),
+    rgba(239, 229, 212, 0.9);
+  --np-share-promo-rule: rgba(177, 77, 54, 0.38);
+  --np-shimmer-highlight: rgba(141, 120, 95, 0.12);
+  --np-status-indicator-border: rgba(177, 77, 54, 0.3);
+  --np-status-indicator-bg: rgba(177, 77, 54, 0.08);
+  --np-status-indicator-ring: rgba(177, 77, 54, 0.14);
+  --np-progress-track: rgba(141, 120, 95, 0.16);
+  --np-progress-bar-start: #9f5c45;
+  --np-progress-bar-end: #b14d36;
+  --np-stat-accent: #9c4b34;
+  --np-history-item-hover-bg: rgba(245, 236, 223, 0.72);
+  --np-history-item-active-bg: rgba(239, 229, 212, 0.92);
+  --np-scrollbar-thumb: #b9a995;
+  --np-scrollbar-thumb-hover: #a38f77;
+  --np-range-track: #d4c7b7;
+  --np-range-thumb: #b14d36;
+  --np-range-thumb-border: #f3ead9;
+  --np-form-accent: #b14d36;
 }
 
 button, a, [role="button"] {
@@ -22,7 +328,7 @@ button:disabled, [role="button"][aria-disabled="true"] {
 
 .select-styled {
   appearance: none;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23857665' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
   background-position: right 0.5rem center;
   background-repeat: no-repeat;
   background-size: 1.25em 1.25em;
@@ -31,15 +337,15 @@ button:disabled, [role="button"][aria-disabled="true"] {
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #e4e4e7;
-  -webkit-box-shadow: 0 0 0px 1000px #27272a inset;
+  -webkit-text-fill-color: var(--np-text);
+  -webkit-box-shadow: 0 0 0px 1000px var(--np-control-bg) inset;
   transition: background-color 5000s ease-in-out 0s;
 }
 
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  background: #3f3f46;
+  background: var(--np-range-track);
   border-radius: 9999px;
   height: 4px;
 }
@@ -48,17 +354,17 @@ input[type="range"]::-webkit-slider-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #10b981;
+  background: var(--np-range-thumb);
   cursor: pointer;
-  border: 2px solid #09090b;
+  border: 2px solid var(--np-range-thumb-border);
 }
 input[type="range"]::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #10b981;
+  background: var(--np-range-thumb);
   cursor: pointer;
-  border: 2px solid #09090b;
+  border: 2px solid var(--np-range-thumb-border);
 }
 
 .scrollbar-dark::-webkit-scrollbar {
@@ -68,15 +374,15 @@ input[type="range"]::-moz-range-thumb {
   background: transparent;
 }
 .scrollbar-dark::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: var(--np-scrollbar-thumb);
   border-radius: 3px;
 }
 .scrollbar-dark::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: var(--np-scrollbar-thumb-hover);
 }
 .scrollbar-dark {
   scrollbar-width: thin;
-  scrollbar-color: #3f3f46 transparent;
+  scrollbar-color: var(--np-scrollbar-thumb) transparent;
 }
 
 /* Prevent text overflow on mobile */
@@ -130,9 +436,7 @@ body {
 
 .app-nav {
   border-bottom: 1px solid var(--np-border-light);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.025), rgba(255, 248, 224, 0.008)),
-    rgba(20, 19, 17, 0.94);
+  background: var(--np-nav-bg);
   backdrop-filter: blur(10px);
 }
 
@@ -165,13 +469,13 @@ body {
 .app-nav-button:hover,
 .app-nav-button:focus-visible {
   color: var(--np-text);
-  background: rgba(255, 248, 224, 0.045);
+  background: var(--np-nav-hover);
   border-color: var(--np-border);
 }
 
 .app-nav-button-active {
   color: var(--np-text);
-  background: rgba(255, 248, 224, 0.05);
+  background: var(--np-nav-hover);
   border-color: var(--np-border);
 }
 
@@ -189,9 +493,7 @@ body {
 
 .np-scroll-top {
   border: 1px solid var(--np-border);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.035), rgba(255, 248, 224, 0.015)),
-    rgba(28, 26, 23, 0.96);
+  background: var(--np-panel-bg-strong);
   color: var(--np-text-muted);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
 }
@@ -215,7 +517,7 @@ body {
 }
 
 .np-copy-danger {
-  color: #ddb0a7;
+  color: var(--np-copy-danger);
 }
 
 .np-link-muted {
@@ -230,41 +532,41 @@ body {
 }
 
 .np-link-accent {
-  color: color-mix(in srgb, var(--np-accent) 84%, white 16%);
+  color: var(--np-link-accent);
   text-decoration: none;
   transition: color 160ms ease;
 }
 
 .np-link-accent:hover,
 .np-link-accent:focus-visible {
-  color: color-mix(in srgb, var(--np-accent) 64%, white 36%);
+  color: var(--np-link-accent-hover);
 }
 
 .np-alert {
   padding: 0.7rem 0.85rem;
   border: 1px solid var(--np-border);
-  background: rgba(255, 248, 224, 0.03);
+  background: var(--np-alert-bg);
   border-radius: 0.8rem;
   font-size: 0.86rem;
   line-height: 1.45;
 }
 
 .np-alert-error {
-  border-color: rgba(181, 101, 87, 0.34);
-  background: rgba(97, 34, 29, 0.18);
-  color: #ddb0a7;
+  border-color: var(--np-alert-error-border);
+  background: var(--np-alert-error-bg);
+  color: var(--np-alert-error-text);
 }
 
 .np-alert-success {
-  border-color: rgba(128, 154, 118, 0.34);
-  background: rgba(71, 94, 66, 0.18);
-  color: #d4e1c8;
+  border-color: var(--np-alert-success-border);
+  background: var(--np-alert-success-bg);
+  color: var(--np-alert-success-text);
 }
 
 .np-control {
   width: 100%;
   border: 1px solid var(--np-border);
-  background: rgba(17, 15, 13, 0.78);
+  background: var(--np-control-bg);
   color: var(--np-text);
   border-radius: 0.8rem;
   padding: 0.7rem 0.85rem;
@@ -278,7 +580,7 @@ body {
 
 .np-control:focus {
   outline: none;
-  border-color: rgba(201, 90, 71, 0.52);
+  border-color: var(--np-control-focus);
 }
 
 .np-control-select {
@@ -317,52 +619,53 @@ body {
   font-size: 0.74rem;
 }
 
-.np-button-primary {
-  border-color: rgba(201, 90, 71, 0.42);
-  background:
-    linear-gradient(180deg, rgba(201, 90, 71, 0.2), rgba(201, 90, 71, 0.08)),
-    rgba(255, 248, 224, 0.025);
-  color: var(--np-text);
+.np-button-primary,
+.demo-notice-cta,
+.np-share-promo-button {
+  border-color: var(--np-button-primary-border);
+  background: var(--np-button-primary-bg);
+  color: var(--np-button-primary-text);
 }
 
 .np-button-primary:hover,
-.np-button-primary:focus-visible {
-  border-color: rgba(201, 90, 71, 0.7);
-  background:
-    linear-gradient(180deg, rgba(201, 90, 71, 0.28), rgba(201, 90, 71, 0.12)),
-    rgba(255, 248, 224, 0.035);
+.np-button-primary:focus-visible,
+.demo-notice-cta:hover,
+.demo-notice-cta:focus-visible,
+.np-share-promo-button:hover,
+.np-share-promo-button:focus-visible {
+  border-color: var(--np-button-primary-border-hover);
+  background: var(--np-button-primary-bg-hover);
+  color: var(--np-button-primary-text-hover);
 }
 
 .np-button-secondary {
   border-color: var(--np-border);
-  background: rgba(31, 28, 24, 0.9);
+  background: var(--np-button-secondary-bg);
   color: var(--np-text-secondary);
 }
 
 .np-button-secondary:hover,
 .np-button-secondary:focus-visible {
-  background: rgba(45, 40, 34, 0.95);
+  background: var(--np-button-secondary-bg-hover);
   color: var(--np-text);
 }
 
 .np-button-danger {
-  border-color: rgba(181, 101, 87, 0.34);
-  background: rgba(97, 34, 29, 0.2);
-  color: #ddb0a7;
+  border-color: var(--np-button-danger-border);
+  background: var(--np-button-danger-bg);
+  color: var(--np-button-danger-text);
 }
 
 .np-button-danger:hover,
 .np-button-danger:focus-visible {
-  border-color: rgba(181, 101, 87, 0.56);
-  background: rgba(97, 34, 29, 0.3);
-  color: #ead2cc;
+  border-color: var(--np-button-danger-border-hover);
+  background: var(--np-button-danger-bg-hover);
+  color: var(--np-button-danger-text-hover);
 }
 
 .np-inline-card {
   border: 1px solid var(--np-border);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.025), rgba(255, 248, 224, 0.01)),
-    rgba(0, 0, 0, 0.08);
+  background: var(--np-inline-card-bg);
   border-radius: 0.9rem;
   padding: 0.9rem 1rem;
 }
@@ -382,7 +685,7 @@ body {
 .np-inline-code {
   display: block;
   border: 1px solid var(--np-border);
-  background: rgba(17, 15, 13, 0.82);
+  background: var(--np-inline-code-bg);
   border-radius: 0.8rem;
   padding: 0.75rem 0.9rem;
   color: var(--np-text);
@@ -458,19 +761,19 @@ body {
 }
 
 .np-setup-step-state-done {
-  border-color: rgba(128, 154, 118, 0.34);
-  background: rgba(71, 94, 66, 0.18);
-  color: #d4e1c8;
+  border-color: var(--np-setup-done-border);
+  background: var(--np-setup-done-bg);
+  color: var(--np-setup-done-text);
 }
 
 .np-setup-step-state-active {
-  border-color: rgba(201, 90, 71, 0.38);
-  background: rgba(201, 90, 71, 0.12);
-  color: #f0d5cf;
+  border-color: var(--np-setup-active-border);
+  background: var(--np-setup-active-bg);
+  color: var(--np-setup-active-text);
 }
 
 .np-setup-step-state-pending {
-  background: rgba(255, 248, 224, 0.03);
+  background: var(--np-setup-pending-bg);
   color: var(--np-text-muted);
 }
 
@@ -513,15 +816,13 @@ body {
 }
 
 .np-overlay {
-  background: rgba(10, 9, 8, 0.82);
+  background: var(--np-overlay-bg);
   backdrop-filter: blur(2px);
 }
 
 .np-overlay-panel {
   border: 1px solid var(--np-border);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.03), rgba(255, 248, 224, 0.01)),
-    rgba(23, 21, 18, 0.98);
+  background: var(--np-overlay-panel-bg);
   box-shadow:
     inset 0 1px 0 rgba(255, 248, 224, 0.022),
     0 0 0 1px rgba(0, 0, 0, 0.05);
@@ -555,20 +856,16 @@ body {
 }
 
 .np-lightbox-nav {
-  border: 1px solid rgba(90, 81, 69, 0.42);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.04), rgba(255, 248, 224, 0.015)),
-    rgba(28, 26, 23, 0.94);
+  border: 1px solid var(--np-lightbox-nav-border);
+  background: var(--np-lightbox-nav-bg);
   color: var(--np-text-secondary);
   transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
 }
 
 .np-lightbox-nav:hover,
 .np-lightbox-nav:focus-visible {
-  border-color: rgba(124, 106, 89, 0.54);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.055), rgba(255, 248, 224, 0.02)),
-    rgba(38, 34, 29, 0.96);
+  border-color: var(--np-lightbox-nav-border-hover);
+  background: var(--np-lightbox-nav-bg-hover);
   color: var(--np-text);
 }
 
@@ -582,16 +879,16 @@ body {
 }
 
 .np-avatar-fallback {
-  background: rgba(255, 248, 224, 0.09);
+  background: var(--np-avatar-bg);
   color: var(--np-text-muted);
 }
 
 .np-thread-line {
-  background: rgba(255, 248, 224, 0.12);
+  background: var(--np-thread-line);
 }
 
 .np-article-quote {
-  border-left: 2px solid rgba(124, 106, 89, 0.56);
+  border-left: 2px solid var(--np-quote-border);
   color: var(--np-text-secondary);
 }
 
@@ -608,33 +905,31 @@ body {
 }
 
 .np-skeleton-shell {
-  border-color: rgba(90, 81, 69, 0.34);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.025), rgba(255, 248, 224, 0.008)),
-    rgba(23, 21, 18, 0.94);
+  border-color: var(--np-skeleton-border);
+  background: var(--np-skeleton-bg);
 }
 
 .np-skeleton-line {
-  background: rgba(255, 248, 224, 0.08);
+  background: var(--np-skeleton-line);
 }
 
 .np-media-frame {
-  border-color: rgba(90, 81, 69, 0.34);
-  background: #0f0d0b;
+  border-color: var(--np-media-border);
+  background: var(--np-media-bg);
 }
 
 .np-media-frame:hover,
 .np-media-frame:focus-visible {
-  border-color: rgba(124, 106, 89, 0.48);
+  border-color: var(--np-media-border-hover);
 }
 
 .np-media-play {
-  background: rgba(10, 9, 8, 0.3);
-  color: rgba(245, 237, 222, 0.92);
+  background: var(--np-media-play-bg);
+  color: var(--np-media-play-text);
 }
 
 .np-media-badge {
-  background: rgba(10, 9, 8, 0.66);
+  background: var(--np-media-badge-bg);
   color: var(--np-text);
   letter-spacing: 0.08em;
 }
@@ -656,7 +951,7 @@ body {
 
 .np-action-accent:hover,
 .np-action-accent:focus-visible {
-  color: color-mix(in srgb, var(--np-accent) 78%, white 22%);
+  color: var(--np-link-accent);
 }
 
 .np-action-strong {
@@ -671,9 +966,7 @@ body {
 
 .np-popover {
   border: 1px solid var(--np-border);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.04), rgba(255, 248, 224, 0.012)),
-    rgba(28, 26, 23, 0.98);
+  background: var(--np-popover-bg);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
 }
 
@@ -685,24 +978,24 @@ body {
 
 .np-nudge-up:hover,
 .np-nudge-up:focus-visible {
-  color: #c4d1b7;
+  color: var(--np-score-high-color);
 }
 
 .np-nudge-down:hover,
 .np-nudge-down:focus-visible {
-  color: #ddb0a7;
+  color: var(--np-score-low-color);
 }
 
 .np-score-low {
-  color: #ddb0a7;
+  color: var(--np-score-low-color);
 }
 
 .np-score-mid {
-  color: #d9c48d;
+  color: var(--np-score-mid-color);
 }
 
 .np-score-high {
-  color: #c4d1b7;
+  color: var(--np-score-high-color);
 }
 
 .np-score-cutoff {
@@ -723,12 +1016,10 @@ body {
   gap: 1rem;
   align-items: center;
   padding: 0.85rem 1rem;
-  border-top: 2px solid rgba(123, 114, 97, 0.34);
-  border-bottom: 2px solid rgba(123, 114, 97, 0.34);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.025), rgba(255, 248, 224, 0.008)),
-    rgba(20, 19, 17, 0.96);
-  color: #d9d1c3;
+  border-top: 2px solid var(--np-demo-border);
+  border-bottom: 2px solid var(--np-demo-border);
+  background: var(--np-demo-bg);
+  color: var(--np-text-secondary);
 }
 
 .demo-notice-copy {
@@ -737,7 +1028,7 @@ body {
 
 .demo-notice-kicker {
   margin-bottom: 0.24rem;
-  color: #8f8678;
+  color: var(--np-demo-kicker);
   font-size: 0.62rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -750,13 +1041,13 @@ body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   line-height: 1.08;
-  color: #ece4d5;
+  color: var(--np-demo-title);
 }
 
 .demo-notice-text {
   margin: 0.38rem 0 0;
   max-width: 48rem;
-  color: #aaa090;
+  color: var(--np-demo-text);
   font-size: 0.78rem;
   line-height: 1.45;
 }
@@ -767,11 +1058,7 @@ body {
   justify-content: center;
   min-height: 2.6rem;
   padding: 0.7rem 1rem;
-  border: 1px solid rgba(201, 90, 71, 0.42);
-  background:
-    linear-gradient(180deg, rgba(201, 90, 71, 0.2), rgba(201, 90, 71, 0.08)),
-    rgba(255, 248, 224, 0.025);
-  color: #ece4d5;
+  border: 1px solid var(--np-button-primary-border);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -783,33 +1070,19 @@ body {
 
 .demo-notice-cta:hover,
 .demo-notice-cta:focus-visible {
-  color: #f5edde;
-  border-color: rgba(201, 90, 71, 0.7);
-  background:
-    linear-gradient(180deg, rgba(201, 90, 71, 0.28), rgba(201, 90, 71, 0.12)),
-    rgba(255, 248, 224, 0.035);
   transform: translateY(-1px);
 }
 
 /* === Newspaper Mode === */
 
 .newspaper {
-  --np-bg: #141311;
-  --np-bg-alt: #1c1a17;
-  --np-text: #e6e0d2;
-  --np-text-secondary: #bcb4a6;
-  --np-text-muted: #777064;
-  --np-border: #332f29;
-  --np-border-light: #282520;
-  --np-rule: #474139;
-  --np-accent: #c95a47;
   --np-column-width: 22rem;
   --np-column-gap: clamp(1rem, 1.8vw, 1.75rem);
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "URW Palladio L", Georgia, serif;
   background: var(--np-bg);
   background-image:
-    radial-gradient(circle at top center, rgba(255, 248, 224, 0.04), transparent 55%),
-    linear-gradient(180deg, rgba(255, 248, 224, 0.02), transparent 24rem);
+    radial-gradient(circle at top center, var(--np-page-radial), transparent 55%),
+    linear-gradient(180deg, var(--np-page-linear), transparent 24rem);
   color: var(--np-text);
   border-radius: 0;
   border: none;
@@ -837,20 +1110,11 @@ html.newspaper-active,
 html.newspaper-active body,
 html.newspaper-active #root,
 html.newspaper-active #root > div {
-  --np-bg: #141311;
-  --np-bg-alt: #1c1a17;
-  --np-text: #e6e0d2;
-  --np-text-secondary: #bcb4a6;
-  --np-text-muted: #777064;
-  --np-border: #332f29;
-  --np-border-light: #282520;
-  --np-rule: #474139;
-  --np-accent: #c95a47;
-  background: #141311 !important;
-  background-color: #141311 !important;
+  background: var(--np-bg) !important;
+  background-color: var(--np-bg) !important;
   background-image:
-    radial-gradient(circle at top center, rgba(255, 248, 224, 0.04), transparent 55%),
-    linear-gradient(180deg, rgba(255, 248, 224, 0.02), transparent 24rem) !important;
+    radial-gradient(circle at top center, var(--np-page-radial), transparent 55%),
+    linear-gradient(180deg, var(--np-page-linear), transparent 24rem) !important;
 }
 
 /* Newspaper outer container */
@@ -1019,12 +1283,12 @@ html.newspaper-active #root > div {
   align-items: start;
 }
 
-.np-article {
+.np-article,
+.np-status-panel,
+.np-history-panel {
   padding: 0.8rem 1rem 1.15rem;
   border: 1px solid var(--np-border-light);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.02), rgba(255, 248, 224, 0.01)),
-    rgba(0, 0, 0, 0.08);
+  background: var(--np-panel-bg);
   min-width: 0;
 }
 
@@ -1072,10 +1336,8 @@ html.newspaper-active #root > div {
 .np-share-promo {
   position: relative;
   overflow: hidden;
-  border-color: rgba(90, 81, 69, 0.52);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.04), rgba(255, 248, 224, 0.015)),
-    rgba(0, 0, 0, 0.12);
+  border-color: var(--np-share-promo-border);
+  background: var(--np-share-promo-bg);
 }
 
 .np-share-promo::before {
@@ -1083,7 +1345,7 @@ html.newspaper-active #root > div {
   position: absolute;
   inset: 0 0 auto;
   height: 3px;
-  background: linear-gradient(90deg, transparent, rgba(201, 90, 71, 0.48), transparent);
+  background: linear-gradient(90deg, transparent, var(--np-share-promo-rule), transparent);
 }
 
 .np-share-promo-kicker {
@@ -1152,11 +1414,7 @@ html.newspaper-active #root > div {
   justify-content: center;
   min-height: 2.8rem;
   padding: 0.75rem 1.2rem;
-  border: 1px solid rgba(201, 90, 71, 0.44);
-  background:
-    linear-gradient(180deg, rgba(201, 90, 71, 0.2), rgba(201, 90, 71, 0.08)),
-    rgba(255, 248, 224, 0.025);
-  color: var(--np-text);
+  border: 1px solid var(--np-button-primary-border);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -1167,11 +1425,6 @@ html.newspaper-active #root > div {
 
 .np-share-promo-button:hover,
 .np-share-promo-button:focus-visible {
-  color: var(--np-text);
-  border-color: rgba(201, 90, 71, 0.7);
-  background:
-    linear-gradient(180deg, rgba(201, 90, 71, 0.28), rgba(201, 90, 71, 0.12)),
-    rgba(255, 248, 224, 0.035);
   transform: translateY(-1px);
 }
 
@@ -1292,11 +1545,9 @@ html.newspaper-active .np-post-content {
 
 html.newspaper-active .np-post-context,
 html.newspaper-active .np-post {
-  border: 1px solid rgba(90, 81, 69, 0.36);
-  border-color: rgba(90, 81, 69, 0.36) !important;
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.028), rgba(255, 248, 224, 0.008)),
-    #171512 !important;
+  border: 1px solid var(--np-post-border-color);
+  border-color: var(--np-post-border-color) !important;
+  background: var(--np-post-bg) !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 248, 224, 0.022),
     0 0 0 1px rgba(0, 0, 0, 0.05);
@@ -1304,9 +1555,7 @@ html.newspaper-active .np-post {
 }
 
 html.newspaper-active .np-post-context {
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.024), rgba(255, 248, 224, 0.008)),
-    #151311 !important;
+  background: var(--np-post-context-bg) !important;
   color: var(--np-text-muted);
 }
 
@@ -1321,23 +1570,21 @@ html.newspaper-active .np-post-context {
 
 html.newspaper-active .np-post:hover,
 html.newspaper-active .np-post:focus-within {
-  border-color: rgba(126, 110, 91, 0.48) !important;
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.038), rgba(255, 248, 224, 0.012)),
-    #1b1814 !important;
+  border-color: var(--np-post-border-hover) !important;
+  background: var(--np-post-bg-hover) !important;
 }
 
 html.newspaper-active .np-post-thread,
 html.newspaper-active .np-post-quote {
-  border: 1px solid rgba(90, 81, 69, 0.28);
-  background: rgba(255, 248, 224, 0.032);
-  box-shadow: inset 0 1px 0 rgba(112, 96, 77, 0.48);
+  border: 1px solid var(--np-post-thread-border);
+  background: var(--np-post-thread-bg);
+  box-shadow: var(--np-post-thread-shadow);
   padding: 0.62rem 0.78rem !important;
 }
 
 html.newspaper-active .np-post-thread:hover,
 html.newspaper-active .np-post-quote:hover {
-  background: rgba(255, 248, 224, 0.05);
+  background: var(--np-post-thread-bg-hover);
 }
 
 html.newspaper-active .np-post-author {
@@ -1346,12 +1593,12 @@ html.newspaper-active .np-post-author {
 
 html.newspaper-active .np-post .text-zinc-100,
 html.newspaper-active .np-post .text-zinc-200 {
-  color: #ebe4d7 !important;
+  color: var(--np-post-heading) !important;
 }
 
 html.newspaper-active .np-post .text-zinc-300,
 html.newspaper-active .np-post .text-zinc-400 {
-  color: #cfc7ba !important;
+  color: var(--np-post-copy-secondary) !important;
 }
 
 html.newspaper-active .np-post .text-zinc-500,
@@ -1360,25 +1607,25 @@ html.newspaper-active .np-post .text-zinc-600 {
 }
 
 html.newspaper-active .np-post-content p {
-  color: #e3dccf !important;
+  color: var(--np-post-copy) !important;
   font-size: 0.94rem;
   line-height: 1.48;
   letter-spacing: 0.002em;
 }
 
 html.newspaper-active .np-post-content a {
-  color: #d88b6d !important;
+  color: var(--np-post-link) !important;
   text-decoration: none;
-  border-bottom: 1px solid rgba(216, 139, 109, 0.35);
+  border-bottom: 1px solid var(--np-post-link-border);
 }
 
 html.newspaper-active .np-post-content a:hover {
-  color: #efb096 !important;
-  border-bottom-color: rgba(239, 176, 150, 0.6);
+  color: var(--np-post-link-hover) !important;
+  border-bottom-color: var(--np-post-link-border-hover);
 }
 
 html.newspaper-active .np-post-content button {
-  color: #d4a08a !important;
+  color: var(--np-post-button-link) !important;
 }
 
 html.newspaper-active .np-post-reply-context {
@@ -1392,34 +1639,34 @@ html.newspaper-active .np-post-reply-context {
 }
 
 html.newspaper-active .np-post-reply-handle {
-  color: #d88b6d !important;
+  color: var(--np-post-link) !important;
 }
 
 html.newspaper-active .np-post-media > * {
-  border-color: rgba(90, 81, 69, 0.34) !important;
+  border-color: var(--np-media-border) !important;
   border-radius: 0.4rem;
 }
 
 html.newspaper-active .np-post-media > *:hover {
-  border-color: rgba(126, 110, 91, 0.46) !important;
+  border-color: var(--np-media-border-hover) !important;
 }
 
 html.newspaper-active .np-post-link-card {
-  border: 1px solid rgba(90, 81, 69, 0.34);
-  border-color: rgba(90, 81, 69, 0.34) !important;
-  background: rgba(255, 248, 224, 0.025);
+  border: 1px solid var(--np-media-border);
+  border-color: var(--np-media-border) !important;
+  background: var(--np-post-link-card-bg);
   border-radius: 0.4rem;
 }
 
 html.newspaper-active .np-post-link-card:hover {
-  border-color: rgba(124, 106, 89, 0.46) !important;
-  background: rgba(255, 248, 224, 0.04);
+  border-color: var(--np-post-link-card-border-hover) !important;
+  background: var(--np-post-link-card-bg-hover);
 }
 
 html.newspaper-active .np-post-actions {
   margin-top: 0.58rem;
   padding-top: 0.45rem;
-  border-top: 1px solid rgba(90, 81, 69, 0.38);
+  border-top: 1px solid var(--np-post-actions-border);
   color: var(--np-text-muted) !important;
   font-size: 0.68rem;
   letter-spacing: 0.04em;
@@ -1447,8 +1694,8 @@ html.newspaper-active .np-post-actions a:hover {
 }
 
 html.newspaper-active .np-post-score {
-  border: 1px solid rgba(90, 81, 69, 0.42);
-  background: rgba(255, 248, 224, 0.04);
+  border: 1px solid var(--np-post-score-border);
+  background: var(--np-post-score-bg);
   min-width: 2rem;
   text-align: center;
 }
@@ -1462,15 +1709,13 @@ html.newspaper-active .feed-masonry-item {
 }
 
 html.newspaper-active .np-post-modal {
-  background: rgba(10, 9, 8, 0.82);
+  background: var(--np-overlay-bg);
   backdrop-filter: blur(2px);
 }
 
 html.newspaper-active .np-post-modal-replies {
-  border-color: rgba(90, 81, 69, 0.36) !important;
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.028), rgba(255, 248, 224, 0.008)),
-    #171512 !important;
+  border-color: var(--np-post-border-color) !important;
+  background: var(--np-post-bg) !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 248, 224, 0.022),
     0 0 0 1px rgba(0, 0, 0, 0.05);
@@ -1482,7 +1727,7 @@ html.newspaper-active .np-post-modal-replies h4 {
 
 html.newspaper-active .np-post-modal-replies .text-zinc-200,
 html.newspaper-active .np-post-modal-replies .text-zinc-300 {
-  color: #e3dccf !important;
+  color: var(--np-post-copy) !important;
 }
 
 html.newspaper-active .np-post-modal-replies .text-zinc-400,
@@ -1492,25 +1737,23 @@ html.newspaper-active .np-post-modal-replies .text-zinc-600 {
 }
 
 html.newspaper-active .np-post-modal-replies .bg-zinc-700 {
-  background: rgba(255, 248, 224, 0.09) !important;
+  background: var(--np-avatar-bg) !important;
 }
 
 html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"] {
-  background: rgba(255, 248, 224, 0.05) !important;
-  border: 1px solid rgba(90, 81, 69, 0.36);
+  background: var(--np-modal-button-bg) !important;
+  border: 1px solid var(--np-post-border-color);
   color: var(--np-text-secondary) !important;
 }
 
 html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
-  background: rgba(255, 248, 224, 0.07) !important;
+  background: var(--np-modal-button-bg-hover) !important;
   color: var(--np-text) !important;
 }
 
 .np-link-thumb {
   aspect-ratio: 16 / 9;
-  background:
-    linear-gradient(135deg, rgba(255, 248, 224, 0.08), rgba(255, 248, 224, 0.02)),
-    #1c1c1c;
+  background: var(--np-link-thumb-bg);
   overflow: hidden;
 }
 
@@ -1522,7 +1765,7 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+  background: linear-gradient(90deg, transparent, var(--np-shimmer-highlight), transparent);
   animation: np-shimmer 1.3s ease-in-out infinite;
 }
 
@@ -1554,9 +1797,7 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
   transform: translateX(-50%);
   max-width: min(32rem, calc(100vw - 1.5rem));
   border: 1px solid var(--np-border);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.03), rgba(255, 248, 224, 0.01)),
-    var(--np-bg-alt);
+  background: var(--np-overlay-panel-bg);
   color: var(--np-text);
   padding: 0.6rem 0.9rem;
   font-size: 0.8rem;
@@ -1570,9 +1811,7 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
   justify-content: center;
   border-radius: 9999px;
   border: 1px solid var(--np-rule);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.04), rgba(255, 248, 224, 0.01)),
-    var(--np-bg-alt);
+  background: var(--np-panel-bg);
   color: var(--np-text);
   padding: 0.45rem 1rem;
   font-size: 0.76rem;
@@ -1582,11 +1821,7 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
 
 .np-status-panel {
   margin-bottom: 0.9rem;
-  border: 1px solid var(--np-border-light);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.02), rgba(255, 248, 224, 0.01)),
-    rgba(0, 0, 0, 0.08);
-  padding: 0.8rem 1rem 0.9rem;
+  padding-bottom: 0.9rem;
 }
 
 .np-status-head {
@@ -1618,9 +1853,9 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
   flex: 0 0 auto;
   align-self: center;
   top: 0;
-  border: 1px solid rgba(201, 90, 71, 0.45);
+  border: 1px solid var(--np-status-indicator-border);
   border-radius: 9999px;
-  background: rgba(201, 90, 71, 0.08);
+  background: var(--np-status-indicator-bg);
 }
 
 .np-status-indicator::before {
@@ -1637,7 +1872,7 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
   content: "";
   position: absolute;
   inset: -0.22rem;
-  border: 1px solid rgba(201, 90, 71, 0.22);
+  border: 1px solid var(--np-status-indicator-ring);
   border-radius: 9999px;
   opacity: 0.42;
 }
@@ -1656,12 +1891,12 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
   width: 100%;
   height: 0.3rem;
   overflow: hidden;
-  background: rgba(255, 248, 224, 0.08);
+  background: var(--np-progress-track);
 }
 
 .np-progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #7f4a3d, #c95a47);
+  background: linear-gradient(90deg, var(--np-progress-bar-start), var(--np-progress-bar-end));
   transition: width 0.45s ease;
 }
 
@@ -1716,7 +1951,7 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
 }
 
 .np-stat-value-accent {
-  color: #d98674;
+  color: var(--np-stat-accent);
 }
 
 .np-log {
@@ -1739,10 +1974,6 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
 
 .np-history-panel {
   margin-bottom: 0.9rem;
-  border: 1px solid var(--np-border-light);
-  background:
-    linear-gradient(180deg, rgba(255, 248, 224, 0.02), rgba(255, 248, 224, 0.01)),
-    rgba(0, 0, 0, 0.08);
 }
 
 .np-history-list {
@@ -1763,12 +1994,12 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
 }
 
 .np-history-item:hover {
-  background: rgba(255, 248, 224, 0.03);
+  background: var(--np-history-item-hover-bg);
   color: var(--np-text);
 }
 
 .np-history-item-active {
-  background: rgba(255, 248, 224, 0.04);
+  background: var(--np-history-item-active-bg);
   color: var(--np-text);
 }
 
@@ -1878,11 +2109,11 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
 }
 
 .np-settings-card .text-emerald-400 {
-  color: #c8e0c7 !important;
+  color: var(--np-alert-success-text) !important;
 }
 
 .np-settings-card .text-red-400 {
-  color: #e0a096 !important;
+  color: var(--np-alert-error-text) !important;
 }
 
 .np-settings-card .bg-zinc-900,
@@ -1913,7 +2144,7 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
 .np-settings-card textarea {
   width: 100%;
   border: 1px solid var(--np-border) !important;
-  background: rgba(17, 15, 13, 0.78) !important;
+  background: var(--np-control-bg) !important;
   color: var(--np-text) !important;
   border-radius: 0.7rem;
 }
@@ -1924,13 +2155,13 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
 }
 
 .np-settings-card input[type="range"] {
-  accent-color: #b8614f;
+  accent-color: var(--np-form-accent);
 }
 
 .np-settings-card pre,
 .np-settings-card code {
   border-color: var(--np-border) !important;
-  background: rgba(17, 15, 13, 0.72) !important;
+  background: var(--np-inline-code-bg) !important;
 }
 
 .np-settings-card button {
@@ -1939,41 +2170,41 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
 
 .np-settings-card button[class*="bg-zinc"],
 .np-settings-card button[class*="bg-gray"] {
-  background: rgba(31, 28, 24, 0.9) !important;
+  background: var(--np-button-secondary-bg) !important;
   border: 1px solid var(--np-border);
   color: var(--np-text-secondary) !important;
 }
 
 .np-settings-card button[class*="bg-zinc"]:hover,
 .np-settings-card button[class*="bg-gray"]:hover {
-  background: rgba(45, 40, 34, 0.95) !important;
+  background: var(--np-button-secondary-bg-hover) !important;
   color: var(--np-text) !important;
 }
 
 .np-settings-card button[class*="bg-emerald"] {
-  background: rgba(98, 136, 102, 0.18) !important;
-  border: 1px solid #516a54;
-  color: #d8ead8 !important;
+  background: var(--np-alert-success-bg) !important;
+  border: 1px solid var(--np-alert-success-border);
+  color: var(--np-alert-success-text) !important;
 }
 
 .np-settings-card button[class*="bg-emerald"]:hover {
-  background: rgba(98, 136, 102, 0.26) !important;
+  background: color-mix(in srgb, var(--np-alert-success-bg) 80%, var(--np-bg-alt) 20%) !important;
 }
 
 .np-settings-card button[class*="bg-red"] {
-  background: rgba(124, 53, 44, 0.18) !important;
-  border: 1px solid #694039;
-  color: #e5afa5 !important;
+  background: var(--np-alert-error-bg) !important;
+  border: 1px solid var(--np-alert-error-border);
+  color: var(--np-alert-error-text) !important;
 }
 
 .np-settings-card button[class*="bg-red"]:hover {
-  background: rgba(124, 53, 44, 0.28) !important;
+  background: color-mix(in srgb, var(--np-alert-error-bg) 80%, var(--np-bg-alt) 20%) !important;
 }
 
 .np-settings-card .bg-red-900\/20,
 .np-settings-card .bg-emerald-900\/20 {
   border: 1px solid var(--np-border);
-  background: rgba(31, 28, 24, 0.7) !important;
+  background: color-mix(in srgb, var(--np-inline-card-bg) 82%, transparent) !important;
 }
 
 .np-settings-card .np-divider {

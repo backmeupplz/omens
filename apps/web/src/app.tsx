@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'preact/hooks'
 import { Link, Redirect, Route, Switch, useLocation } from 'wouter-preact'
 import { api, setDemoMode } from './helpers/api'
 import { Spinner } from './helpers/spinner'
+import { useInitializeThemePreference } from './helpers/theme'
 import { AiReportPage, Feed, FilteredFeed, NewspaperFixturePage } from './pages/feed'
 import { Login, Register } from './pages/login'
 import { Settings } from './pages/settings'
@@ -155,6 +156,7 @@ function ScrollToTop() {
 }
 
 export function App() {
+  useInitializeThemePreference()
   const [location] = useLocation()
   const auth = useAuth()
   const [refreshFn, setRefreshFn] = useState<(() => Promise<void>) | null>(null)

@@ -6,6 +6,7 @@ import { useApi } from '../helpers/hooks'
 import { NewspaperRouteControls, NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
 import { SetupStateBlock, type SetupStep } from '../helpers/setup-state'
 import { Spinner } from '../helpers/spinner'
+import { THEME_OPTIONS, useThemePreference } from '../helpers/theme'
 
 // === X Section ===
 
@@ -213,6 +214,38 @@ const AI_PROVIDERS = [
   { id: 'ollama', name: 'Ollama (local)' },
   { id: 'openrouter', name: 'OpenRouter' },
 ] as const
+
+function ThemeSection() {
+  const { theme, setTheme } = useThemePreference()
+
+  return (
+    <div class="space-y-3">
+      <h3 class="font-medium">Edition Theme</h3>
+      <p class="np-copy-muted text-sm">Choose the newspaper palette for Omens across report, feed, and settings.</p>
+      <div class="np-inline-card np-inline-card-row">
+        <span class="np-copy-subtle text-sm">
+          Current theme: <span class="np-copy-strong font-medium">{theme === 'light' ? 'Light' : 'Dark'}</span>
+        </span>
+        <div class="flex flex-wrap gap-2">
+          {THEME_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setTheme(option.value)}
+              class={
+                theme === option.value
+                  ? 'np-button np-button-primary np-button-small'
+                  : 'np-button np-button-secondary np-button-small'
+              }
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 interface AiSettingsData {
   configured: boolean
@@ -534,7 +567,9 @@ function SettingsOverview({ xConnected }: { xConnected: boolean }) {
           : 'Your X feed is connected. Add an AI provider next to unlock the filtered feed and daily briefings.')
         : 'Start by connecting X. After that, bring your own AI provider to filter the people you follow and publish your own briefing.'}
       steps={steps}
-    />
+    >
+      <ThemeSection />
+    </SetupStateBlock>
   )
 }
 
