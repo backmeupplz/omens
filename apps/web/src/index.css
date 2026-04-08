@@ -1252,11 +1252,15 @@ html.newspaper-active #root > div {
   top: calc(100% + 0.55rem);
   right: 0;
   z-index: 40;
+  display: flex;
+  flex-direction: column;
   width: min(24rem, calc(100vw - 1.5rem));
+  max-height: min(26rem, 70vh);
   padding: 0.65rem 0;
   border: 1px solid var(--np-border-light);
-  background: var(--np-panel-bg-strong);
+  background: color-mix(in srgb, var(--np-bg-alt) 90%, var(--np-bg) 10%);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
 }
 
 .np-outline-panel-head {
@@ -1305,8 +1309,34 @@ html.newspaper-active #root > div {
 }
 
 .np-outline-list {
-  max-height: min(24rem, 60vh);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--np-scrollbar-thumb) transparent;
+}
+
+.np-outline-list::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.np-outline-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.np-outline-list::-webkit-scrollbar-thumb {
+  background: var(--np-scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.np-outline-list::-webkit-scrollbar-thumb:hover {
+  background: var(--np-scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 .np-outline-item {
@@ -2393,6 +2423,8 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
   .np-outline-panel {
     position: fixed;
     inset: 0;
+    display: flex;
+    flex-direction: column;
     width: auto;
     max-height: none;
     padding: calc(env(safe-area-inset-top, 0px) + 0.9rem) 0 0;
@@ -2441,8 +2473,7 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
   }
 
   .np-outline-list {
-    max-height: none;
-    height: calc(100dvh - env(safe-area-inset-top, 0px) - 4.5rem);
+    height: auto;
     padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
   }
 

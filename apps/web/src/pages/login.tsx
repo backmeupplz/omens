@@ -10,7 +10,7 @@ function AuthForm({ isRegister }: { isRegister: boolean }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
 
-  const { data: mode } = useApi<{ singleUser: boolean; demoMode?: boolean; demoEmail?: string | null }>('/auth/mode')
+  const { data: mode } = useApi<{ singleUser: boolean; demoMode?: boolean }>('/auth/mode')
   if (mode?.singleUser) return <Redirect to="/" />
 
   const submit = async (e: Event) => {
@@ -89,7 +89,7 @@ function AuthForm({ isRegister }: { isRegister: boolean }) {
             {mode?.demoMode && (
               <div class="np-divider pt-5 text-center space-y-3">
                 <p class="np-copy-muted text-sm">
-                  Browse the demo feed{mode.demoEmail ? ` curated from ${mode.demoEmail}` : ''}.
+                  Browse the public demo feed.
                 </p>
                 <Link
                   href="/"
