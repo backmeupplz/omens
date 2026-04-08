@@ -2432,6 +2432,9 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
   const [historyPage, setHistoryPage] = useState(1)
   const abortRef = useRef<AbortController | null>(null)
   const refetchRef = useRef(refetch)
+  const streamRetryTimerRef = useRef<number | null>(null)
+  const streamRetryCountRef = useRef(0)
+  const connectStreamRef = useRef<() => void>(() => {})
   refetchRef.current = refetch
 
   /** Connect to SSE stream and accumulate content */
@@ -2441,15 +2444,65 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     window.addEventListener('beforeunload', onUnload)
     return () => window.removeEventListener('beforeunload', onUnload)
   }, [])
+  const clearStreamRetry = useCallback(() => {
+    if (streamRetryTimerRef.current !== null) {
+      window.clearTimeout(streamRetryTimerRef.current)
+      streamRetryTimerRef.current = null
+    }
+  }, [])
+  useEffect(() => () => clearStreamRetry(), [clearStreamRetry])
   const connectStream = useCallback(() => {
+    clearStreamRetry()
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
 
+    const recoverStream = async (fallbackMessage: string) => {
+      if (controller.signal.aborted || unmountingRef.current) return
+      try {
+        const status = await api<{ generating: boolean; tweetCount: number; status: string | null; startedAt: string | null; error: string | null }>('/ai/report-status')
+        if (controller.signal.aborted || unmountingRef.current) return
+
+        if (status.error) {
+          setGenerating(false)
+          setStreamContent('')
+          setError(status.error)
+          return
+        }
+
+        if (!status.generating) {
+          setGenerating(false)
+          setStreamContent('')
+          refetchRef.current()
+          return
+        }
+
+        setGenerating(true)
+        if (status.status) setGenStatus(status.status)
+        if (status.startedAt) setGenStartedAt(new Date(status.startedAt).getTime())
+
+        const delay = Math.min(1000 * (2 ** streamRetryCountRef.current), 5000)
+        streamRetryCountRef.current += 1
+        streamRetryTimerRef.current = window.setTimeout(() => {
+          streamRetryTimerRef.current = null
+          connectStreamRef.current()
+        }, delay)
+      } catch (e) {
+        if (controller.signal.aborted || unmountingRef.current) return
+        setGenerating(false)
+        setStreamContent('')
+        setError(e instanceof Error ? e.message : fallbackMessage)
+      }
+    }
+
     fetch(`${API_BASE}/ai/report-stream`, { credentials: 'include', signal: controller.signal })
       .then(async (res) => {
+        if (!res.ok) throw new Error(`Report stream failed (${res.status})`)
         const reader = res.body?.getReader()
-        if (!reader) return
+        if (!reader) {
+          await recoverStream('Connection lost during report generation')
+          return
+        }
         const decoder = new TextDecoder()
         let buf = ''
         let completed = false
@@ -2461,9 +2514,11 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
           buf = lines.pop() || ''
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue
+            streamRetryCountRef.current = 0
             const data = line.slice(6)
             if (data === '[DONE]') {
               completed = true
+              clearStreamRetry()
               setGenerating(false)
               setStreamContent('')
               refetchRef.current()
@@ -2471,6 +2526,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
             }
             if (data.startsWith('[ERROR]')) {
               completed = true
+              clearStreamRetry()
               setGenerating(false)
               setStreamContent('')
               setError(data.slice(8))
@@ -2491,19 +2547,16 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
         }
         // Stream ended without [DONE] or [ERROR] — connection was cut short
         if (!completed && !controller.signal.aborted && !unmountingRef.current) {
-          setGenerating(false)
-          setStreamContent('')
-          setError('Connection lost during report generation')
+          await recoverStream('Connection lost during report generation')
         }
       })
-      .catch((e) => {
+      .catch(async (e) => {
         if (controller.signal.aborted || unmountingRef.current) return
         if (e instanceof Error && e.name === 'AbortError') return
-        setGenerating(false)
-        setStreamContent('')
-        setError(e instanceof Error ? e.message : 'Connection lost during report generation')
+        await recoverStream(e instanceof Error ? e.message : 'Connection lost during report generation')
       })
-  }, [])
+  }, [clearStreamRetry])
+  connectStreamRef.current = connectStream
 
   // Check if report is already generating on mount
   useEffect(() => {
@@ -2515,12 +2568,17 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
           setGenerating(true)
           setGenStatus(s.status || 'Generating...')
           setGenStartedAt(s.startedAt ? new Date(s.startedAt).getTime() : Date.now())
+          streamRetryCountRef.current = 0
           connectStream()
         }
       })
       .catch(() => {})
-    return () => { unmountingRef.current = true; abortRef.current?.abort() }
-  }, [demo])
+    return () => {
+      unmountingRef.current = true
+      clearStreamRetry()
+      abortRef.current?.abort()
+    }
+  }, [clearStreamRetry, connectStream, demo])
 
   const generate = async () => {
     setGenerating(true)
@@ -2529,6 +2587,8 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     setGenStatus('Starting...')
     setGenStartedAt(Date.now())
     setError(null)
+    streamRetryCountRef.current = 0
+    clearStreamRetry()
     try {
       await api('/ai/report', { method: 'POST' })
       connectStream()

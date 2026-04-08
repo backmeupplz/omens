@@ -21,6 +21,10 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + '\u2026' : s
 }
 
+function normalizeMetaText(s: string): string {
+  return s.replace(/\s+/g, ' ').trim()
+}
+
 function origin(): string { return env.CORS_ORIGIN || 'https://omens.online' }
 
 let _spaHtml: string | null = null
@@ -171,13 +175,23 @@ shareRouter.get('/:handle/status/:tweetId', async (c) => {
   if (!tweet) return notFoundHtml()
 
   const meta = {
-    title: `${tweet.authorName} (@${tweet.authorHandle})`,
-    description: truncate((() => {
+    title: truncate(normalizeMetaText((() => {
+      let text = tweet.content || ''
+      if (!text) {
+        try {
+          const c = tweet.card ? JSON.parse(tweet.card) : null
+          text = [c?.title, c?.description, c?.domain].filter(Boolean).join(' — ')
+        } catch {}
+      }
+      if (!text) text = `Post by ${tweet.authorName} (@${tweet.authorHandle})`
+      return text
+    })()), 60),
+    description: truncate(normalizeMetaText((() => {
       let text = tweet.content || ''
       if (!text) { try { const c = tweet.card ? JSON.parse(tweet.card) : null; text = [c?.title, c?.description].filter(Boolean).join(' — ') } catch {} }
       if (tweet.quotedTweet) { try { const qt = JSON.parse(tweet.quotedTweet); if (qt.content) text += ` | QT @${qt.authorHandle}: ${qt.content}` } catch {} }
       return text
-    })(), 200),
+    })()), 120),
     url: `${origin()}/${handle}/status/${tweetId}`,
     image: `${origin()}/${handle}/status/${tweetId}/og.png`,
     largeImage: true,
@@ -219,7 +233,7 @@ shareRouter.get('/report/:id', async (c) => {
   if (!report) return notFoundHtml()
 
   const { title, bullets } = extractReportSummary(report.content)
-  const description = truncate(bullets.map((b) => `\u2022 ${b}`).join(' ') || report.content.replace(/\[\[tweet:[^\]]+\]\]/g, '').replace(/[#*\n]+/g, ' ').trim(), 200)
+  const description = truncate(normalizeMetaText(bullets.map((b) => `\u2022 ${b}`).join(' ') || report.content.replace(/\[\[tweet:[^\]]+\]\]/g, '').replace(/[#*\n]+/g, ' ').trim()), 120)
   const meta = {
     title: `${title} — Omens Report`, description,
     url: `${origin()}/report/${id}`, image: `${origin()}/report/${id}/og.png`, largeImage: true,

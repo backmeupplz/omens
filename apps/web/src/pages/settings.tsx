@@ -526,6 +526,7 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
 
 function SettingsOverview({ xConnected }: { xConnected: boolean }) {
   const { data: aiSettings } = useApi<Pick<AiSettingsData, 'configured' | 'provider' | 'model'>>('/ai/settings')
+  const { data: versionData } = useApi<{ version: string }>('/version')
   const aiReady = !!aiSettings?.configured
   const providerName = aiSettings?.provider
     ? (AI_PROVIDERS.find((p) => p.id === aiSettings.provider)?.name || aiSettings.provider)
@@ -569,6 +570,9 @@ function SettingsOverview({ xConnected }: { xConnected: boolean }) {
       steps={steps}
     >
       <ThemeSection />
+      {versionData?.version && (
+        <p class="np-copy-muted text-xs">Running Docker build v{versionData.version}</p>
+      )}
     </SetupStateBlock>
   )
 }

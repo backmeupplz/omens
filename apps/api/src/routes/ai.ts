@@ -478,11 +478,30 @@ aiRouter.get('/regenerate-stream', async (c) => {
       start(controller) {
         let closed = false
         const encoder = new TextEncoder()
+        const requestSignal = c.req.raw.signal
+        let onEvent: ((event: string) => void) | null = null
+        const cleanup = () => {
+          clearInterval(heartbeat)
+          if (onEvent) progress?.subscribers.delete(onEvent)
+          requestSignal?.removeEventListener?.('abort', onAbort)
+        }
         const send = (data: string) => {
           if (closed) return
-          try { controller.enqueue(encoder.encode(`data: ${data}\n\n`)) } catch { closed = true }
+          try { controller.enqueue(encoder.encode(`data: ${data}\n\n`)) } catch { closed = true; cleanup() }
         }
-        const close = () => { if (closed) return; closed = true; try { controller.close() } catch {} }
+        const sendHeartbeat = () => {
+          if (closed) return
+          try { controller.enqueue(encoder.encode(': keepalive\n\n')) } catch { closed = true; cleanup() }
+        }
+        const close = () => {
+          if (closed) return
+          closed = true
+          cleanup()
+          try { controller.close() } catch {}
+        }
+        const onAbort = () => close()
+        const heartbeat = setInterval(sendHeartbeat, 15_000)
+        requestSignal?.addEventListener?.('abort', onAbort)
 
         if (!progress || progress.done) {
           if (progress?.error) send(`[ERROR] ${progress.error}`)
@@ -493,11 +512,10 @@ aiRouter.get('/regenerate-stream', async (c) => {
 
         if (progress.status) send(JSON.stringify({ status: progress.status }))
 
-        const onEvent = (event: string) => {
+        onEvent = (event: string) => {
           if (event === '[DONE]' || event.startsWith('[ERROR]')) {
             send(event)
             close()
-            progress.subscribers.delete(onEvent)
           } else {
             send(event)
           }
@@ -836,15 +854,30 @@ aiRouter.get('/report-stream', async (c) => {
       start(controller) {
         const encoder = new TextEncoder()
         let closed = false
+        const requestSignal = c.req.raw.signal
+        let onChunk: ((event: string) => void) | null = null
+        const cleanup = () => {
+          clearInterval(heartbeat)
+          if (onChunk) progress?.subscribers.delete(onChunk)
+          requestSignal?.removeEventListener?.('abort', onAbort)
+        }
         const send = (data: string) => {
           if (closed) return
-          try { controller.enqueue(encoder.encode(`data: ${data}\n\n`)) } catch { closed = true }
+          try { controller.enqueue(encoder.encode(`data: ${data}\n\n`)) } catch { closed = true; cleanup() }
+        }
+        const sendHeartbeat = () => {
+          if (closed) return
+          try { controller.enqueue(encoder.encode(': keepalive\n\n')) } catch { closed = true; cleanup() }
         }
         const close = () => {
           if (closed) return
           closed = true
+          cleanup()
           try { controller.close() } catch {}
         }
+        const onAbort = () => close()
+        const heartbeat = setInterval(sendHeartbeat, 15_000)
+        requestSignal?.addEventListener?.('abort', onAbort)
 
         if (!progress) {
           send('[DONE]')
@@ -863,11 +896,10 @@ aiRouter.get('/report-stream', async (c) => {
           return
         }
 
-        const onChunk = (event: string) => {
+        onChunk = (event: string) => {
           if (event === '[DONE]' || event.startsWith('[ERROR]')) {
             send(event)
             close()
-            progress.subscribers.delete(onChunk)
           } else {
             send(event)
           }
