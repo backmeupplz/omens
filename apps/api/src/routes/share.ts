@@ -33,12 +33,14 @@ function getSpaHtml(): string {
 
 function ogTags(meta: { title: string; description: string; url: string; image?: string; largeImage?: boolean }): string {
   const img = meta.image
-    ? `<meta property="og:image" itemprop="image" content="${esc(meta.image)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:type" content="image/png"><meta name="twitter:image" content="${esc(meta.image)}">`
+    ? `<meta property="og:image" itemprop="image" content="${esc(meta.image)}"><meta property="og:image:url" content="${esc(meta.image)}"><meta property="og:image:secure_url" content="${esc(meta.image)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:type" content="image/png"><meta property="og:image:alt" content="${esc(meta.title)}"><meta name="twitter:image" content="${esc(meta.image)}">`
     : ''
-  return `<meta property="og:title" content="${esc(meta.title)}"><meta property="og:description" content="${esc(meta.description)}">
-<meta property="og:type" content="article"><meta property="og:url" content="${esc(meta.url)}">${img}
+  return `<meta name="description" content="${esc(meta.description)}">
+<link rel="canonical" href="${esc(meta.url)}">
+<meta property="og:title" content="${esc(meta.title)}"><meta property="og:description" content="${esc(meta.description)}">
+<meta property="og:type" content="article"><meta property="og:url" content="${esc(meta.url)}"><meta property="og:site_name" content="Omens"><meta property="og:locale" content="en_US">${img}
 <meta name="twitter:card" content="${meta.largeImage ? 'summary_large_image' : 'summary'}">
-<meta name="twitter:title" content="${esc(meta.title)}"><meta name="twitter:description" content="${esc(meta.description)}">`
+<meta name="twitter:title" content="${esc(meta.title)}"><meta name="twitter:description" content="${esc(meta.description)}"><meta name="twitter:url" content="${esc(meta.url)}">`
 }
 
 function notFoundHtml(): Response {
@@ -74,7 +76,8 @@ function spaWithOg(meta: { title: string; description: string; url: string; imag
   const tags = ogTags(meta)
   const titleTag = `<title>${esc(meta.title)} — Omens</title>`
   const html = getSpaHtml()
-    .replace(/<meta\s+(property="og:|name="twitter:)[^>]*>\s*/g, '')
+    .replace(/<meta\s+(property="og:|name="twitter:|name="description")[^>]*>\s*/g, '')
+    .replace(/<link\s+rel="canonical"[^>]*>\s*/g, '')
     .replace(/<title>[^<]*<\/title>/, `${titleTag}\n${tags}`)
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }

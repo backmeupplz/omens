@@ -1,5 +1,5 @@
 import { createPortal } from 'preact/compat'
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { Link } from 'wouter-preact'
 import { api, API_BASE } from '../helpers/api'
 import { FeedLeadArticle, NewspaperFeedShell } from '../helpers/feed-shell'
@@ -1903,9 +1903,6 @@ type ArticleTile =
   | { type: 'tweet'; tweet?: Tweet }
 type ArticlePackageKind = 'lead' | 'feature' | 'standard' | 'brief'
 
-const NP_GRID_ROW_FALLBACK = 4
-const NP_GRID_ROW_GAP_FALLBACK = 10
-
 function parseBoldText(text: string): preact.ComponentChildren[] {
   const parts: preact.ComponentChildren[] = []
   const regex = /\*\*(.+?)\*\*/g
@@ -1920,13 +1917,15 @@ function parseBoldText(text: string): preact.ComponentChildren[] {
   return parts
 }
 
-function getArticleMaxColumns(items: SectionItem[]) {
-  const tweetCount = items.filter((item) => item.type === 'tweet').length
-  const textLength = items.reduce((total, item) => total + (item.type === 'text' ? item.line.trim().length : 0), 0)
-
-  if (tweetCount >= 5) return 3
-  if (tweetCount >= 1 || textLength > 1100) return 2
-  return 1
+function parseCssLength(value: string, fallback: number) {
+  const trimmed = value.trim()
+  const numeric = Number.parseFloat(trimmed)
+  if (!Number.isFinite(numeric)) return fallback
+  if (trimmed.endsWith('rem')) {
+    const rootFontSize = Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16
+    return numeric * rootFontSize
+  }
+  return numeric
 }
 
 function splitParagraphForTiles(text: string) {
@@ -2044,6 +2043,26 @@ function arrangeArticleTiles(tiles: ArticleTile[]) {
   return arranged
 }
 
+function estimateArticleTileWeight(tile: ArticleTile) {
+  if (tile.type === 'tweet') return 6
+  const listWeight = tile.fragments.some((fragment) => fragment.type === 'list') ? 2 : 0
+  const paragraphWeight = Math.ceil(tile.charCount / 180)
+  return Math.max(2, paragraphWeight + listWeight + (tile.lead ? 1 : 0))
+}
+
+function distributeArticleTiles(tiles: ArticleTile[], columnCount: number) {
+  const columns = Array.from({ length: columnCount }, () => ({ tiles: [] as ArticleTile[], weight: 0 }))
+  for (const tile of tiles) {
+    let target = 0
+    for (let index = 1; index < columns.length; index++) {
+      if (columns[index].weight < columns[target].weight) target = index
+    }
+    columns[target].tiles.push(tile)
+    columns[target].weight += estimateArticleTileWeight(tile)
+  }
+  return columns.map((column) => column.tiles)
+}
+
 function getArticlePackageKind(items: SectionItem[], index: number): ArticlePackageKind {
   const tweetCount = items.filter((item) => item.type === 'tweet').length
   const textLength = items.reduce((total, item) => total + (item.type === 'text' ? item.line.trim().length : 0), 0)
@@ -2053,19 +2072,6 @@ function getArticlePackageKind(items: SectionItem[], index: number): ArticlePack
   if (contentWeight >= 1700 || tweetCount >= 4 || textLength > 1050) return 'feature'
   if (contentWeight >= 780 || tweetCount >= 2 || textLength > 520) return 'standard'
   return 'brief'
-}
-
-function getTextTileSpan(tile: Extract<ArticleTile, { type: 'text' }>, columns: number) {
-  if (columns <= 1) return 1
-  const hasList = tile.fragments.some((fragment) => fragment.type === 'list')
-
-  if (columns === 2) {
-    return 1
-  }
-
-  if (tile.lead && tile.charCount > 200) return 2
-  if (tile.charCount > 520 || hasList) return 2
-  return 1
 }
 
 function renderTextTileFragments(fragments: TextFragment[], lead: boolean, prefix: string) {
@@ -2089,77 +2095,22 @@ function renderTextTileFragments(fragments: TextFragment[], lead: boolean, prefi
   })
 }
 
-function MeasuredGridItem({
-  className,
-  colSpan,
-  children,
-}: {
-  className: string
-  colSpan: number
-  children: preact.ComponentChildren
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [rowSpan, setRowSpan] = useState(1)
-
-  useEffect(() => {
-    const node = ref.current
-    if (!node) return
-    let frame = 0
-
-    const update = () => {
-      frame = 0
-      const parent = node.parentElement
-      const styles = parent ? window.getComputedStyle(parent) : null
-      const rowSize = styles ? parseFloat(styles.getPropertyValue('--np-grid-row')) || NP_GRID_ROW_FALLBACK : NP_GRID_ROW_FALLBACK
-      const gap = styles ? parseFloat(styles.getPropertyValue('--np-grid-gap-y')) || NP_GRID_ROW_GAP_FALLBACK : NP_GRID_ROW_GAP_FALLBACK
-      const height = node.getBoundingClientRect().height
-      setRowSpan(Math.max(1, Math.ceil((height + gap) / (rowSize + gap))))
-    }
-
-    const schedule = () => {
-      if (frame) cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(update)
-    }
-
-    schedule()
-    const observer = new ResizeObserver(schedule)
-    observer.observe(node)
-    window.addEventListener('resize', schedule)
-    return () => {
-      observer.disconnect()
-      window.removeEventListener('resize', schedule)
-      if (frame) cancelAnimationFrame(frame)
-    }
-  }, [colSpan])
-
-  return (
-    <div
-      class={className}
-      style={{ gridColumn: `span ${colSpan}`, gridRow: `span ${rowSpan}` }}
-    >
-      <div ref={ref} class="np-grid-tile-inner">
-        {children}
-      </div>
-    </div>
-  )
-}
-
 function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefix: string }) {
   const gridRef = useRef<HTMLDivElement>(null)
-  const [columns, setColumns] = useState(1)
-  const maxColumns = getArticleMaxColumns(items)
+  const [columnCount, setColumnCount] = useState(1)
   const tiles = arrangeArticleTiles(buildArticleTiles(items))
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = gridRef.current
     if (!node) return
 
     const updateColumns = () => {
+      const styles = window.getComputedStyle(node)
+      const gap = parseCssLength(styles.getPropertyValue('--np-grid-gap-x'), 18)
+      const minWidth = parseCssLength(styles.getPropertyValue('--np-article-column-min'), 17 * 16)
       const width = node.getBoundingClientRect().width
-      let next = 1
-      if (maxColumns >= 3 && width >= 960) next = 3
-      else if (maxColumns >= 2 && width >= 520) next = 2
-      setColumns((prev) => (prev === next ? prev : next))
+      const next = Math.max(1, Math.floor((width + gap) / (minWidth + gap)))
+      setColumnCount((prev) => (prev === next ? prev : next))
     }
 
     updateColumns()
@@ -2170,39 +2121,39 @@ function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefi
       observer.disconnect()
       window.removeEventListener('resize', updateColumns)
     }
-  }, [maxColumns])
+  }, [])
+
+  const columns = distributeArticleTiles(tiles, columnCount)
+
+  const renderTile = (tile: ArticleTile, key: string) => {
+    if (tile.type === 'tweet') {
+      return tile.tweet ? (
+        <div key={key} class="np-grid-tile np-grid-tile-tweet">
+          <TweetCard tweet={tile.tweet} expandBehavior="detail" />
+        </div>
+      ) : (
+        <div key={key} class="np-grid-tile np-grid-tile-fallback">
+          <div class="np-tweet">Referenced post is no longer available</div>
+        </div>
+      )
+    }
+
+    return (
+      <div key={key} class="np-grid-tile np-grid-tile-text">
+        <div class="np-text-tile">
+          {renderTextTileFragments(tile.fragments, tile.lead, `${key}-`)}
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div
-      ref={gridRef}
-      class="np-article-grid"
-      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
-    >
-      {tiles.map((tile, index) => {
-        if (tile.type === 'tweet') {
-          return tile.tweet ? (
-            <MeasuredGridItem key={`${prefix}t-${index}`} className="np-grid-tile np-grid-tile-tweet" colSpan={1}>
-              <TweetCard tweet={tile.tweet} expandBehavior="detail" />
-            </MeasuredGridItem>
-          ) : (
-            <MeasuredGridItem key={`${prefix}t-${index}`} className="np-grid-tile np-grid-tile-fallback" colSpan={1}>
-              <div class="np-tweet">Referenced post is no longer available</div>
-            </MeasuredGridItem>
-          )
-        }
-
-        return (
-          <MeasuredGridItem
-            key={`${prefix}x-${index}`}
-            className="np-grid-tile np-grid-tile-text"
-            colSpan={getTextTileSpan(tile, columns)}
-          >
-            <div class="np-text-tile">
-              {renderTextTileFragments(tile.fragments, tile.lead, `${prefix}${index}-`)}
-            </div>
-          </MeasuredGridItem>
-        )
-      })}
+    <div ref={gridRef} class="np-article-grid" style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}>
+      {columns.map((column, columnIndex) => (
+        <div key={`${prefix}c-${columnIndex}`} class="np-article-grid-column">
+          {column.map((tile, tileIndex) => renderTile(tile, `${prefix}${columnIndex}-${tileIndex}`))}
+        </div>
+      ))}
     </div>
   )
 }
@@ -2243,6 +2194,23 @@ function NewspaperContent({ text, refTweets, reportDate, tweetCount: totalTweetC
   if (current.items.length > 0 || current.header) sections.push(current)
 
   const articles = sections.filter((s) => s.header)
+  const renderArticlePackage = (
+    article: (typeof articles)[number],
+    index: number,
+  ) => {
+    const packageKind = getArticlePackageKind(article.items, index)
+    return (
+      <article key={index} class={`np-article np-article-${packageKind}`}>
+        <div class={`np-article-header np-section-header ${index === 0 ? 'np-section-header-lg' : article.headerLevel <= 2 ? 'np-section-header-md' : 'np-section-header-sm'}`}>
+          {article.header}
+        </div>
+        <div class="np-body">
+          <NewspaperArticleLayout items={article.items} prefix={`${index}-`} />
+        </div>
+      </article>
+    )
+  }
+  const [leadArticle, ...tiledArticles] = articles
 
   const d = new Date(reportDate)
   const dateStr = d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
@@ -2284,21 +2252,21 @@ function NewspaperContent({ text, refTweets, reportDate, tweetCount: totalTweetC
         </>
       )}
 
-      <div class="np-page-grid">
-        {articles.map((article, ai) => {
-          const packageKind = getArticlePackageKind(article.items, ai)
-          return (
-            <article key={ai} class={`np-article np-article-${packageKind}`}>
-              <div class={`np-article-header np-section-header ${ai === 0 ? 'np-section-header-lg' : article.headerLevel <= 2 ? 'np-section-header-md' : 'np-section-header-sm'}`}>
-                {article.header}
-              </div>
-              <div class="np-body">
-                <NewspaperArticleLayout items={article.items} prefix={`${ai}-`} />
-              </div>
-            </article>
-          )
-        })}
-      </div>
+      {leadArticle ? (
+        <div class="np-page-grid">
+          {renderArticlePackage(leadArticle, 0)}
+        </div>
+      ) : null}
+
+      {tiledArticles.length > 0 ? (
+        <div class="np-article-masonry">
+          {tiledArticles.map((article, index) => (
+            <div key={index + 1} class="np-article-masonry-item">
+              {renderArticlePackage(article, index + 1)}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
