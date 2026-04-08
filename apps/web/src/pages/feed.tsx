@@ -1,5 +1,5 @@
 import { createPortal } from 'preact/compat'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { Link } from 'wouter-preact'
 import { api, API_BASE } from '../helpers/api'
 import { FeedLeadArticle, NewspaperFeedShell } from '../helpers/feed-shell'
@@ -874,12 +874,30 @@ function OgEmbed({
   text: string
   onLoaded: () => void
 }) {
+  const rootRef = useRef<HTMLDivElement>(null)
   const [card, setCard] = useState<CardData | null>(null)
   const [attempted, setAttempted] = useState(false)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const node = rootRef.current
+    const match = text.match(/https?:\/\/[^\s]+/)
+    if (!node || !match) return
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisible(true)
+        observer.disconnect()
+      }
+    }, { rootMargin: '320px 0px' })
+
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [text])
 
   useEffect(() => {
     const match = text.match(/https?:\/\/[^\s]+/)
-    if (!match) return
+    if (!match || !visible) return
     setAttempted(true)
     api<CardData | null>(`/og?url=${encodeURIComponent(match[0])}`)
       .then((data) => {
@@ -893,7 +911,7 @@ function OgEmbed({
 
   if (!card) {
     return attempted ? (
-      <div class="np-skeleton-shell mt-2 overflow-hidden rounded-xl border">
+      <div ref={rootRef} class="np-skeleton-shell mt-2 overflow-hidden rounded-xl border">
         <div class="np-link-thumb np-skeleton" />
         <div class="p-2.5 space-y-1.5">
           <div class="np-skeleton-line h-4 w-[78%] rounded" />
@@ -901,7 +919,7 @@ function OgEmbed({
           <div class="np-skeleton-line h-3 w-[68%] rounded opacity-60" />
         </div>
       </div>
-    ) : null
+    ) : <div ref={rootRef} class="mt-2 h-px w-full" />
   }
   return <LinkCard data={card} />
 }
@@ -2098,13 +2116,15 @@ function renderTextTileFragments(fragments: TextFragment[], lead: boolean, prefi
 function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefix: string }) {
   const gridRef = useRef<HTMLDivElement>(null)
   const [columnCount, setColumnCount] = useState(1)
-  const tiles = arrangeArticleTiles(buildArticleTiles(items))
+  const tiles = useMemo(() => arrangeArticleTiles(buildArticleTiles(items)), [items])
 
   useLayoutEffect(() => {
     const node = gridRef.current
     if (!node) return
+    let frame = 0
 
     const updateColumns = () => {
+      frame = 0
       const styles = window.getComputedStyle(node)
       const gap = parseCssLength(styles.getPropertyValue('--np-grid-gap-x'), 18)
       const minWidth = parseCssLength(styles.getPropertyValue('--np-article-column-min'), 17 * 16)
@@ -2113,17 +2133,21 @@ function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefi
       setColumnCount((prev) => (prev === next ? prev : next))
     }
 
-    updateColumns()
-    const observer = new ResizeObserver(updateColumns)
+    const schedule = () => {
+      if (frame) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(updateColumns)
+    }
+
+    schedule()
+    const observer = new ResizeObserver(schedule)
     observer.observe(node)
-    window.addEventListener('resize', updateColumns)
     return () => {
       observer.disconnect()
-      window.removeEventListener('resize', updateColumns)
+      if (frame) cancelAnimationFrame(frame)
     }
   }, [])
 
-  const columns = distributeArticleTiles(tiles, columnCount)
+  const columns = useMemo(() => distributeArticleTiles(tiles, columnCount), [tiles, columnCount])
 
   const renderTile = (tile: ArticleTile, key: string) => {
     if (tile.type === 'tweet') {
