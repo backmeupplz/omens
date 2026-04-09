@@ -590,14 +590,20 @@ export async function getTweetThread(
     }
   }
 
-  // Build parent->child map for chain walking
+  // Build parent->children map for chain walking
   const byId = new Map<string, ParsedTweet>()
-  const childOf = new Map<string, ParsedTweet>() // parentId -> child
+  const childrenOf = new Map<string, ParsedTweet[]>()
   for (const t of unique) {
     byId.set(t.tweetId, t)
     if (t.replyToTweetId && t.replyToHandle === authorHandle) {
-      childOf.set(t.replyToTweetId, t)
+      const siblings = childrenOf.get(t.replyToTweetId) || []
+      siblings.push(t)
+      childrenOf.set(t.replyToTweetId, siblings)
     }
+  }
+
+  for (const siblings of childrenOf.values()) {
+    siblings.sort((a, b) => a.publishedAt.getTime() - b.publishedAt.getTime())
   }
 
   // Find root: walk up from focal tweet
@@ -606,13 +612,28 @@ export async function getTweetThread(
     root = byId.get(root.replyToTweetId)!
   }
 
-  // Walk down from root following self-reply chain
+  const focalPath = new Set<string>()
+  let cursor: ParsedTweet | undefined = focalTweet
+  while (cursor) {
+    focalPath.add(cursor.tweetId)
+    cursor = cursor.replyToTweetId ? byId.get(cursor.replyToTweetId) : undefined
+  }
+
+  // Walk down from root following the path to the focal tweet first,
+  // then continue chronologically through any direct self-replies.
   const chain: ParsedTweet[] = [root]
+  const visited = new Set<string>([root.tweetId])
   let current = root
   while (true) {
-    const next = childOf.get(current.tweetId)
+    const candidates = childrenOf.get(current.tweetId) || []
+    if (candidates.length === 0) break
+
+    const next = candidates.find((candidate) => focalPath.has(candidate.tweetId) && !visited.has(candidate.tweetId))
+      || candidates.find((candidate) => !visited.has(candidate.tweetId))
     if (!next) break
+
     chain.push(next)
+    visited.add(next.tweetId)
     current = next
   }
 

@@ -466,6 +466,25 @@ function dedupThreads(tweets: Tweet[]): Tweet[] {
   return tweets.filter((t) => !selfReplyParentIds.has(t.tweetId))
 }
 
+function getSelfThreadAncestors(tweet: Tweet): Tweet[] {
+  const chain: Tweet[] = []
+  const seen = new Set<string>([tweet.tweetId])
+  let current: Tweet | null = tweet
+
+  while (
+    current.parentTweet
+    && current.replyToHandle === current.authorHandle
+    && current.parentTweet.authorHandle === current.authorHandle
+    && !seen.has(current.parentTweet.tweetId)
+  ) {
+    chain.unshift(current.parentTweet)
+    seen.add(current.parentTweet.tweetId)
+    current = current.parentTweet
+  }
+
+  return chain
+}
+
 // === Link Cards ===
 
 interface CardData {
@@ -1127,6 +1146,99 @@ function TweetContent({
   )
 }
 
+function ConversationContextTweet({
+  tweet,
+  onShowReplies,
+  forceExpandedText,
+  onExpandRequest,
+}: {
+  tweet: Tweet
+  onShowReplies?: () => void
+  forceExpandedText?: boolean
+  onExpandRequest?: () => void
+}) {
+  const media: MediaItem[] = safeParse<MediaItem[]>(tweet.mediaUrls) ?? []
+  const cardRaw = safeParse<CardData>(tweet.card)
+  const card = cardRaw?.title ? cardRaw : null
+  const quoted = safeParse<QuotedTweet>(tweet.quotedTweet)
+  const [lightbox, setLightbox] = useState<number | null>(null)
+
+  return (
+    <div class="np-post-thread mb-2 border-b pb-2">
+      {lightbox !== null && (
+        <Lightbox
+          items={media.filter((item) => item.type === 'photo')}
+          index={lightbox}
+          onClose={() => setLightbox(null)}
+        />
+      )}
+
+      <div class="flex items-center gap-2 mb-1">
+        {tweet.authorAvatar ? (
+          <img src={imgProxy(tweet.authorAvatar)} alt="" class="h-5 w-5 rounded-full" loading="lazy" />
+        ) : (
+          <div class="np-avatar-fallback flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold">
+            {(tweet.authorName || '?').charAt(0).toUpperCase()}
+          </div>
+        )}
+        <span class="np-copy-strong text-sm font-semibold">{tweet.authorName}</span>
+        <span class="np-copy-muted text-xs">@{tweet.authorHandle}</span>
+        {tweet.publishedAt && (
+          <span class="np-copy-muted text-xs">&middot; {timeAgo(tweet.publishedAt)}</span>
+        )}
+      </div>
+
+      <TweetContent
+        text={tweet.content}
+        hideUrls={!!card}
+        forceExpanded={forceExpandedText}
+        onExpandRequest={onExpandRequest}
+      />
+
+      {media.length > 0 && <MediaGrid media={media} onPhotoClick={setLightbox} />}
+
+      {quoted && (
+        <div class="np-inline-card mt-2 overflow-hidden p-2.5 cursor-default" onClick={(e) => e.stopPropagation()}>
+          <div class="flex items-center gap-2 mb-1">
+            {quoted.authorAvatar && <img src={imgProxy(quoted.authorAvatar)} alt="" class="w-4 h-4 rounded-full" />}
+            <span class="np-copy-subtle text-xs font-semibold">{quoted.authorName}</span>
+            <span class="np-copy-muted text-xs">@{quoted.authorHandle}</span>
+          </div>
+          <p class="np-copy-muted line-clamp-3 break-words text-xs">{quoted.content}</p>
+        </div>
+      )}
+
+      {card ? (
+        <LinkCard data={card} fallbackUrl={tweet.url} tweetUrl={tweet.url} />
+      ) : (
+        media.length === 0 && !quoted && <OgEmbed text={tweet.content} onLoaded={() => {}} />
+      )}
+
+      <div class="np-copy-muted mt-2 flex items-center gap-3 text-xs">
+        {onShowReplies && (
+          <button
+            type="button"
+            class="np-action-accent flex items-center gap-1"
+            onClick={(e) => {
+              e.stopPropagation()
+              onShowReplies()
+            }}
+          >
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+            </svg>
+            {tweet.replies > 0 && fmt(tweet.replies)}
+          </button>
+        )}
+        {!onShowReplies && tweet.replies > 0 && <span>{fmt(tweet.replies)} replies</span>}
+        {tweet.retweets > 0 && <span>{fmt(tweet.retweets)} RTs</span>}
+        {tweet.likes > 0 && <span>{fmt(tweet.likes)} likes</span>}
+        {tweet.views > 0 && <span>{fmt(tweet.views)} views</span>}
+      </div>
+    </div>
+  )
+}
+
 function CopyShareButton({ url, iconOnly }: { url: string; iconOnly?: boolean }) {
   const [copied, setCopied] = useState(false)
   const [burstId, setBurstId] = useState(0)
@@ -1195,9 +1307,8 @@ function TweetDetailModal({
   const [repliesError, setRepliesError] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
 
-  // For self-threads with inline parent, fetch replies for the parent (it has the actual discussion)
-  const isThread = tweet.replyToHandle === tweet.authorHandle && !!tweet.parentTweet
-  const replyTarget = isThread && tweet.parentTweet ? tweet.parentTweet : tweet
+  const selfThreadAncestors = getSelfThreadAncestors(tweet)
+  const replyTarget = selfThreadAncestors[0] ?? tweet
   const tweetIdForReplies = replyTarget.url.match(/status\/(\d+)/)?.[1] || replyTarget.tweetId
 
   const fetchReplies = useCallback(
@@ -1307,19 +1418,19 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
   const quotedMedia: MediaItem[] = quoted?.media || []
   const [lightbox, setLightbox] = useState<number | null>(null)
   const [quotedLightbox, setQuotedLightbox] = useState<number | null>(null)
-  const [parentLightbox, setParentLightbox] = useState<number | null>(null)
   const [showReplies, setShowReplies] = useState(false)
   const [showThread, setShowThread] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
   const [showDetailExpanded, setShowDetailExpanded] = useState(false)
   const [ogLoaded, setOgLoaded] = useState(false)
-  const isThread = tweet.replyToHandle === tweet.authorHandle
-  const parentMedia: MediaItem[] = isThread && tweet.parentTweet ? safeParse<MediaItem[]>(tweet.parentTweet.mediaUrls) ?? [] : []
-  const parentCardRaw = isThread && tweet.parentTweet ? safeParse<CardData>(tweet.parentTweet.card) : null
-  const parentCard = parentCardRaw?.title ? parentCardRaw : null
-  const parentQuoted = isThread && tweet.parentTweet ? safeParse<QuotedTweet>(tweet.parentTweet.quotedTweet) : null
-  const parentIsThread = tweet.parentTweet ? tweet.parentTweet.replyToHandle === tweet.parentTweet.authorHandle : false
-  const showThreadButton = isThread && (!tweet.parentTweet || parentIsThread)
+  const isSelfThread = tweet.replyToHandle === tweet.authorHandle
+  const selfThreadAncestors = isSelfThread ? getSelfThreadAncestors(tweet) : []
+  const contextTweets = selfThreadAncestors.length > 0
+    ? selfThreadAncestors
+    : (tweet.parentTweet ? [tweet.parentTweet] : [])
+  const replyTarget = selfThreadAncestors[0] ?? tweet
+  const replyCount = replyTarget.replies
+  const showThreadButton = isSelfThread
   const onOgLoaded = useCallback(() => setOgLoaded(true), [])
   const openDetail = useCallback((expandedText = false) => {
     if (embedded) return
@@ -1349,26 +1460,10 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
   return (
     <div>
     {detailModal}
-    {tweet.parentTweet && !isThread && (
-      <div class="np-post-context flex items-start gap-2.5 overflow-hidden rounded-t-xl border border-b-0 px-3 py-2.5 sm:px-4">
-        {tweet.parentTweet.authorAvatar && (
-          <img src={imgProxy(tweet.parentTweet.authorAvatar)} alt="" class="w-5 h-5 rounded-full mt-0.5 shrink-0" />
-        )}
-        <div class="min-w-0">
-          <span class="np-copy-muted text-xs">
-            <span class="np-copy-subtle font-medium">{tweet.parentTweet.authorName}</span>
-            {' '}@{tweet.parentTweet.authorHandle}
-          </span>
-          <div class="np-copy-muted mt-0.5 text-xs">
-            <TweetContent text={tweet.parentTweet.content} forceExpanded={forceExpandedText} onExpandRequest={onExpandRequest} />
-          </div>
-        </div>
-      </div>
-    )}
     <div
-      class={`np-post ${tweet.parentTweet && !isThread ? 'rounded-b-xl rounded-t-none' : 'rounded-xl'} px-3 py-3 transition-colors sm:px-4${embedded ? '' : ' cursor-pointer'}`}
+      class={`np-post rounded-xl px-3 py-3 transition-colors sm:px-4${embedded ? '' : ' cursor-pointer'}`}
       onClick={embedded ? undefined : () => {
-        if (lightbox !== null || quotedLightbox !== null || parentLightbox !== null || showReplies || showThread) return
+        if (lightbox !== null || quotedLightbox !== null || showReplies || showThread) return
         openDetail(false)
       }}
     >
@@ -1387,7 +1482,6 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
         />
       )}
       {showReplies && (() => {
-        const replyTarget = isThread && tweet.parentTweet ? tweet.parentTweet : tweet
         return (
           <RepliesModal
             tweetId={replyTarget.url.match(/status\/(\d+)/)?.[1] || replyTarget.tweetId}
@@ -1401,88 +1495,15 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
           onClose={() => setShowThread(false)}
         />
       )}
-      {/* Inline thread parent */}
-      {parentLightbox !== null && (
-        <Lightbox
-          items={parentMedia.filter((m) => m.type === 'photo')}
-          index={parentLightbox}
-          onClose={() => setParentLightbox(null)}
+      {contextTweets.map((contextTweet, index) => (
+        <ConversationContextTweet
+          key={contextTweet.tweetId}
+          tweet={contextTweet}
+          onShowReplies={index === 0 ? () => setShowReplies(true) : undefined}
+          forceExpandedText={forceExpandedText}
+          onExpandRequest={onExpandRequest}
         />
-      )}
-      {isThread && tweet.parentTweet && (
-        <div class="np-post-thread mb-2 border-b pb-2">
-          <div class="flex items-center gap-2 mb-1">
-            {tweet.parentTweet.authorAvatar ? (
-              <img src={imgProxy(tweet.parentTweet.authorAvatar)} alt="" class="h-5 w-5 rounded-full" loading="lazy" />
-            ) : (
-              <div class="np-avatar-fallback flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold">
-                {(tweet.parentTweet.authorName || '?').charAt(0).toUpperCase()}
-              </div>
-            )}
-            <span class="np-copy-strong text-sm font-semibold">{tweet.parentTweet.authorName}</span>
-            <span class="np-copy-muted text-xs">@{tweet.parentTweet.authorHandle}</span>
-            {tweet.parentTweet.publishedAt && (
-              <span class="np-copy-muted text-xs">&middot; {timeAgo(tweet.parentTweet.publishedAt)}</span>
-            )}
-          </div>
-          <TweetContent text={tweet.parentTweet.content} hideUrls={!!parentCard} forceExpanded={forceExpandedText} onExpandRequest={onExpandRequest} />
-          {parentMedia.length > 0 && <MediaGrid media={parentMedia} onPhotoClick={setParentLightbox} />}
-          {parentQuoted && (
-            <div class="np-inline-card mt-2 overflow-hidden p-2.5 cursor-default" onClick={(e) => e.stopPropagation()}>
-              <div class="flex items-center gap-2 mb-1">
-                {parentQuoted.authorAvatar && <img src={imgProxy(parentQuoted.authorAvatar)} alt="" class="w-4 h-4 rounded-full" />}
-                <span class="np-copy-subtle text-xs font-semibold">{parentQuoted.authorName}</span>
-                <span class="np-copy-muted text-xs">@{parentQuoted.authorHandle}</span>
-              </div>
-              <p class="np-copy-muted line-clamp-3 break-words text-xs">{parentQuoted.content}</p>
-            </div>
-          )}
-          {parentCard ? (
-            <LinkCard data={parentCard} fallbackUrl={tweet.parentTweet.url} tweetUrl={tweet.parentTweet.url} />
-          ) : (
-            parentMedia.length === 0 && !parentQuoted && <OgEmbed text={tweet.parentTweet.content} onLoaded={() => {}} />
-          )}
-          {/* Parent engagement */}
-          <div class="np-copy-muted mt-2 flex items-center gap-3 text-xs">
-            <button
-              type="button"
-              class="np-action-accent flex items-center gap-1"
-              onClick={(e) => { e.stopPropagation(); setShowReplies(true) }}
-            >
-              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-              </svg>
-              {tweet.parentTweet.replies > 0 && fmt(tweet.parentTweet.replies)}
-            </button>
-            {tweet.parentTweet.retweets > 0 && (
-              <span class="flex items-center gap-1">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                  <path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                </svg>
-                {fmt(tweet.parentTweet.retweets)}
-              </span>
-            )}
-            {tweet.parentTweet.likes > 0 && (
-              <span class="flex items-center gap-1">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                </svg>
-                {fmt(tweet.parentTweet.likes)}
-              </span>
-            )}
-            {tweet.parentTweet.views > 0 && (
-              <span class="flex items-center gap-1">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-                {fmt(tweet.parentTweet.views)}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
+      ))}
 
       {/* Author row: avatar + repost label + name */}
       <div class={`np-post-author flex gap-2.5 mb-1 group/author relative ${tweet.isRetweet ? '' : 'items-center'}`}>
@@ -1587,7 +1608,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
               <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
               </svg>
-              {tweet.replies > 0 && fmt(tweet.replies)}
+              {replyCount > 0 && fmt(replyCount)}
             </button>
             {showThreadButton && (
               <button

@@ -5,32 +5,14 @@ import { NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
 import { Spinner } from '../helpers/spinner'
 import { NewspaperReportPage, TweetCard, type Tweet } from './feed'
 
-interface SharedTweet {
-  tweetId: string
-  authorName: string
-  authorHandle: string
-  authorAvatar: string | null
-  authorFollowers: number
-  content: string
-  mediaUrls: string | null
-  quotedTweet: string | null
-  card: string | null
-  url: string
-  likes: number
-  retweets: number
-  replies: number
-  views: number
-  publishedAt: string | null
-}
-
 export function SharePage({ handle, tweetId }: { handle: string; tweetId: string }) {
   useNewspaperActive()
-  const [tweet, setTweet] = useState<SharedTweet | null>(null)
+  const [tweet, setTweet] = useState<Tweet | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api<{ tweet: SharedTweet }>(`/tweet/${handle}/${tweetId}`)
+    api<{ tweet: Tweet }>(`/tweet/${handle}/${tweetId}`)
       .then((d) => setTweet(d.tweet))
       .catch((e) => setError(e instanceof Error ? e.message : 'Tweet not found'))
       .finally(() => setLoading(false))
@@ -63,36 +45,12 @@ export function SharePage({ handle, tweetId }: { handle: string; tweetId: string
     )
   }
 
-  const tweetObj: Tweet = {
-    id: tweet.tweetId,
-    tweetId: tweet.tweetId,
-    authorName: tweet.authorName,
-    authorHandle: tweet.authorHandle,
-    authorAvatar: tweet.authorAvatar,
-    authorFollowers: tweet.authorFollowers,
-    authorBio: null,
-    content: tweet.content,
-    mediaUrls: tweet.mediaUrls,
-    isRetweet: null,
-    card: tweet.card,
-    quotedTweet: tweet.quotedTweet,
-    replyToHandle: null,
-    replyToTweetId: null,
-    parentTweet: null,
-    url: tweet.url,
-    likes: tweet.likes,
-    retweets: tweet.retweets,
-    replies: tweet.replies,
-    views: tweet.views,
-    publishedAt: tweet.publishedAt || '',
-  }
-
   return (
     <NewspaperShell showMeta={false}>
       <div class="mx-auto w-full max-w-[34rem]">
         <div>
           <div class="mx-auto w-full">
-            <TweetCard tweet={tweetObj} embedded />
+            <TweetCard tweet={tweet} embedded />
           </div>
           <div class="np-page-grid np-share-promo-section">
             <SharePromoArticle />

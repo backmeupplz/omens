@@ -4,6 +4,7 @@ import { aiReports, articles, getDb, tweets } from '@omens/db'
 import env from '../env'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { hydrateTweetsWithParents } from '../helpers/feed'
 import { hydrateReport } from '../helpers/report'
 import {
   extractReportSummary,
@@ -106,15 +107,8 @@ shareDataRouter.get('/tweet/:handle/:tweetId', async (c) => {
   const [tweet] = await db.select().from(tweets)
     .where(eq(tweets.tweetId, tweetId)).limit(1)
   if (!tweet) return c.json({ error: 'Tweet not found' }, 404)
-  return c.json({
-    tweet: {
-      tweetId: tweet.tweetId, authorName: tweet.authorName, authorHandle: tweet.authorHandle,
-      authorAvatar: tweet.authorAvatar, authorFollowers: tweet.authorFollowers, content: tweet.content,
-      mediaUrls: tweet.mediaUrls, quotedTweet: tweet.quotedTweet, card: tweet.card, url: tweet.url,
-      likes: tweet.likes, retweets: tweet.retweets, replies: tweet.replies, views: tweet.views,
-      publishedAt: tweet.publishedAt?.toISOString() || null,
-    },
-  })
+  const [hydratedTweet] = await hydrateTweetsWithParents(db, [tweet])
+  return c.json({ tweet: hydratedTweet })
 })
 
 shareDataRouter.get('/article/:tweetId', async (c) => {
