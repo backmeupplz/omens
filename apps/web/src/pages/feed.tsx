@@ -267,14 +267,16 @@ function RepliesModal({
 
 // === Thread Modal ===
 
-interface ThreadTweet {
+interface RemoteTweet {
   tweetId: string
   authorName: string
   authorHandle: string
   authorAvatar: string | null
   authorFollowers: number
+  authorBio: string | null
   content: string
   media: MediaItem[] | null
+  isRetweet: string | null
   card: CardData | null
   quotedTweet: {
     authorName: string
@@ -290,6 +292,8 @@ interface ThreadTweet {
   retweets: number
   replies: number
   views: number
+  replyToHandle: string | null
+  replyToTweetId: string | null
   publishedAt: string
 }
 
@@ -300,12 +304,12 @@ function ThreadModal({
   tweetId: string
   onClose: () => void
 }) {
-  const [tweets, setTweets] = useState<ThreadTweet[]>([])
+  const [tweets, setTweets] = useState<RemoteTweet[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api<{ tweets: ThreadTweet[] }>(`/x/thread/${tweetId}`)
+    api<{ tweets: RemoteTweet[] }>(`/x/thread/${tweetId}`)
       .then((r) => setTweets(r.tweets))
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load thread'))
       .finally(() => setLoading(false))
@@ -355,7 +359,7 @@ function ThreadModal({
   return typeof document !== 'undefined' ? createPortal(modal, document.body) : modal
 }
 
-function ThreadTweetItem({ tweet, isLast }: { tweet: ThreadTweet; isLast: boolean }) {
+function ThreadTweetItem({ tweet, isLast }: { tweet: RemoteTweet; isLast: boolean }) {
   const media: MediaItem[] = tweet.media || []
   const [lightbox, setLightbox] = useState<number | null>(null)
 
@@ -393,18 +397,7 @@ function ThreadTweetItem({ tweet, isLast }: { tweet: ThreadTweet; isLast: boolea
             <MediaGrid media={media} onPhotoClick={setLightbox} />
           </>
         )}
-        {tweet.quotedTweet && (
-          <div class="np-inline-card mt-2 overflow-hidden p-2.5">
-            <div class="flex items-center gap-2 mb-1">
-              {tweet.quotedTweet.authorAvatar && (
-                <img src={imgProxy(tweet.quotedTweet.authorAvatar)} alt="" class="w-4 h-4 rounded-full" />
-              )}
-              <span class="np-copy-subtle text-xs font-semibold">{tweet.quotedTweet.authorName}</span>
-              <span class="np-copy-muted text-xs">@{tweet.quotedTweet.authorHandle}</span>
-            </div>
-            <p class="np-copy-muted line-clamp-3 break-words text-xs">{tweet.quotedTweet.content}</p>
-          </div>
-        )}
+        {tweet.quotedTweet && <QuotedTweetPreview quoted={tweet.quotedTweet} compact />}
         {tweet.card && <LinkCard data={tweet.card} fallbackUrl={tweet.url} tweetUrl={tweet.url} />}
         <div class="np-copy-muted mt-1.5 flex items-center gap-3 text-xs">
           {tweet.replies > 0 && <span>{fmt(tweet.replies)} replies</span>}
@@ -413,6 +406,169 @@ function ThreadTweetItem({ tweet, isLast }: { tweet: ThreadTweet; isLast: boolea
         </div>
       </div>
     </div>
+  )
+}
+
+function RemoteTweetDetailModal({
+  tweetId,
+  onClose,
+}: {
+  tweetId: string
+  onClose: () => void
+}) {
+  const [data, setData] = useState<TweetConversationData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    api<TweetConversationData>(`/x/conversation/${tweetId}`)
+      .then((response) => setData(response))
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load post'))
+      .finally(() => setLoading(false))
+  }, [tweetId])
+
+  const hydratedTweet = useMemo(() => {
+    if (!data?.tweet) return null
+    return remoteTweetToTweet(data.tweet, buildParentTweetChain(data.ancestors))
+  }, [data])
+
+  useEffect(() => {
+    if (hydratedTweet) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [hydratedTweet, onClose])
+
+  useEffect(() => {
+    if (hydratedTweet) return
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [hydratedTweet])
+
+  if (hydratedTweet) {
+    const detailModal = (
+      <TweetDetailModal
+        tweet={hydratedTweet}
+        onClose={onClose}
+        forceExpandedText
+        threadTweetId={tweetId}
+        forceShowThreadButton={(data?.thread.length || 0) > 1}
+      />
+    )
+    return typeof document !== 'undefined' ? createPortal(detailModal, document.body) : detailModal
+  }
+
+  const modal = (
+    <div
+      class="np-post-modal fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-8 px-3"
+      onClick={(e: Event) => { e.stopPropagation(); onClose() }}
+    >
+      <div class="np-post-modal-body w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
+        <div class="np-post-modal-replies rounded-xl px-4 py-4">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <h4 class="np-copy-strong text-sm font-semibold">Post</h4>
+            <button
+              type="button"
+              onClick={onClose}
+              class="np-overlay-close text-xl leading-none"
+            >
+              &times;
+            </button>
+          </div>
+          {loading && <Spinner class="py-6" />}
+          {error && <p class="np-alert np-alert-error py-3 text-center">{error}</p>}
+          {!loading && !error && <p class="np-overlay-empty py-4 text-sm">Post not found.</p>}
+        </div>
+      </div>
+    </div>
+  )
+
+  return typeof document !== 'undefined' ? createPortal(modal, document.body) : modal
+}
+
+function QuotedTweetPreview({
+  quoted,
+  compact,
+  forceExpandedText,
+  onExpandRequest,
+}: {
+  quoted: QuotedTweet
+  compact?: boolean
+  forceExpandedText?: boolean
+  onExpandRequest?: () => void
+}) {
+  const [lightbox, setLightbox] = useState<number | null>(null)
+  const [showDetail, setShowDetail] = useState(false)
+  const tweetId = extractTweetIdFromUrl(quoted.url)
+  const interactive = !!tweetId
+
+  return (
+    <>
+      {!compact && lightbox !== null && (
+        <Lightbox
+          items={(quoted.media || []).filter((item) => item.type === 'photo')}
+          index={lightbox}
+          onClose={() => setLightbox(null)}
+        />
+      )}
+      {showDetail && tweetId && (
+        <RemoteTweetDetailModal
+          tweetId={tweetId}
+          onClose={() => setShowDetail(false)}
+        />
+      )}
+      <div
+        class={`${compact ? 'np-inline-card mt-2 p-2.5' : 'np-post-quote mt-2 rounded-xl p-3'} overflow-hidden ${interactive ? 'cursor-pointer' : 'cursor-default'}`}
+        role={interactive ? 'button' : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (interactive) setShowDetail(true)
+        }}
+        onKeyDown={(e) => {
+          if (!interactive) return
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            e.stopPropagation()
+            setShowDetail(true)
+          }
+        }}
+      >
+        <div class="mb-1 flex items-center gap-2">
+          {quoted.authorAvatar && (
+            <img
+              src={imgProxy(quoted.authorAvatar)}
+              alt=""
+              class={compact ? 'h-4 w-4 rounded-full' : 'h-5 w-5 rounded-full'}
+            />
+          )}
+          <span class={compact ? 'np-copy-subtle text-xs font-semibold' : 'np-copy-strong text-sm font-semibold'}>
+            {quoted.authorName}
+          </span>
+          <span class={compact ? 'np-copy-muted text-xs' : 'np-copy-muted text-xs'}>
+            @{quoted.authorHandle}
+          </span>
+        </div>
+        {compact ? (
+          <p class="np-copy-muted line-clamp-3 break-words text-xs">{quoted.content}</p>
+        ) : (
+          <>
+            <div class="np-copy-subtle text-sm">
+              <TweetContent
+                text={quoted.content}
+                hideUrls={!!quoted.card}
+                forceExpanded={forceExpandedText}
+                onExpandRequest={onExpandRequest}
+              />
+            </div>
+            <MediaGrid media={quoted.media || []} onPhotoClick={setLightbox} />
+            {quoted.card && <LinkCard data={quoted.card} fallbackUrl={quoted.url} tweetUrl={quoted.url} />}
+          </>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -450,6 +606,12 @@ export interface Tweet {
   publishedAt: string
 }
 
+interface TweetConversationData {
+  tweet: RemoteTweet | null
+  ancestors: RemoteTweet[]
+  thread: RemoteTweet[]
+}
+
 interface FeedResponse {
   data: Tweet[]
   pagination: { page: number; limit: number; total: number; totalPages: number }
@@ -483,6 +645,44 @@ function getSelfThreadAncestors(tweet: Tweet): Tweet[] {
   }
 
   return chain
+}
+
+function extractTweetIdFromUrl(url: string | null | undefined): string | null {
+  return url?.match(/status\/(\d+)/)?.[1] || null
+}
+
+function remoteTweetToTweet(tweet: RemoteTweet, parentTweet: Tweet | null): Tweet {
+  return {
+    id: `remote:${tweet.tweetId}`,
+    tweetId: tweet.tweetId,
+    authorName: tweet.authorName,
+    authorHandle: tweet.authorHandle,
+    authorAvatar: tweet.authorAvatar,
+    authorFollowers: tweet.authorFollowers,
+    authorBio: tweet.authorBio,
+    content: tweet.content,
+    mediaUrls: tweet.media ? JSON.stringify(tweet.media) : null,
+    isRetweet: tweet.isRetweet,
+    card: tweet.card ? JSON.stringify(tweet.card) : null,
+    quotedTweet: tweet.quotedTweet ? JSON.stringify(tweet.quotedTweet) : null,
+    replyToHandle: tweet.replyToHandle,
+    replyToTweetId: tweet.replyToTweetId,
+    parentTweet,
+    url: tweet.url,
+    likes: tweet.likes,
+    retweets: tweet.retweets,
+    replies: tweet.replies,
+    views: tweet.views,
+    publishedAt: tweet.publishedAt,
+  }
+}
+
+function buildParentTweetChain(ancestors: RemoteTweet[]): Tweet | null {
+  let parentTweet: Tweet | null = null
+  for (const ancestor of ancestors) {
+    parentTweet = remoteTweetToTweet(ancestor, parentTweet)
+  }
+  return parentTweet
 }
 
 // === Link Cards ===
@@ -1197,16 +1397,7 @@ function ConversationContextTweet({
 
       {media.length > 0 && <MediaGrid media={media} onPhotoClick={setLightbox} />}
 
-      {quoted && (
-        <div class="np-inline-card mt-2 overflow-hidden p-2.5 cursor-default" onClick={(e) => e.stopPropagation()}>
-          <div class="flex items-center gap-2 mb-1">
-            {quoted.authorAvatar && <img src={imgProxy(quoted.authorAvatar)} alt="" class="w-4 h-4 rounded-full" />}
-            <span class="np-copy-subtle text-xs font-semibold">{quoted.authorName}</span>
-            <span class="np-copy-muted text-xs">@{quoted.authorHandle}</span>
-          </div>
-          <p class="np-copy-muted line-clamp-3 break-words text-xs">{quoted.content}</p>
-        </div>
-      )}
+      {quoted && <QuotedTweetPreview quoted={quoted} compact />}
 
       {card ? (
         <LinkCard data={card} fallbackUrl={tweet.url} tweetUrl={tweet.url} />
@@ -1292,6 +1483,8 @@ function TweetDetailModal({
   score,
   minScore,
   forceExpandedText,
+  threadTweetId,
+  forceShowThreadButton,
 }: {
   tweet: Tweet
   onClose: () => void
@@ -1300,6 +1493,8 @@ function TweetDetailModal({
   score?: number | null
   minScore?: number
   forceExpandedText?: boolean
+  threadTweetId?: string
+  forceShowThreadButton?: boolean
 }) {
   const [replies, setReplies] = useState<ReplyData[]>([])
   const [repliesLoading, setRepliesLoading] = useState(true)
@@ -1309,7 +1504,7 @@ function TweetDetailModal({
 
   const selfThreadAncestors = getSelfThreadAncestors(tweet)
   const replyTarget = selfThreadAncestors[0] ?? tweet
-  const tweetIdForReplies = replyTarget.url.match(/status\/(\d+)/)?.[1] || replyTarget.tweetId
+  const tweetIdForReplies = extractTweetIdFromUrl(replyTarget.url) || replyTarget.tweetId
 
   const fetchReplies = useCallback(
     (c?: string) => {
@@ -1357,7 +1552,17 @@ function TweetDetailModal({
       onClick={(e: Event) => { e.stopPropagation(); onClose() }}
     >
       <div class="np-post-modal-body w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
-        <TweetCard tweet={tweet} nudge={nudge} onNudge={onNudge} score={score} minScore={minScore} embedded forceExpandedText={forceExpandedText} />
+        <TweetCard
+          tweet={tweet}
+          nudge={nudge}
+          onNudge={onNudge}
+          score={score}
+          minScore={minScore}
+          embedded
+          forceExpandedText={forceExpandedText}
+          threadTweetId={threadTweetId}
+          forceShowThreadButton={forceShowThreadButton}
+        />
 
         {/* Replies section */}
         <div class="np-post-modal-replies mt-2 rounded-xl px-4 py-3">
@@ -1401,7 +1606,7 @@ function TweetDetailModal({
   )
 }
 
-export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, expandBehavior, forceExpandedText }: {
+export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, expandBehavior, forceExpandedText, threadTweetId, forceShowThreadButton }: {
   tweet: Tweet
   nudge?: 'up' | 'down' | null
   onNudge?: (tweetId: string, direction: 'up' | 'down') => void
@@ -1410,14 +1615,14 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
   embedded?: boolean
   expandBehavior?: 'inline' | 'detail'
   forceExpandedText?: boolean
+  threadTweetId?: string
+  forceShowThreadButton?: boolean
 }) {
   const media: MediaItem[] = safeParse<MediaItem[]>(tweet.mediaUrls) ?? []
   const quoted = safeParse<QuotedTweet>(tweet.quotedTweet)
   const cardRaw = safeParse<CardData>(tweet.card)
   const card = cardRaw?.title ? cardRaw : null
-  const quotedMedia: MediaItem[] = quoted?.media || []
   const [lightbox, setLightbox] = useState<number | null>(null)
-  const [quotedLightbox, setQuotedLightbox] = useState<number | null>(null)
   const [showReplies, setShowReplies] = useState(false)
   const [showThread, setShowThread] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
@@ -1430,7 +1635,8 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
     : (tweet.parentTweet ? [tweet.parentTweet] : [])
   const replyTarget = selfThreadAncestors[0] ?? tweet
   const replyCount = replyTarget.replies
-  const showThreadButton = isSelfThread
+  const threadTargetTweetId = threadTweetId || extractTweetIdFromUrl(tweet.url) || tweet.tweetId
+  const showThreadButton = !!threadTargetTweetId && (forceShowThreadButton || isSelfThread)
   const onOgLoaded = useCallback(() => setOgLoaded(true), [])
   const openDetail = useCallback((expandedText = false) => {
     if (embedded) return
@@ -1452,6 +1658,8 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
         score={score}
         minScore={minScore}
         forceExpandedText={showDetailExpanded}
+        threadTweetId={threadTargetTweetId}
+        forceShowThreadButton={showThreadButton}
       />,
       document.body,
     )
@@ -1463,7 +1671,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
     <div
       class={`np-post rounded-xl px-3 py-3 transition-colors sm:px-4${embedded ? '' : ' cursor-pointer'}`}
       onClick={embedded ? undefined : () => {
-        if (lightbox !== null || quotedLightbox !== null || showReplies || showThread) return
+        if (lightbox !== null || showReplies || showThread) return
         openDetail(false)
       }}
     >
@@ -1474,24 +1682,17 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
           onClose={() => setLightbox(null)}
         />
       )}
-      {quotedLightbox !== null && (
-        <Lightbox
-          items={quotedMedia.filter((m) => m.type === 'photo')}
-          index={quotedLightbox}
-          onClose={() => setQuotedLightbox(null)}
-        />
-      )}
       {showReplies && (() => {
         return (
           <RepliesModal
-            tweetId={replyTarget.url.match(/status\/(\d+)/)?.[1] || replyTarget.tweetId}
+            tweetId={extractTweetIdFromUrl(replyTarget.url) || replyTarget.tweetId}
             onClose={() => setShowReplies(false)}
           />
         )
       })()}
-      {showThread && (
+      {showThread && threadTargetTweetId && (
         <ThreadModal
-          tweetId={tweet.url.match(/status\/(\d+)/)?.[1] || tweet.tweetId}
+          tweetId={threadTargetTweetId}
           onClose={() => setShowThread(false)}
         />
       )}
@@ -1571,23 +1772,11 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
 
       {/* Quoted tweet */}
       {quoted && (
-        <div
-          class="np-post-quote mt-2 overflow-hidden rounded-xl p-3 cursor-default"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div class="flex items-center gap-2 mb-1">
-            {quoted.authorAvatar && (
-              <img src={imgProxy(quoted.authorAvatar)} alt="" class="w-5 h-5 rounded-full" />
-            )}
-            <span class="np-copy-strong text-sm font-semibold">{quoted.authorName}</span>
-            <span class="np-copy-muted text-xs">@{quoted.authorHandle}</span>
-          </div>
-          <div class="np-copy-subtle text-sm">
-            <TweetContent text={quoted.content} hideUrls={!!quoted.card} forceExpanded={forceExpandedText} onExpandRequest={onExpandRequest} />
-          </div>
-          <MediaGrid media={quoted.media || []} onPhotoClick={setQuotedLightbox} />
-          {quoted.card && <LinkCard data={quoted.card} fallbackUrl={quoted.url} tweetUrl={quoted.url} />}
-        </div>
+        <QuotedTweetPreview
+          quoted={quoted}
+          forceExpandedText={forceExpandedText}
+          onExpandRequest={onExpandRequest}
+        />
       )}
 
       {/* Link card — from API card data or OG fetch */}

@@ -497,10 +497,17 @@ export interface ThreadResult {
   tweets: ParsedTweet[]
 }
 
-export async function getTweetThread(
+export interface TweetConversationResult {
+  tweet: ParsedTweet | null
+  ancestors: ParsedTweet[]
+  thread: ParsedTweet[]
+}
+
+async function fetchTweetDetailInstructions(
   session: Session,
   tweetId: string,
-): Promise<ThreadResult> {
+  cursor?: string,
+) {
   const variables: Record<string, unknown> = {
     focalTweetId: tweetId,
     referrer: 'tweet',
@@ -512,6 +519,7 @@ export async function getTweetThread(
     withVoice: false,
     withV2Timeline: true,
   }
+  if (cursor) variables.cursor = cursor
 
   const fieldToggles = {
     withArticleRichContentState: true,
@@ -532,13 +540,13 @@ export async function getTweetThread(
     headers: buildHeaders(session),
   })
 
-  if (!res.ok) return { tweets: [] }
+  if (!res.ok) return []
 
   const data = await res.json()
-  const instructions =
-    data?.data?.threaded_conversation_with_injections_v2?.instructions || []
+  return data?.data?.threaded_conversation_with_injections_v2?.instructions || []
+}
 
-  // Collect all tweets from the conversation
+function extractConversationTweets(instructions: any[]): ParsedTweet[] {
   const allTweets: ParsedTweet[] = []
 
   function tryExtract(obj: any): ParsedTweet | null {
@@ -569,10 +577,21 @@ export async function getTweetThread(
     }
   }
 
-  // Find the focal tweet to determine the thread author
-  const focalTweet = allTweets.find((t) => t.tweetId === tweetId)
-  if (!focalTweet) return { tweets: allTweets.length > 0 ? [allTweets[0]] : [] }
+  const seen = new Set<string>()
+  const unique: ParsedTweet[] = []
+  for (const tweet of allTweets) {
+    if (seen.has(tweet.tweetId)) continue
+    seen.add(tweet.tweetId)
+    unique.push(tweet)
+  }
 
+  return unique
+}
+
+function buildSelfThreadChain(
+  allTweets: ParsedTweet[],
+  focalTweet: ParsedTweet,
+): ParsedTweet[] {
   const authorHandle = focalTweet.authorHandle
 
   // Filter to only same-author non-RT tweets
@@ -580,20 +599,10 @@ export async function getTweetThread(
     (t) => t.authorHandle === authorHandle && !t.isRetweet,
   )
 
-  // Deduplicate by tweetId
-  const seen = new Set<string>()
-  const unique: ParsedTweet[] = []
-  for (const t of authorTweets) {
-    if (!seen.has(t.tweetId)) {
-      seen.add(t.tweetId)
-      unique.push(t)
-    }
-  }
-
   // Build parent->children map for chain walking
   const byId = new Map<string, ParsedTweet>()
   const childrenOf = new Map<string, ParsedTweet[]>()
-  for (const t of unique) {
+  for (const t of authorTweets) {
     byId.set(t.tweetId, t)
     if (t.replyToTweetId && t.replyToHandle === authorHandle) {
       const siblings = childrenOf.get(t.replyToTweetId) || []
@@ -637,7 +646,55 @@ export async function getTweetThread(
     current = next
   }
 
-  return { tweets: chain }
+  return chain
+}
+
+export async function getTweetThread(
+  session: Session,
+  tweetId: string,
+): Promise<ThreadResult> {
+  const instructions = await fetchTweetDetailInstructions(session, tweetId)
+  const allTweets = extractConversationTweets(instructions)
+  const focalTweet = allTweets.find((t) => t.tweetId === tweetId) || allTweets[0] || null
+  if (!focalTweet) return { tweets: [] }
+
+  return { tweets: buildSelfThreadChain(allTweets, focalTweet) }
+}
+
+export async function getTweetConversation(
+  session: Session,
+  tweetId: string,
+): Promise<TweetConversationResult> {
+  const instructions = await fetchTweetDetailInstructions(session, tweetId)
+  const allTweets = extractConversationTweets(instructions)
+  const focalTweet = allTweets.find((t) => t.tweetId === tweetId) || allTweets[0] || null
+
+  if (!focalTweet) {
+    return { tweet: null, ancestors: [], thread: [] }
+  }
+
+  const byId = new Map<string, ParsedTweet>()
+  for (const tweet of allTweets) {
+    byId.set(tweet.tweetId, tweet)
+  }
+
+  const ancestors: ParsedTweet[] = []
+  const seen = new Set<string>([focalTweet.tweetId])
+  let cursor: ParsedTweet | null = focalTweet
+
+  while (cursor?.replyToTweetId) {
+    const parent = byId.get(cursor.replyToTweetId)
+    if (!parent || seen.has(parent.tweetId)) break
+    ancestors.unshift(parent)
+    seen.add(parent.tweetId)
+    cursor = parent
+  }
+
+  return {
+    tweet: focalTweet,
+    ancestors,
+    thread: buildSelfThreadChain(allTweets, focalTweet),
+  }
 }
 
 export async function getTweetReplies(
