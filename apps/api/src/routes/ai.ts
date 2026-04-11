@@ -1,6 +1,7 @@
 import { zValidator } from '@hono/zod-validator'
 import {
   aiReports,
+  aiScoringFeeds,
   aiSettings,
   getDb,
   nudges,
@@ -9,7 +10,13 @@ import {
   tweetScores,
   userTweets,
 } from '@omens/db'
-import { aiSettingsSchema, nudgeSchema, promptChangeSchema } from '@omens/shared'
+import {
+  aiSettingsSchema,
+  nudgeSchema,
+  promptChangeSchema,
+  scoringFeedCreateSchema,
+  scoringFeedUpdateSchema,
+} from '@omens/shared'
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import env from '../env'
@@ -30,6 +37,8 @@ import type { AppEnv } from '../middleware/auth'
 import { decrypt, encrypt } from '../helpers/crypto'
 
 const aiRouter = new Hono<AppEnv>()
+const DEFAULT_FEED_NAME = 'Main'
+const DEFAULT_FEED_ICON = '✦'
 
 // --- Helpers ---
 
@@ -54,10 +63,89 @@ async function getAiConfig(userId: string) {
 }
 
 async function getUserMinScore(userId: string): Promise<number> {
+  const feed = await getFeedForUser(userId)
+  return feed?.minScore ?? 50
+}
+
+function feedScopeKey(userId: string, feedId: string) {
+  return `${userId}:${feedId}`
+}
+
+function getRequestedFeedId(c: any) {
+  return c.req.query('feedId') || null
+}
+
+async function listScoringFeeds(userId: string) {
   const db = getDb(env.DATABASE_URL)
-  const [settings] = await db.select({ minScore: aiSettings.minScore })
-    .from(aiSettings).where(eq(aiSettings.userId, userId)).limit(1)
-  return settings?.minScore ?? 50
+  return db.select()
+    .from(aiScoringFeeds)
+    .where(eq(aiScoringFeeds.userId, userId))
+    .orderBy(desc(aiScoringFeeds.isMain), aiScoringFeeds.createdAt)
+}
+
+async function ensureMainFeed(userId: string) {
+  const db = getDb(env.DATABASE_URL)
+  const [existing] = await db.select()
+    .from(aiScoringFeeds)
+    .where(and(eq(aiScoringFeeds.userId, userId), eq(aiScoringFeeds.isMain, true)))
+    .limit(1)
+  if (existing) return existing
+
+  const [settings] = await db.select().from(aiSettings).where(eq(aiSettings.userId, userId)).limit(1)
+  const [created] = await db.insert(aiScoringFeeds).values({
+    userId,
+    name: DEFAULT_FEED_NAME,
+    icon: DEFAULT_FEED_ICON,
+    isMain: true,
+    systemPrompt: settings?.systemPrompt || null,
+    minScore: settings?.minScore ?? 50,
+    reportIntervalHours: settings?.reportIntervalHours ?? 24,
+    reportAtHour: settings?.reportAtHour ?? 6,
+    promptLastRegenAt: settings?.promptLastRegenAt ?? null,
+    lastAutoReportAt: settings?.lastAutoReportAt ?? null,
+  }).returning()
+  return created
+}
+
+async function getFeedForUser(userId: string, requestedFeedId?: string | null) {
+  const feeds = await listScoringFeeds(userId)
+  if (feeds.length === 0) {
+    const main = await ensureMainFeed(userId)
+    return main
+  }
+  if (requestedFeedId) {
+    const match = feeds.find((feed) => feed.id === requestedFeedId)
+    if (match) return match
+  }
+  return feeds.find((feed) => feed.isMain) || feeds[0]
+}
+
+function computeNextReportAt(feed: typeof aiScoringFeeds.$inferSelect) {
+  if (feed.reportIntervalHours <= 0) return null
+  if (feed.reportIntervalHours >= 24) {
+    const now = new Date()
+    const todayTarget = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), feed.reportAtHour))
+    return todayTarget.getTime() <= Date.now() ? todayTarget.getTime() + 86_400_000 : todayTarget.getTime()
+  }
+  const lastReport = feed.lastAutoReportAt?.getTime() || 0
+  return lastReport + feed.reportIntervalHours * 3_600_000
+}
+
+function serializeFeed(feed: typeof aiScoringFeeds.$inferSelect) {
+  return {
+    id: feed.id,
+    name: feed.name,
+    icon: feed.icon,
+    isMain: feed.isMain,
+    minScore: feed.minScore,
+    scoreFromAt: feed.scoreFromAt,
+    reportIntervalHours: feed.reportIntervalHours,
+    reportAtHour: feed.reportAtHour,
+    systemPrompt: feed.systemPrompt || '',
+    promptLastRegenAt: feed.promptLastRegenAt,
+    lastAutoReportAt: feed.lastAutoReportAt,
+    nextReportAt: computeNextReportAt(feed),
+  }
 }
 
 // ==================== SETTINGS ====================
@@ -72,8 +160,12 @@ aiRouter.get('/settings', async (c) => {
     .limit(1)
 
   if (!settings) {
-    return c.json({ configured: false, defaultPrompt: DEFAULT_SYSTEM_PROMPT, fetchIntervalMinutes: 15 })
+    return c.json({ configured: false, defaultPrompt: DEFAULT_SYSTEM_PROMPT, fetchIntervalMinutes: 15, feeds: [] })
   }
+
+  const existingFeeds = await listScoringFeeds(user.id)
+  const feeds = existingFeeds.length > 0 ? existingFeeds : [await ensureMainFeed(user.id)]
+  const mainFeed = feeds.find((feed) => feed.isMain) || feeds[0]
 
   let maskedKey = '••••••••'
   try {
@@ -81,33 +173,21 @@ aiRouter.get('/settings', async (c) => {
     if (raw.length > 8) maskedKey = raw.slice(0, 4) + '••••' + raw.slice(-4)
   } catch {}
 
-  // Compute next auto-report time server-side (matches fetcher logic exactly)
-  let nextReportAt: number | null = null
-  if (settings.reportIntervalHours > 0) {
-    if (settings.reportIntervalHours >= 24) {
-      const now = new Date()
-      const todayTarget = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), settings.reportAtHour))
-      nextReportAt = todayTarget.getTime() <= Date.now() ? todayTarget.getTime() + 86_400_000 : todayTarget.getTime()
-    } else {
-      const lastReport = settings.lastAutoReportAt?.getTime() || 0
-      nextReportAt = lastReport + settings.reportIntervalHours * 3_600_000
-    }
-  }
-
   return c.json({
     configured: true,
     provider: settings.provider,
     apiKeyMasked: maskedKey,
-    minScore: settings.minScore,
+    minScore: mainFeed?.minScore ?? 50,
     fetchIntervalMinutes: settings.fetchIntervalMinutes,
-    reportIntervalHours: settings.reportIntervalHours,
-    reportAtHour: settings.reportAtHour,
-    nextReportAt,
+    reportIntervalHours: mainFeed?.reportIntervalHours ?? 24,
+    reportAtHour: mainFeed?.reportAtHour ?? 6,
+    nextReportAt: mainFeed ? computeNextReportAt(mainFeed) : null,
     baseUrl: settings.baseUrl || '',
     model: settings.model,
-    systemPrompt: settings.systemPrompt || '',
+    systemPrompt: mainFeed?.systemPrompt || settings.systemPrompt || '',
     defaultPrompt: DEFAULT_SYSTEM_PROMPT,
-    promptLastRegenAt: settings.promptLastRegenAt,
+    promptLastRegenAt: mainFeed?.promptLastRegenAt ?? settings.promptLastRegenAt,
+    feeds: feeds.map(serializeFeed),
   })
 })
 
@@ -145,6 +225,7 @@ aiRouter.put('/settings', zValidator('json', aiSettingsSchema), async (c) => {
       systemPrompt: systemPrompt || null,
     })
   }
+  await ensureMainFeed(user.id)
   return c.json({ ok: true })
 })
 
@@ -152,14 +233,10 @@ aiRouter.put('/settings/prompt', async (c) => {
   const user = c.get('user')
   const body = await c.req.json<{ systemPrompt?: string }>()
   const db = getDb(env.DATABASE_URL)
-
-  const existing = await db.select({ id: aiSettings.id }).from(aiSettings)
-    .where(eq(aiSettings.userId, user.id)).limit(1)
-  if (existing.length === 0) return c.json({ error: 'AI not configured' }, 400)
-
-  await db.update(aiSettings)
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
+  await db.update(aiScoringFeeds)
     .set({ systemPrompt: body.systemPrompt || null, updatedAt: new Date() })
-    .where(eq(aiSettings.userId, user.id))
+    .where(eq(aiScoringFeeds.id, feed.id))
   return c.json({ ok: true })
 })
 
@@ -168,7 +245,8 @@ aiRouter.put('/settings/min-score', async (c) => {
   const body = await c.req.json<{ minScore: number }>()
   const db = getDb(env.DATABASE_URL)
   const val = Math.max(0, Math.min(100, Math.round(body.minScore || 0)))
-  await db.update(aiSettings).set({ minScore: val }).where(eq(aiSettings.userId, user.id))
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
+  await db.update(aiScoringFeeds).set({ minScore: val, updatedAt: new Date() }).where(eq(aiScoringFeeds.id, feed.id))
   return c.json({ ok: true })
 })
 
@@ -176,24 +254,98 @@ aiRouter.put('/settings/intervals', async (c) => {
   const user = c.get('user')
   const body = await c.req.json<{ fetchIntervalMinutes?: number; reportIntervalHours?: number; reportAtHour?: number }>()
   const db = getDb(env.DATABASE_URL)
-  const updates: Record<string, unknown> = {}
+  const settingsUpdates: Record<string, unknown> = {}
+  const feedUpdates: Record<string, unknown> = {}
   if (body.fetchIntervalMinutes !== undefined) {
-    updates.fetchIntervalMinutes = Math.max(0, Math.round(body.fetchIntervalMinutes))
+    settingsUpdates.fetchIntervalMinutes = Math.max(0, Math.round(body.fetchIntervalMinutes))
   }
   if (body.reportIntervalHours !== undefined) {
-    updates.reportIntervalHours = Math.max(0, Math.round(body.reportIntervalHours))
+    feedUpdates.reportIntervalHours = Math.max(0, Math.round(body.reportIntervalHours))
   }
   if (body.reportAtHour !== undefined) {
-    updates.reportAtHour = Math.max(0, Math.min(23, Math.round(body.reportAtHour)))
+    feedUpdates.reportAtHour = Math.max(0, Math.min(23, Math.round(body.reportAtHour)))
   }
-  if (Object.keys(updates).length > 0) {
+  if (Object.keys(settingsUpdates).length > 0) {
     const existing = await db.select({ id: aiSettings.id }).from(aiSettings).where(eq(aiSettings.userId, user.id)).limit(1)
     if (existing.length > 0) {
-      await db.update(aiSettings).set(updates).where(eq(aiSettings.userId, user.id))
+      await db.update(aiSettings).set(settingsUpdates).where(eq(aiSettings.userId, user.id))
     } else {
-      await db.insert(aiSettings).values({ userId: user.id, provider: '', apiKey: '', model: '', ...updates })
+      return c.json({ error: 'AI not configured' }, 400)
     }
   }
+  if (Object.keys(feedUpdates).length > 0) {
+    const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
+    await db.update(aiScoringFeeds).set({ ...feedUpdates, updatedAt: new Date() }).where(eq(aiScoringFeeds.id, feed.id))
+  }
+  return c.json({ ok: true })
+})
+
+aiRouter.get('/feeds', async (c) => {
+  const user = c.get('user')
+  const db = getDb(env.DATABASE_URL)
+  const [settings] = await db.select({ id: aiSettings.id }).from(aiSettings).where(eq(aiSettings.userId, user.id)).limit(1)
+  if (!settings) return c.json({ feeds: [] })
+  const existingFeeds = await listScoringFeeds(user.id)
+  const feeds = existingFeeds.length > 0 ? existingFeeds : [await ensureMainFeed(user.id)]
+  return c.json({ feeds: feeds.map(serializeFeed) })
+})
+
+aiRouter.post('/feeds', zValidator('json', scoringFeedCreateSchema), async (c) => {
+  const user = c.get('user')
+  const db = getDb(env.DATABASE_URL)
+  const [settings] = await db.select({ id: aiSettings.id }).from(aiSettings).where(eq(aiSettings.userId, user.id)).limit(1)
+  if (!settings) return c.json({ error: 'AI not configured' }, 400)
+
+  const { name, icon } = c.req.valid('json')
+  const [mainFeed] = await Promise.all([ensureMainFeed(user.id)])
+  const [feed] = await db.insert(aiScoringFeeds).values({
+    userId: user.id,
+    name: name.trim(),
+    icon: icon.trim(),
+    isMain: false,
+    systemPrompt: mainFeed.systemPrompt || DEFAULT_SYSTEM_PROMPT,
+    minScore: mainFeed.minScore,
+    // New feeds should only backfill roughly one day of context, not the full archive.
+    scoreFromAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    reportIntervalHours: mainFeed.reportIntervalHours,
+    reportAtHour: mainFeed.reportAtHour,
+  }).returning()
+  return c.json({ feed: serializeFeed(feed) })
+})
+
+aiRouter.put('/feeds/:id', zValidator('json', scoringFeedUpdateSchema), async (c) => {
+  const user = c.get('user')
+  const id = c.req.param('id')
+  const db = getDb(env.DATABASE_URL)
+  const [existing] = await db.select().from(aiScoringFeeds)
+    .where(and(eq(aiScoringFeeds.id, id), eq(aiScoringFeeds.userId, user.id)))
+    .limit(1)
+  if (!existing) return c.json({ error: 'Feed not found' }, 404)
+
+  const body = c.req.valid('json')
+  const [feed] = await db.update(aiScoringFeeds).set({
+    name: body.name.trim(),
+    icon: body.icon.trim(),
+    systemPrompt: body.systemPrompt || null,
+    minScore: body.minScore,
+    reportIntervalHours: body.reportIntervalHours,
+    reportAtHour: body.reportAtHour,
+    updatedAt: new Date(),
+  }).where(eq(aiScoringFeeds.id, id)).returning()
+  return c.json({ feed: serializeFeed(feed) })
+})
+
+aiRouter.delete('/feeds/:id', async (c) => {
+  const user = c.get('user')
+  const id = c.req.param('id')
+  const db = getDb(env.DATABASE_URL)
+  const [feed] = await db.select().from(aiScoringFeeds)
+    .where(and(eq(aiScoringFeeds.id, id), eq(aiScoringFeeds.userId, user.id)))
+    .limit(1)
+  if (!feed) return c.json({ error: 'Feed not found' }, 404)
+  if (feed.isMain) return c.json({ error: 'Main feed cannot be removed' }, 400)
+
+  await db.delete(aiScoringFeeds).where(eq(aiScoringFeeds.id, id))
   return c.json({ ok: true })
 })
 
@@ -229,15 +381,17 @@ aiRouter.post(
 
 aiRouter.post('/nudge', zValidator('json', nudgeSchema), async (c) => {
   const user = c.get('user')
-  const { tweetId, direction } = c.req.valid('json')
+  const { tweetId, direction, feedId } = c.req.valid('json')
   const db = getDb(env.DATABASE_URL)
+  const feed = await getFeedForUser(user.id, feedId)
 
   await db.insert(nudges).values({
     userId: user.id,
+    feedId: feed.id,
     tweetId,
     direction,
   }).onConflictDoUpdate({
-    target: [nudges.userId, nudges.tweetId],
+    target: [nudges.userId, nudges.feedId, nudges.tweetId],
     set: { direction, consumed: false, createdAt: new Date() },
   })
   return c.json({ ok: true })
@@ -247,8 +401,9 @@ aiRouter.delete('/nudge/:tweetId', async (c) => {
   const user = c.get('user')
   const tweetId = c.req.param('tweetId')
   const db = getDb(env.DATABASE_URL)
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
   await db.delete(nudges).where(
-    and(eq(nudges.userId, user.id), eq(nudges.tweetId, tweetId)),
+    and(eq(nudges.userId, user.id), eq(nudges.feedId, feed.id), eq(nudges.tweetId, tweetId)),
   )
   return c.json({ ok: true })
 })
@@ -256,10 +411,11 @@ aiRouter.delete('/nudge/:tweetId', async (c) => {
 aiRouter.get('/nudges', async (c) => {
   const user = c.get('user')
   const db = getDb(env.DATABASE_URL)
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
   const rows = await db.select({
     tweetId: nudges.tweetId,
     direction: nudges.direction,
-  }).from(nudges).where(eq(nudges.userId, user.id))
+  }).from(nudges).where(and(eq(nudges.userId, user.id), eq(nudges.feedId, feed.id)))
   return c.json({ nudges: rows })
 })
 
@@ -267,9 +423,10 @@ aiRouter.get('/nudges', async (c) => {
 
 aiRouter.post('/prompt-change', zValidator('json', promptChangeSchema), async (c) => {
   const user = c.get('user')
-  const { instruction } = c.req.valid('json')
+  const { instruction, feedId } = c.req.valid('json')
   const db = getDb(env.DATABASE_URL)
-  await db.insert(promptChanges).values({ userId: user.id, instruction })
+  const feed = await getFeedForUser(user.id, feedId)
+  await db.insert(promptChanges).values({ userId: user.id, feedId: feed.id, instruction })
   return c.json({ ok: true })
 })
 
@@ -278,7 +435,11 @@ aiRouter.delete('/prompt-change/:id', async (c) => {
   const id = c.req.param('id')
   const db = getDb(env.DATABASE_URL)
   await db.delete(promptChanges).where(
-    and(eq(promptChanges.id, id), eq(promptChanges.userId, user.id), eq(promptChanges.consumed, false)),
+    and(
+      eq(promptChanges.id, id),
+      eq(promptChanges.userId, user.id),
+      eq(promptChanges.consumed, false),
+    ),
   )
   return c.json({ ok: true })
 })
@@ -288,9 +449,7 @@ aiRouter.delete('/prompt-change/:id', async (c) => {
 aiRouter.get('/internals', async (c) => {
   const user = c.get('user')
   const db = getDb(env.DATABASE_URL)
-
-  const [settings] = await db.select().from(aiSettings)
-    .where(eq(aiSettings.userId, user.id)).limit(1)
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
 
   const pendingNudgeRows = await db
     .select({
@@ -303,13 +462,13 @@ aiRouter.get('/internals', async (c) => {
     })
     .from(nudges)
     .innerJoin(tweets, eq(nudges.tweetId, tweets.id))
-    .where(and(eq(nudges.userId, user.id), eq(nudges.consumed, false)))
+    .where(and(eq(nudges.userId, user.id), eq(nudges.feedId, feed.id), eq(nudges.consumed, false)))
     .orderBy(desc(nudges.createdAt))
 
   const pendingInstructions = await db
     .select()
     .from(promptChanges)
-    .where(and(eq(promptChanges.userId, user.id), eq(promptChanges.consumed, false)))
+    .where(and(eq(promptChanges.userId, user.id), eq(promptChanges.feedId, feed.id), eq(promptChanges.consumed, false)))
     .orderBy(desc(promptChanges.createdAt))
 
   // Compute auto-apply target as epoch ms (batcher runs every 60s)
@@ -320,10 +479,11 @@ aiRouter.get('/internals', async (c) => {
   const earliestPending = allCreatedAts.length > 0 ? Math.min(...allCreatedAts) : null
   const autoApplyAt = earliestPending ? earliestPending + 60_000 : null
 
-  const isApplying = regenProgress.has(user.id) && !regenProgress.get(user.id)!.done
+  const key = feedScopeKey(user.id, feed.id)
+  const isApplying = regenProgress.has(key) && !regenProgress.get(key)!.done
 
   return c.json({
-    currentPrompt: settings?.systemPrompt || '',
+    currentPrompt: feed.systemPrompt || '',
     defaultPrompt: DEFAULT_SYSTEM_PROMPT,
     pendingNudges: pendingNudgeRows.map((n) => ({
       id: n.id,
@@ -336,7 +496,7 @@ aiRouter.get('/internals', async (c) => {
       id: p.id,
       instruction: p.instruction,
     })),
-    lastRegenAt: settings?.promptLastRegenAt || null,
+    lastRegenAt: feed.promptLastRegenAt || null,
     autoApplyAt,
     isApplying,
   })
@@ -347,10 +507,12 @@ aiRouter.get('/internals', async (c) => {
 // In-memory regen progress
 const regenProgress = new Map<string, { status: string; done: boolean; error?: string; subscribers: Set<(event: string) => void> }>()
 
-export async function regeneratePromptForUser(userId: string, onStatus?: (s: string) => void): Promise<string | null> {
+export async function regeneratePromptForUser(userId: string, feedId?: string | null, onStatus?: (s: string) => void): Promise<string | null> {
+  const feed = await getFeedForUser(userId, feedId)
+  const key = feedScopeKey(userId, feed.id)
   const setStatus = (s: string) => {
     onStatus?.(s)
-    const p = regenProgress.get(userId)
+    const p = regenProgress.get(key)
     if (p) { p.status = s; for (const sub of p.subscribers) sub(JSON.stringify({ status: s })) }
   }
 
@@ -370,10 +532,10 @@ export async function regeneratePromptForUser(userId: string, onStatus?: (s: str
     })
     .from(nudges)
     .innerJoin(tweets, eq(nudges.tweetId, tweets.id))
-    .where(and(eq(nudges.userId, userId), eq(nudges.consumed, false)))
+    .where(and(eq(nudges.userId, userId), eq(nudges.feedId, feed.id), eq(nudges.consumed, false)))
 
   const pendingInstructions = await db.select().from(promptChanges)
-    .where(and(eq(promptChanges.userId, userId), eq(promptChanges.consumed, false)))
+    .where(and(eq(promptChanges.userId, userId), eq(promptChanges.feedId, feed.id), eq(promptChanges.consumed, false)))
 
   if (pendingNudgeRows.length === 0 && pendingInstructions.length === 0) return null
 
@@ -397,7 +559,7 @@ export async function regeneratePromptForUser(userId: string, onStatus?: (s: str
     feedback += pendingInstructions.map((p) => `- "${p.instruction}"`).join('\n')
   }
 
-  const userMsg = `DEFAULT PROMPT:\n${DEFAULT_SYSTEM_PROMPT}\n\nCURRENT PROMPT:\n${ai.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT}\n\nUSER FEEDBACK:\n${feedback}`
+  const userMsg = `DEFAULT PROMPT:\n${DEFAULT_SYSTEM_PROMPT}\n\nCURRENT PROMPT:\n${feed.systemPrompt || DEFAULT_SYSTEM_PROMPT}\n\nUSER FEEDBACK:\n${feedback}`
 
   setStatus(`Sending ${pendingNudgeRows.length} nudges + ${pendingInstructions.length} instructions to AI...`)
 
@@ -406,11 +568,11 @@ export async function regeneratePromptForUser(userId: string, onStatus?: (s: str
   setStatus('Saving new prompt...')
 
   // Save new prompt and mark consumed
-  await db.update(aiSettings).set({
+  await db.update(aiScoringFeeds).set({
     systemPrompt: newPrompt.trim(),
     promptLastRegenAt: new Date(),
     updatedAt: new Date(),
-  }).where(eq(aiSettings.userId, userId))
+  }).where(eq(aiScoringFeeds.id, feed.id))
 
   const nudgeIds = pendingNudgeRows.map((n) => n.id)
   if (nudgeIds.length > 0) {
@@ -421,24 +583,26 @@ export async function regeneratePromptForUser(userId: string, onStatus?: (s: str
     await db.update(promptChanges).set({ consumed: true }).where(inArray(promptChanges.id, instrIds))
   }
 
-  console.log(`[ai] Regenerated prompt for user ${userId} (${nudgeIds.length} nudges, ${instrIds.length} instructions)`)
+  console.log(`[ai] Regenerated prompt for user ${userId}, feed ${feed.id} (${nudgeIds.length} nudges, ${instrIds.length} instructions)`)
   return newPrompt
 }
 
 aiRouter.post('/regenerate-prompt', async (c) => {
   const user = c.get('user')
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
+  const key = feedScopeKey(user.id, feed.id)
 
-  if (regenProgress.has(user.id)) {
+  if (regenProgress.has(key)) {
     return c.json({ error: 'Already regenerating' }, 409)
   }
 
   const progress: { status: string; done: boolean; error?: string; subscribers: Set<(event: string) => void> } = { status: 'Starting...', done: false, subscribers: new Set() }
-  regenProgress.set(user.id, progress)
+  regenProgress.set(key, progress)
 
   // Fire and forget — frontend connects to SSE
   void (async () => {
     try {
-      const result = await regeneratePromptForUser(user.id)
+      const result = await regeneratePromptForUser(user.id, feed.id)
       progress.done = true
       for (const sub of progress.subscribers) sub('[DONE]')
       if (!result) {
@@ -452,7 +616,7 @@ aiRouter.post('/regenerate-prompt', async (c) => {
       progress.done = true
       for (const sub of progress.subscribers) sub(`[ERROR] ${msg}`)
     } finally {
-      setTimeout(() => regenProgress.delete(user.id), 10_000)
+      setTimeout(() => regenProgress.delete(key), 10_000)
     }
   })()
 
@@ -461,7 +625,8 @@ aiRouter.post('/regenerate-prompt', async (c) => {
 
 aiRouter.get('/regenerate-status', async (c) => {
   const user = c.get('user')
-  const p = regenProgress.get(user.id)
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
+  const p = regenProgress.get(feedScopeKey(user.id, feed.id))
   return c.json({
     active: !!p && !p.done,
     status: p?.status || null,
@@ -471,7 +636,8 @@ aiRouter.get('/regenerate-status', async (c) => {
 
 aiRouter.get('/regenerate-stream', async (c) => {
   const user = c.get('user')
-  const progress = regenProgress.get(user.id)
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
+  const progress = regenProgress.get(feedScopeKey(user.id, feed.id))
 
   return new Response(
     new ReadableStream({
@@ -533,21 +699,23 @@ aiRouter.get('/regenerate-stream', async (c) => {
 const scoringProgress = new Map<string, { batch: number; totalBatches: number; batchSize: number; log: string[] }>()
 const scoringActive = new Set<string>()
 
-export function getScoringProgress(userId: string) {
-  return scoringProgress.get(userId) || null
+export function getScoringProgress(userId: string, feedId: string) {
+  return scoringProgress.get(feedScopeKey(userId, feedId)) || null
 }
 
-export function isScoringActive(userId: string) {
-  return scoringActive.has(userId)
+export function isScoringActive(userId: string, feedId: string) {
+  return scoringActive.has(feedScopeKey(userId, feedId))
 }
 
-export async function scoreUnscoredTweets(userId: string): Promise<number> {
+export async function scoreUnscoredTweets(userId: string, feedId?: string | null): Promise<number> {
+  const feed = await getFeedForUser(userId, feedId)
+  const progressKey = feedScopeKey(userId, feed.id)
   // Skip if already scoring for this user
-  if (scoringActive.has(userId)) return 0
-  scoringActive.add(userId)
+  if (scoringActive.has(progressKey)) return 0
+  scoringActive.add(progressKey)
 
   const ai = await getAiConfig(userId)
-  if (!ai) { scoringActive.delete(userId); return 0 }
+  if (!ai) { scoringActive.delete(progressKey); return 0 }
   const db = getDb(env.DATABASE_URL)
 
   const allTweets = await db
@@ -556,23 +724,24 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
     .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
     .where(and(
       eq(userTweets.userId, userId),
-      sql`NOT EXISTS (SELECT 1 FROM tweet_scores WHERE tweet_scores.tweet_id = tweets.id AND tweet_scores.user_id = ${userId})`,
+      ...(feed.scoreFromAt ? [gte(tweets.publishedAt, feed.scoreFromAt)] : []),
+      sql`NOT EXISTS (SELECT 1 FROM tweet_scores WHERE tweet_scores.tweet_id = tweets.id AND tweet_scores.user_id = ${userId} AND tweet_scores.feed_id = ${feed.id})`,
     ))
     .orderBy(desc(tweets.publishedAt))
 
-  if (allTweets.length === 0) { scoringActive.delete(userId); scoringProgress.delete(userId); return 0 }
+  if (allTweets.length === 0) { scoringActive.delete(progressKey); scoringProgress.delete(progressKey); return 0 }
 
   const BATCH_SIZE = 10
   const totalBatches = Math.ceil(allTweets.length / BATCH_SIZE)
-  const log: string[] = [`Found ${allTweets.length} unscored posts`]
-  scoringProgress.set(userId, { batch: 0, totalBatches, batchSize: BATCH_SIZE, log })
-  const userPrefs = ai.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT
+  const log: string[] = [`Found ${allTweets.length} unscored posts for ${feed.name}`]
+  scoringProgress.set(progressKey, { batch: 0, totalBatches, batchSize: BATCH_SIZE, log })
+  const userPrefs = feed.systemPrompt || DEFAULT_SYSTEM_PROMPT
   let totalScored = 0
 
   for (let i = 0; i < allTweets.length; i += BATCH_SIZE) {
     const batchNum = Math.floor(i / BATCH_SIZE) + 1
     log.push(`Sending batch ${batchNum}/${totalBatches} to ${ai.config.provider}...`)
-    scoringProgress.set(userId, { batch: batchNum, totalBatches, batchSize: BATCH_SIZE, log })
+    scoringProgress.set(progressKey, { batch: batchNum, totalBatches, batchSize: BATCH_SIZE, log })
 
     const batch = allTweets.slice(i, i + BATCH_SIZE)
     const tweetText = formatTweetsForAI(batch)
@@ -592,6 +761,7 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
       await Promise.all(validScores.map((s) =>
         db.insert(tweetScores).values({
           userId: userId,
+          feedId: feed.id,
           tweetId: s.id,
           score: Math.max(0, Math.min(100, Math.round(s.score))),
         }).onConflictDoNothing(),
@@ -611,42 +781,66 @@ export async function scoreUnscoredTweets(userId: string): Promise<number> {
   }
 
   log.push(`Done — scored ${totalScored} posts total`)
-  scoringProgress.delete(userId)
-  scoringActive.delete(userId)
-  if (totalScored > 0) console.log(`[ai] Scored ${totalScored} tweets for user ${userId}`)
+  scoringProgress.delete(progressKey)
+  scoringActive.delete(progressKey)
+  if (totalScored > 0) console.log(`[ai] Scored ${totalScored} tweets for user ${userId}, feed ${feed.id}`)
   return totalScored
+}
+
+export async function scoreUnscoredTweetsForAllFeeds(userId: string) {
+  const feeds = await listScoringFeeds(userId)
+  const targets = feeds.length > 0 ? feeds : [await ensureMainFeed(userId)]
+  for (const feed of targets) {
+    await scoreUnscoredTweets(userId, feed.id)
+  }
 }
 
 aiRouter.post('/filter', async (c) => {
   const user = c.get('user')
-  const scored = await scoreUnscoredTweets(user.id)
+  const scored = await scoreUnscoredTweets(user.id, getRequestedFeedId(c))
   return c.json({ ok: true, scored })
 })
 
 aiRouter.get('/scoring-status', async (c) => {
   const user = c.get('user')
   const db = getDb(env.DATABASE_URL)
-
-  const minScore = await getUserMinScore(user.id)
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
+  const minScore = feed.minScore
+  const eligibility = feed.scoreFromAt ? gte(tweets.publishedAt, feed.scoreFromAt) : undefined
 
   const [{ total }] = await db.select({ total: sql<number>`count(*)` })
-    .from(userTweets).where(eq(userTweets.userId, user.id))
+    .from(userTweets)
+    .innerJoin(tweets, eq(tweets.id, userTweets.tweetId))
+    .where(and(eq(userTweets.userId, user.id), ...(eligibility ? [eligibility] : [])))
 
   const [{ scored }] = await db.select({ scored: sql<number>`count(*)` })
-    .from(tweetScores).where(eq(tweetScores.userId, user.id))
+    .from(tweetScores)
+    .innerJoin(tweets, eq(tweets.id, tweetScores.tweetId))
+    .where(and(
+      eq(tweetScores.userId, user.id),
+      eq(tweetScores.feedId, feed.id),
+      ...(eligibility ? [eligibility] : []),
+    ))
 
   // Count how many scored tweets are above threshold (for "N new posts" banner)
   const [{ aboveThreshold }] = await db.select({ aboveThreshold: sql<number>`count(*)` })
-    .from(tweetScores).where(and(eq(tweetScores.userId, user.id), gte(tweetScores.score, minScore)))
+    .from(tweetScores)
+    .innerJoin(tweets, eq(tweets.id, tweetScores.tweetId))
+    .where(and(
+      eq(tweetScores.userId, user.id),
+      eq(tweetScores.feedId, feed.id),
+      gte(tweetScores.score, minScore),
+      ...(eligibility ? [eligibility] : []),
+    ))
 
-  const progress = getScoringProgress(user.id)
+  const progress = getScoringProgress(user.id, feed.id)
 
   return c.json({
     total: Number(total),
     scored: Number(scored),
     pending: Number(total) - Number(scored),
     aboveThreshold: Number(aboveThreshold),
-    active: isScoringActive(user.id),
+    active: isScoringActive(user.id, feed.id),
     batch: progress?.batch || 0,
     totalBatches: progress?.totalBatches || 0,
     log: progress?.log || [],
@@ -656,8 +850,8 @@ aiRouter.get('/scoring-status', async (c) => {
 aiRouter.get('/filtered-feed', async (c) => {
   const user = c.get('user')
   const db = getDb(env.DATABASE_URL)
-
-  const minScore = await getUserMinScore(user.id)
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
+  const minScore = feed.minScore
   const { page, limit, offset } = parsePagination(c)
 
   const result = await db
@@ -670,6 +864,7 @@ aiRouter.get('/filtered-feed', async (c) => {
     .innerJoin(tweetScores, and(
       eq(tweetScores.tweetId, tweets.id),
       eq(tweetScores.userId, user.id),
+      eq(tweetScores.feedId, feed.id),
     ))
     .where(and(
       eq(userTweets.userId, user.id),
@@ -686,6 +881,7 @@ aiRouter.get('/filtered-feed', async (c) => {
     .innerJoin(tweetScores, and(
       eq(tweetScores.tweetId, tweets.id),
       eq(tweetScores.userId, user.id),
+      eq(tweetScores.feedId, feed.id),
     ))
     .where(and(eq(userTweets.userId, user.id), gte(tweetScores.score, minScore)))
 
@@ -714,7 +910,8 @@ const reportGenerating = new Map<string, ReportProgress>()
 
 aiRouter.get('/report-status', async (c) => {
   const user = c.get('user')
-  const progress = reportGenerating.get(user.id)
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
+  const progress = reportGenerating.get(feedScopeKey(user.id, feed.id))
   return c.json({
     generating: !!progress && !progress.done && !progress.error,
     startedAt: progress?.startedAt || null,
@@ -724,8 +921,10 @@ aiRouter.get('/report-status', async (c) => {
   })
 })
 
-export async function generateReportForUser(userId: string, isAuto = false): Promise<any> {
-  const existingProgress = reportGenerating.get(userId)
+export async function generateReportForUser(userId: string, feedId?: string | null, isAuto = false): Promise<any> {
+  const feed = await getFeedForUser(userId, feedId)
+  const progressKey = feedScopeKey(userId, feed.id)
+  const existingProgress = reportGenerating.get(progressKey)
   if (existingProgress && !existingProgress.done) return null
 
   // Register progress immediately so /report-stream can find it before async work completes
@@ -733,41 +932,33 @@ export async function generateReportForUser(userId: string, isAuto = false): Pro
     startedAt: new Date(), tweetCount: 0, status: 'Preparing...',
     content: '', done: false, tweets: [], subscribers: new Set(),
   }
-  reportGenerating.set(userId, progress)
+  reportGenerating.set(progressKey, progress)
 
   const emit = (event: string) => { for (const sub of progress.subscribers) sub(event) }
   const setStatus = (s: string) => { progress.status = s; emit(JSON.stringify({ status: s })) }
 
   const ai = await getAiConfig(userId)
-  if (!ai) { reportGenerating.delete(userId); return null }
+  if (!ai) { reportGenerating.delete(progressKey); return null }
   const db = getDb(env.DATABASE_URL)
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const minScore = await getUserMinScore(userId)
+  const minScore = feed.minScore
+
+  await scoreUnscoredTweets(userId, feed.id)
 
   // Use all scored tweets from the AI-filtered feed (score >= minScore) in the last 24h
   let tweetList = await db.select({ tweet: tweets })
     .from(tweets)
     .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
-    .innerJoin(tweetScores, and(eq(tweetScores.tweetId, tweets.id), eq(tweetScores.userId, userId)))
+    .innerJoin(tweetScores, and(eq(tweetScores.tweetId, tweets.id), eq(tweetScores.userId, userId), eq(tweetScores.feedId, feed.id)))
     .where(and(eq(userTweets.userId, userId), gte(tweets.publishedAt, since), gte(tweetScores.score, minScore)))
     .orderBy(desc(tweets.publishedAt))
     .then((rows) => rows.map((r) => r.tweet))
 
-  // Fallback to all tweets from last 24h if nothing scored yet
-  if (tweetList.length === 0) {
-    tweetList = await db.select({ tweet: tweets })
-      .from(tweets)
-      .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
-      .where(and(eq(userTweets.userId, userId), gte(tweets.publishedAt, since)))
-      .orderBy(desc(tweets.publishedAt))
-      .then((rows) => rows.map((r) => r.tweet))
-  }
-
   if (tweetList.length === 0) {
     // Update lastAutoReportAt to prevent retry every 5 minutes (only for auto)
-    if (isAuto) await db.update(aiSettings).set({ lastAutoReportAt: new Date() }).where(eq(aiSettings.userId, userId))
-    reportGenerating.delete(userId)
+    if (isAuto) await db.update(aiScoringFeeds).set({ lastAutoReportAt: new Date(), updatedAt: new Date() }).where(eq(aiScoringFeeds.id, feed.id))
+    reportGenerating.delete(progressKey)
     return null
   }
 
@@ -777,7 +968,7 @@ export async function generateReportForUser(userId: string, isAuto = false): Pro
   try {
     setStatus(`Analyzing ${tweetList.length} posts...`)
 
-    const systemPrompt = `${ai.settings.systemPrompt || DEFAULT_SYSTEM_PROMPT}\n\n${REPORT_SYSTEM_PROMPT}`
+    const systemPrompt = `${feed.systemPrompt || DEFAULT_SYSTEM_PROMPT}\n\n${REPORT_SYSTEM_PROMPT}`
     const tweetText = formatTweetsForAI(tweetList)
     const userContent = `Here are ${tweetList.length} posts from the last 24 hours (pre-filtered by relevance). Analyze and create a report:\n\n${tweetText}`
 
@@ -798,29 +989,30 @@ export async function generateReportForUser(userId: string, isAuto = false): Pro
 
     const [report] = await db.insert(aiReports).values({
       userId,
+      feedId: feed.id,
       content,
       model: ai.settings.model,
       tweetCount: tweetList.length,
       tweetRefs: tweetRefIds.length > 0 ? JSON.stringify(tweetRefIds) : null,
     }).returning()
 
-    if (isAuto) await db.update(aiSettings).set({ lastAutoReportAt: new Date() }).where(eq(aiSettings.userId, userId))
+    if (isAuto) await db.update(aiScoringFeeds).set({ lastAutoReportAt: new Date(), updatedAt: new Date() }).where(eq(aiScoringFeeds.id, feed.id))
 
     progress.done = true
     for (const sub of progress.subscribers) sub('[DONE]')
-    reportGenerating.delete(userId)
-    console.log(`[ai] Generated report for user ${userId} (${tweetList.length} tweets)`)
+    reportGenerating.delete(progressKey)
+    console.log(`[ai] Generated report for user ${userId}, feed ${feed.id} (${tweetList.length} tweets)`)
     return report
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`[ai] Report error for user ${userId}:`, errMsg)
+    console.error(`[ai] Report error for user ${userId}, feed ${feed.id}:`, errMsg)
     // Store error for frontend to display, auto-clear after 30s
-    const entry = reportGenerating.get(userId)
+    const entry = reportGenerating.get(progressKey)
     if (entry) {
       entry.error = errMsg
       entry.done = true
       for (const sub of entry.subscribers) sub(`[ERROR] ${errMsg}`)
-      setTimeout(() => reportGenerating.delete(userId), 30_000)
+      setTimeout(() => reportGenerating.delete(progressKey), 30_000)
     }
     throw err
   }
@@ -828,17 +1020,19 @@ export async function generateReportForUser(userId: string, isAuto = false): Pro
 
 aiRouter.post('/report', async (c) => {
   const user = c.get('user')
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
+  const progressKey = feedScopeKey(user.id, feed.id)
 
-  const existing = reportGenerating.get(user.id)
+  const existing = reportGenerating.get(progressKey)
   if (existing && !existing.done) {
     return c.json({ error: 'Report is already being generated. Please wait.' }, 409)
   }
   // Clear errored/done entries so user can retry
-  if (existing) reportGenerating.delete(user.id)
+  if (existing) reportGenerating.delete(progressKey)
 
   // Fire and forget — frontend connects to /report-stream for live content
-  void generateReportForUser(user.id).catch((err) =>
-    console.error(`[ai] Report generation error for ${user.id}:`, err instanceof Error ? err.message : err),
+  void generateReportForUser(user.id, feed.id).catch((err) =>
+    console.error(`[ai] Report generation error for ${user.id}, feed ${feed.id}:`, err instanceof Error ? err.message : err),
   )
 
   return c.json({ ok: true })
@@ -847,7 +1041,8 @@ aiRouter.post('/report', async (c) => {
 // SSE stream of report content as it's generated
 aiRouter.get('/report-stream', async (c) => {
   const user = c.get('user')
-  const progress = reportGenerating.get(user.id)
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
+  const progress = reportGenerating.get(feedScopeKey(user.id, feed.id))
 
   return new Response(
     new ReadableStream({
@@ -920,9 +1115,10 @@ aiRouter.get('/report-stream', async (c) => {
 aiRouter.get('/report', async (c) => {
   const user = c.get('user')
   const db = getDb(env.DATABASE_URL)
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
 
   const [report] = await db.select().from(aiReports)
-    .where(eq(aiReports.userId, user.id))
+    .where(and(eq(aiReports.userId, user.id), eq(aiReports.feedId, feed.id)))
     .orderBy(desc(aiReports.createdAt))
     .limit(1)
 
@@ -935,6 +1131,7 @@ aiRouter.get('/report', async (c) => {
 aiRouter.get('/reports', async (c) => {
   const user = c.get('user')
   const db = getDb(env.DATABASE_URL)
+  const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
   const page = Math.max(1, Number(c.req.query('page') || '1') || 1)
   const limit = 10
   const offset = (page - 1) * limit
@@ -944,8 +1141,9 @@ aiRouter.get('/reports', async (c) => {
     model: aiReports.model,
     tweetCount: aiReports.tweetCount,
     createdAt: aiReports.createdAt,
+    feedId: aiReports.feedId,
   }).from(aiReports)
-    .where(eq(aiReports.userId, user.id))
+    .where(and(eq(aiReports.userId, user.id), eq(aiReports.feedId, feed.id)))
     .orderBy(desc(aiReports.createdAt))
     .limit(limit)
     .offset(offset)

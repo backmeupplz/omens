@@ -46,10 +46,26 @@ export const aiSettingsSchema = z.object({
 })
 
 export const nudgeSchema = z.object({
+  feedId: z.string().min(1).optional(),
   tweetId: z.string().min(1),
   direction: z.enum(['up', 'down']),
 })
 
 export const promptChangeSchema = z.object({
+  feedId: z.string().min(1).optional(),
   instruction: z.string().min(1).max(500),
+})
+
+export const scoringFeedCreateSchema = z.object({
+  name: z.string().min(1).max(40),
+  icon: z.string().trim().min(1).max(8).default('✦'),
+})
+
+export const scoringFeedUpdateSchema = z.object({
+  name: z.string().min(1).max(40),
+  icon: z.string().trim().min(1).max(8),
+  systemPrompt: z.string().max(10000).optional().default(''),
+  minScore: z.number().int().min(0).max(100),
+  reportIntervalHours: z.number().int().min(0).max(168),
+  reportAtHour: z.number().int().min(0).max(23),
 })

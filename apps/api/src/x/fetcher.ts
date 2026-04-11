@@ -2,11 +2,11 @@
  * Periodic tweet fetcher — polls HomeLatestTimeline for all users with sessions
  */
 
-import { aiSettings, getDb, tweets, userTweets, xSessions } from '@omens/db'
+import { aiScoringFeeds, aiSettings, getDb, tweets, userTweets, xSessions } from '@omens/db'
 import { and, eq, inArray } from 'drizzle-orm'
 import env from '../env'
 import { decrypt } from '../helpers/crypto'
-import { scoreUnscoredTweets } from '../routes/ai'
+import { scoreUnscoredTweetsForAllFeeds } from '../routes/ai'
 import { getHomeTimeline } from './graphql'
 import { fetchOg } from './og'
 
@@ -149,7 +149,7 @@ async function fetchForUser(userId: string): Promise<{ count: number; error?: st
     if (newCount > 0) {
       console.log(`[fetcher] Inserted ${newCount} new tweets for user ${userId} (${parsedTweets.length - newCount} updated)`)
       // Score new tweets in background
-      void scoreUnscoredTweets(userId).catch((err) =>
+      void scoreUnscoredTweetsForAllFeeds(userId).catch((err) =>
         console.error(`[fetcher] Scoring error for user ${userId}:`, err instanceof Error ? err.message : err),
       )
     }
@@ -220,11 +220,14 @@ const activeReports = new Set<string>()
 async function checkAutoReports() {
   const db = getDb(env.DATABASE_URL)
   const allSettings = await db.select({
-    userId: aiSettings.userId,
-    reportIntervalHours: aiSettings.reportIntervalHours,
-    reportAtHour: aiSettings.reportAtHour,
-    lastAutoReportAt: aiSettings.lastAutoReportAt,
-  }).from(aiSettings)
+    userId: aiScoringFeeds.userId,
+    feedId: aiScoringFeeds.id,
+    reportIntervalHours: aiScoringFeeds.reportIntervalHours,
+    reportAtHour: aiScoringFeeds.reportAtHour,
+    lastAutoReportAt: aiScoringFeeds.lastAutoReportAt,
+  })
+    .from(aiScoringFeeds)
+    .innerJoin(aiSettings, eq(aiSettings.userId, aiScoringFeeds.userId))
 
   const { generateReportForUser } = await import('../routes/ai')
 
@@ -233,7 +236,8 @@ async function checkAutoReports() {
 
   for (const s of allSettings) {
     if (s.reportIntervalHours === 0) continue // manual only
-    if (activeReports.has(s.userId)) continue
+    const key = `${s.userId}:${s.feedId}`
+    if (activeReports.has(key)) continue
 
     const lastReport = s.lastAutoReportAt?.getTime() || 0
     const elapsed = (Date.now() - lastReport) / 3_600_000
@@ -243,11 +247,11 @@ async function checkAutoReports() {
     const hourDiff = (currentUtcHour - s.reportAtHour + 24) % 24
     if (s.reportIntervalHours >= 24 && hourDiff > 0) continue
 
-    activeReports.add(s.userId)
+    activeReports.add(key)
     tasks.push(
-      generateReportForUser(s.userId, true)
-        .catch((err: any) => console.error(`[auto-report] Error for ${s.userId}:`, err))
-        .finally(() => activeReports.delete(s.userId)),
+      generateReportForUser(s.userId, s.feedId, true)
+        .catch((err: any) => console.error(`[auto-report] Error for ${s.userId}, feed ${s.feedId}:`, err))
+        .finally(() => activeReports.delete(key)),
     )
   }
 

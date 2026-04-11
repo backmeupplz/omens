@@ -93,10 +93,10 @@ export function NewspaperFeedShell({
           {toast}
         </div>
       )}
-      {loading && <Spinner />}
       {error}
       {!hasTweets && !loading && emptyState}
       {children}
+      {loading && <Spinner />}
       <LoadMore remaining={remaining} loading={loadingMore} onLoad={onLoadMore} />
       {remaining === 0 && hasTweets && !loading && <EndOfFeed />}
     </NewspaperShell>

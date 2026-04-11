@@ -14,26 +14,25 @@ async function processAll() {
   const db = getDb(env.DATABASE_URL)
 
   // Find users with any pending nudges
-  const usersWithNudges = await db
-    .selectDistinct({ userId: nudges.userId })
+  const feedsWithNudges = await db
+    .selectDistinct({ userId: nudges.userId, feedId: nudges.feedId })
     .from(nudges)
     .where(eq(nudges.consumed, false))
 
   // Find users with any pending instructions
-  const usersWithInstructions = await db
-    .selectDistinct({ userId: promptChanges.userId })
+  const feedsWithInstructions = await db
+    .selectDistinct({ userId: promptChanges.userId, feedId: promptChanges.feedId })
     .from(promptChanges)
     .where(eq(promptChanges.consumed, false))
 
-  // Combine unique user IDs
-  const userIds = new Set([
-    ...usersWithNudges.map((r) => r.userId),
-    ...usersWithInstructions.map((r) => r.userId),
-  ])
+  const scopes = new Map<string, { userId: string; feedId: string }>()
+  for (const row of [...feedsWithNudges, ...feedsWithInstructions]) {
+    scopes.set(`${row.userId}:${row.feedId}`, row)
+  }
 
-  if (userIds.size === 0) return
+  if (scopes.size === 0) return
 
-  for (const userId of userIds) {
+  for (const { userId, feedId } of scopes.values()) {
     // Check user has AI configured
     const [settings] = await db
       .select({ id: aiSettings.id })
@@ -44,9 +43,9 @@ async function processAll() {
     if (!settings) continue
 
     try {
-      await regeneratePromptForUser(userId)
+      await regeneratePromptForUser(userId, feedId)
     } catch (err) {
-      console.error(`[promptBatch] Error for user ${userId}:`, err instanceof Error ? err.message : err)
+      console.error(`[promptBatch] Error for user ${userId}, feed ${feedId}:`, err instanceof Error ? err.message : err)
     }
   }
 }

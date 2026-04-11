@@ -115,6 +115,33 @@ export const aiSettings = pgTable('ai_settings', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+export const aiScoringFeeds = pgTable(
+  'ai_scoring_feeds',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    icon: text('icon').notNull().default('✦'),
+    isMain: boolean('is_main').notNull().default(false),
+    systemPrompt: text('system_prompt'),
+    minScore: integer('min_score').notNull().default(50),
+    scoreFromAt: timestamp('score_from_at', { withTimezone: true }),
+    reportIntervalHours: integer('report_interval_hours').notNull().default(24),
+    reportAtHour: integer('report_at_hour').notNull().default(6),
+    promptLastRegenAt: timestamp('prompt_last_regen_at', { withTimezone: true }),
+    lastAutoReportAt: timestamp('last_auto_report_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('ai_scoring_feeds_user_name_idx').on(table.userId, table.name),
+  ],
+)
+
 export const aiReports = pgTable('ai_reports', {
   id: text('id')
     .primaryKey()
@@ -122,6 +149,9 @@ export const aiReports = pgTable('ai_reports', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  feedId: text('feed_id')
+    .notNull()
+    .references(() => aiScoringFeeds.id, { onDelete: 'cascade' }),
   content: text('content').notNull(),
   model: text('model').notNull(),
   tweetCount: integer('tweet_count').notNull(),
@@ -138,6 +168,9 @@ export const nudges = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    feedId: text('feed_id')
+      .notNull()
+      .references(() => aiScoringFeeds.id, { onDelete: 'cascade' }),
     tweetId: text('tweet_id')
       .notNull()
       .references(() => tweets.id, { onDelete: 'cascade' }),
@@ -146,7 +179,7 @@ export const nudges = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('nudges_user_tweet_idx').on(table.userId, table.tweetId),
+    uniqueIndex('nudges_user_feed_tweet_idx').on(table.userId, table.feedId, table.tweetId),
   ],
 )
 
@@ -157,6 +190,9 @@ export const promptChanges = pgTable('prompt_changes', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  feedId: text('feed_id')
+    .notNull()
+    .references(() => aiScoringFeeds.id, { onDelete: 'cascade' }),
   instruction: text('instruction').notNull(),
   consumed: boolean('consumed').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -171,6 +207,9 @@ export const tweetScores = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    feedId: text('feed_id')
+      .notNull()
+      .references(() => aiScoringFeeds.id, { onDelete: 'cascade' }),
     tweetId: text('tweet_id')
       .notNull()
       .references(() => tweets.id, { onDelete: 'cascade' }),
@@ -178,7 +217,7 @@ export const tweetScores = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('tweet_scores_user_tweet_idx').on(table.userId, table.tweetId),
+    uniqueIndex('tweet_scores_user_feed_tweet_idx').on(table.userId, table.feedId, table.tweetId),
   ],
 )
 

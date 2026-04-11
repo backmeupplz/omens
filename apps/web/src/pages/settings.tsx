@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { useLocation } from 'wouter-preact'
 import { api, API_BASE } from '../helpers/api'
-import { Countdown } from '../helpers/components'
-import { useApi } from '../helpers/hooks'
+import { Countdown, FeedTabs } from '../helpers/components'
+import { useApi, useScoringFeeds } from '../helpers/hooks'
 import { NewspaperRouteControls, NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
 import { SetupStateBlock, type SetupStep } from '../helpers/setup-state'
 import { Spinner } from '../helpers/spinner'
@@ -488,25 +488,23 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
         {provider && (
           <div>
             <label class="mb-1 block">Model</label>
-            {models.length > 0 ? (
-              <select
-                class="np-control np-control-select select-styled"
-                value={model}
-                onChange={(e) => setModel((e.target as HTMLSelectElement).value)}
-              >
-                <option value="">Select model...</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                class="np-control"
-                placeholder="e.g. gpt-4o, claude-sonnet-4-20250514"
-                value={model}
-                onInput={(e) => setModel((e.target as HTMLInputElement).value)}
-              />
+            <input
+              type="text"
+              class="np-control"
+              list={models.length > 0 ? 'ai-model-suggestions' : undefined}
+              placeholder="e.g. gpt-4o, claude-sonnet-4-20250514"
+              value={model}
+              onInput={(e) => setModel((e.target as HTMLInputElement).value)}
+            />
+            {models.length > 0 && (
+              <>
+                <datalist id="ai-model-suggestions">
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </datalist>
+                <p class="np-copy-muted text-xs mt-1">You can type any model manually or pick one of the fetched suggestions.</p>
+              </>
             )}
           </div>
         )}
@@ -637,37 +635,77 @@ function FetchIntervalSection() {
 }
 
 function AiTuningSection() {
-  const { data: settings } = useApi<{ configured: boolean; minScore?: number; fetchIntervalMinutes?: number; reportIntervalHours?: number; reportAtHour?: number }>('/ai/settings')
-  const { data: internals, refetch } = useApi<InternalsData>('/ai/internals')
+  const { data: settings } = useApi<{ configured: boolean }>('/ai/settings')
+  const { feeds, selectedFeed, selectedFeedId, setSelectedFeedId, loading: feedsLoading, refetch: refetchFeeds } = useScoringFeeds(!!settings?.configured)
+  const { data: internals, refetch } = useApi<InternalsData>(settings?.configured && selectedFeedId ? `/ai/internals?feedId=${encodeURIComponent(selectedFeedId)}` : null)
 
-  // Poll internals every 30s to catch background prompt regeneration
   useEffect(() => {
     const id = setInterval(refetch, 30_000)
     return () => clearInterval(id)
   }, [refetch])
+
   const [instruction, setInstruction] = useState('')
   const [regenerating, setRegenerating] = useState(false)
   const [regenStatus, setRegenStatus] = useState('')
   const [editingPrompt, setEditingPrompt] = useState(false)
   const [promptDraft, setPromptDraft] = useState('')
   const [savingPrompt, setSavingPrompt] = useState(false)
+  const [feedName, setFeedName] = useState('')
+  const [feedIcon, setFeedIcon] = useState('')
+  const [showAddFeed, setShowAddFeed] = useState(false)
+  const [newFeedName, setNewFeedName] = useState('')
+  const [newFeedIcon, setNewFeedIcon] = useState('✦')
+  const [creatingFeed, setCreatingFeed] = useState(false)
+  const [savingFeedMeta, setSavingFeedMeta] = useState(false)
+  const [deletingFeed, setDeletingFeed] = useState(false)
   const [localMinScore, setLocalMinScore] = useState<number | null>(null)
   const [reportInterval, setReportInterval] = useState<number | null>(null)
   const [reportAtHour, setReportAtHour] = useState<number | null>(null)
   const [savingScore, setSavingScore] = useState(false)
   const [savingIntervals, setSavingIntervals] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [error, setError] = useState('')
+  const [showPrompt, setShowPrompt] = useState(false)
 
   useEffect(() => {
-    if (settings?.minScore != null && localMinScore === null) setLocalMinScore(settings.minScore)
-    if (settings?.reportIntervalHours != null && reportInterval === null) setReportInterval(settings.reportIntervalHours)
-    if (settings?.reportAtHour != null && reportAtHour === null) {
-      // Convert UTC hour to local hour for display
-      const utcH = settings.reportAtHour
-      const localH = (utcH + 24 - new Date().getTimezoneOffset() / 60) % 24
-      setReportAtHour(Math.round(localH))
-    }
-  }, [settings, localMinScore, reportInterval, reportAtHour])
+    if (!selectedFeed) return
+    setFeedName(selectedFeed.name)
+    setFeedIcon(selectedFeed.icon)
+    setLocalMinScore(selectedFeed.minScore)
+    setReportInterval(selectedFeed.reportIntervalHours)
+    const localH = (selectedFeed.reportAtHour + 24 - new Date().getTimezoneOffset() / 60) % 24
+    setReportAtHour(Math.round(localH))
+    setPromptDraft(selectedFeed.systemPrompt || '')
+    setInstruction('')
+    setShowPrompt(false)
+    setEditingPrompt(false)
+    setError('')
+  }, [selectedFeed])
+
+  const saveFeedPatch = useCallback(async (patch: Partial<{
+    name: string
+    icon: string
+    systemPrompt: string
+    minScore: number
+    reportIntervalHours: number
+    reportAtHour: number
+  }>) => {
+    if (!selectedFeedId || localMinScore === null || reportInterval === null || reportAtHour === null) return
+    const utcH = (reportAtHour + new Date().getTimezoneOffset() / 60 + 24) % 24
+    await api(`/ai/feeds/${selectedFeedId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        name: patch.name ?? feedName,
+        icon: patch.icon ?? feedIcon,
+        systemPrompt: patch.systemPrompt ?? promptDraft,
+        minScore: patch.minScore ?? localMinScore,
+        reportIntervalHours: patch.reportIntervalHours ?? reportInterval,
+        reportAtHour: patch.reportAtHour ?? Math.round(utcH),
+      }),
+    })
+    refetchFeeds()
+    refetch()
+  }, [feedIcon, feedName, localMinScore, promptDraft, refetch, refetchFeeds, reportAtHour, reportInterval, selectedFeedId])
 
   const onSliderChange = (val: number) => {
     setLocalMinScore(val)
@@ -675,21 +713,17 @@ function AiTuningSection() {
     debounceRef.current = setTimeout(async () => {
       setSavingScore(true)
       try {
-        await api('/ai/settings/min-score', { method: 'PUT', body: JSON.stringify({ minScore: val }) })
+        await saveFeedPatch({ minScore: val })
       } catch {}
       setSavingScore(false)
     }, 500)
   }
-  const [error, setError] = useState('')
-  const [showPrompt, setShowPrompt] = useState(false)
-
-  if (!settings?.configured || !internals) return null
 
   const addInstruction = async () => {
-    if (!instruction.trim()) return
+    if (!instruction.trim() || !selectedFeedId) return
     setError('')
     try {
-      await api('/ai/prompt-change', { method: 'POST', body: JSON.stringify({ instruction: instruction.trim() }) })
+      await api('/ai/prompt-change', { method: 'POST', body: JSON.stringify({ instruction: instruction.trim(), feedId: selectedFeedId }) })
       setInstruction('')
       refetch()
     } catch (e) {
@@ -698,7 +732,8 @@ function AiTuningSection() {
   }
 
   const removeNudge = async (tweetId: string) => {
-    await api(`/ai/nudge/${tweetId}`, { method: 'DELETE' }).catch(() => {})
+    if (!selectedFeedId) return
+    await api(`/ai/nudge/${tweetId}?feedId=${encodeURIComponent(selectedFeedId)}`, { method: 'DELETE' }).catch(() => {})
     refetch()
   }
 
@@ -710,11 +745,12 @@ function AiTuningSection() {
   const regenAbortRef = useRef<AbortController | null>(null)
 
   const connectToRegenStream = useCallback(() => {
+    if (!selectedFeedId) return
     regenAbortRef.current?.abort()
     const controller = new AbortController()
     regenAbortRef.current = controller
     setRegenerating(true)
-    fetch(`${API_BASE}/ai/regenerate-stream`, { credentials: 'include', signal: controller.signal })
+    fetch(`${API_BASE}/ai/regenerate-stream?feedId=${encodeURIComponent(selectedFeedId)}`, { credentials: 'include', signal: controller.signal })
       .then(async (res) => {
         const reader = res.body?.getReader()
         if (!reader) return
@@ -743,11 +779,11 @@ function AiTuningSection() {
         setRegenerating(false)
         setRegenStatus('')
       })
-  }, [refetch])
+  }, [refetch, selectedFeedId])
 
-  // On mount, check if a regeneration is already in progress (e.g. after page reload)
   useEffect(() => {
-    api<{ active: boolean; status: string | null }>('/ai/regenerate-status')
+    if (!selectedFeedId) return
+    api<{ active: boolean; status: string | null }>(`/ai/regenerate-status?feedId=${encodeURIComponent(selectedFeedId)}`)
       .then((s) => {
         if (s.active) {
           setRegenStatus(s.status || 'Applying...')
@@ -755,14 +791,15 @@ function AiTuningSection() {
         }
       })
       .catch(() => {})
-  }, [connectToRegenStream])
+  }, [connectToRegenStream, selectedFeedId])
 
   const regenerate = async () => {
+    if (!selectedFeedId) return
     setRegenerating(true)
     setRegenStatus('Starting...')
     setError('')
     try {
-      await api('/ai/regenerate-prompt', { method: 'POST' })
+      await api(`/ai/regenerate-prompt?feedId=${encodeURIComponent(selectedFeedId)}`, { method: 'POST' })
       connectToRegenStream()
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') return
@@ -772,214 +809,357 @@ function AiTuningSection() {
     }
   }
 
+  if (!settings?.configured) return null
+  if (feedsLoading && !selectedFeed) return <Spinner />
+  if (!selectedFeed || !internals) return null
+
   const hasPending = internals.pendingNudges.length > 0 || internals.pendingInstructions.length > 0
 
   return (
     <div class="space-y-4">
       <h3 class="font-medium">AI Tuning</h3>
+      <p class="np-copy-muted text-sm">Set up the main feed first, then add extra scoring feeds with their own prompts, thresholds, and report schedules.</p>
 
       {error && <p class="np-alert np-alert-error">{error}</p>}
 
-      {/* Min relevance slider */}
-      {localMinScore !== null && (
-        <div>
-          <label class="mb-1 block">Min relevance for filtered feed</label>
-          <div class="flex items-center gap-3">
+      <FeedTabs
+        feeds={feeds}
+        selectedFeedId={selectedFeedId}
+        onSelect={setSelectedFeedId}
+        footer={(
+          <div class="pt-1">
+            <button
+              type="button"
+              onClick={() => setShowAddFeed((v) => !v)}
+              class="np-button np-button-secondary np-button-small whitespace-nowrap"
+            >
+              {showAddFeed ? 'Close add feed' : 'Add feed'}
+            </button>
+          </div>
+        )}
+      />
+
+      {showAddFeed && (
+        <div class="np-inline-card space-y-3">
+          <p class="np-copy-subtle text-sm">Create a new scoring feed with its own prompt and report schedule.</p>
+          <div class="grid gap-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
+            <div>
+              <label class="mb-1 block">Icon</label>
+              <input
+                type="text"
+                class="np-control text-center"
+                maxLength={8}
+                value={newFeedIcon}
+                onInput={(e) => setNewFeedIcon((e.target as HTMLInputElement).value)}
+              />
+            </div>
+            <div>
+              <label class="mb-1 block">Name</label>
+              <input
+                type="text"
+                class="np-control"
+                placeholder="e.g. Work, Memes"
+                value={newFeedName}
+                onInput={(e) => setNewFeedName((e.target as HTMLInputElement).value)}
+              />
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={creatingFeed || !newFeedName.trim() || !newFeedIcon.trim()}
+            onClick={async () => {
+              setCreatingFeed(true)
+              setError('')
+              try {
+                const result = await api<{ feed: { id: string } }>('/ai/feeds', {
+                  method: 'POST',
+                  body: JSON.stringify({ name: newFeedName.trim(), icon: newFeedIcon.trim() }),
+                })
+                setNewFeedName('')
+                setNewFeedIcon('✦')
+                setShowAddFeed(false)
+                refetchFeeds()
+                setSelectedFeedId(result.feed.id)
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'Failed to create feed')
+              } finally {
+                setCreatingFeed(false)
+              }
+            }}
+            class="np-button np-button-primary disabled:opacity-50"
+          >
+            {creatingFeed ? 'Creating...' : 'Create feed'}
+          </button>
+        </div>
+      )}
+
+      <div class="np-inline-card space-y-3">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p class="np-copy-strong text-sm font-medium">
+              {selectedFeed.icon} {selectedFeed.name} {selectedFeed.isMain ? '· Main feed' : '· Scoring feed'}
+            </p>
+            <p class="np-copy-muted text-xs mt-1">
+              {selectedFeed.isMain
+                ? 'This is your default lens. It should represent the feed you care about most.'
+                : 'This feed learns independently and gets its own filtered view and report schedule.'}
+            </p>
+          </div>
+          {!selectedFeed.isMain && (
+            <button
+              type="button"
+              disabled={deletingFeed}
+              onClick={async () => {
+                setDeletingFeed(true)
+                setError('')
+                try {
+                  await api(`/ai/feeds/${selectedFeed.id}`, { method: 'DELETE' })
+                  refetchFeeds()
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : 'Failed to delete feed')
+                } finally {
+                  setDeletingFeed(false)
+                }
+              }}
+              class="np-button np-button-danger np-button-small disabled:opacity-50"
+            >
+              {deletingFeed ? 'Removing...' : 'Remove'}
+            </button>
+          )}
+        </div>
+        <div class="grid gap-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
+          <div>
+            <label class="mb-1 block">Icon</label>
             <input
-              type="range"
-              min="0"
-              max="100"
-              step="5"
-              value={localMinScore}
-              onInput={(e) => onSliderChange(Number((e.target as HTMLInputElement).value))}
-              class="flex-1"
+              type="text"
+              class="np-control text-center"
+              maxLength={8}
+              value={feedIcon}
+              onInput={(e) => setFeedIcon((e.target as HTMLInputElement).value)}
             />
-            <span class="np-copy-subtle text-sm w-8 text-right tabular-nums">{localMinScore}</span>
-            {savingScore && (
-              <svg class="w-3.5 h-3.5 animate-spin np-copy-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
+          </div>
+          <div>
+            <label class="mb-1 block">Feed name</label>
+            <input
+              type="text"
+              class="np-control"
+              value={feedName}
+              onInput={(e) => setFeedName((e.target as HTMLInputElement).value)}
+            />
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={savingFeedMeta || !feedName.trim() || !feedIcon.trim()}
+          onClick={async () => {
+            setSavingFeedMeta(true)
+            setError('')
+            try {
+              await saveFeedPatch({ name: feedName.trim(), icon: feedIcon.trim() })
+            } catch (e) {
+              setError(e instanceof Error ? e.message : 'Failed to save feed details')
+            } finally {
+              setSavingFeedMeta(false)
+            }
+          }}
+          class="np-button np-button-secondary np-button-small disabled:opacity-50"
+        >
+          {savingFeedMeta ? 'Saving...' : 'Save feed details'}
+        </button>
+        <div class="space-y-4 border-t border-[var(--np-rule)] pt-4">
+          {localMinScore !== null && (
+            <div>
+              <label class="mb-1 block">Min relevance for {selectedFeed.name}</label>
+              <div class="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={localMinScore}
+                  onInput={(e) => onSliderChange(Number((e.target as HTMLInputElement).value))}
+                  class="flex-1"
+                />
+                <span class="np-copy-subtle text-sm w-8 text-right tabular-nums">{localMinScore}</span>
+                {savingScore && (
+                  <svg class="w-3.5 h-3.5 animate-spin np-copy-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                )}
+              </div>
+            </div>
+          )}
+
+          {reportInterval !== null && (
+            <div class="space-y-3">
+              <label class="block">Auto-generate reports for {selectedFeed.name} every</label>
+              <select
+                class="np-control np-control-select select-styled"
+                value={reportInterval}
+                onChange={(e) => {
+                  const v = Number((e.target as HTMLSelectElement).value)
+                  setReportInterval(v)
+                  setSavingIntervals(true)
+                  saveFeedPatch({ reportIntervalHours: v }).finally(() => setSavingIntervals(false))
+                }}
+              >
+                <option value="0">Manual only</option>
+                <option value="6">6 hours</option>
+                <option value="12">12 hours</option>
+                <option value="24">24 hours</option>
+                <option value="48">2 days</option>
+              </select>
+              {reportInterval > 0 && reportAtHour !== null && (
+                <>
+                  <label class="block">Generate report at</label>
+                  <select
+                    class="np-control np-control-select select-styled"
+                    value={reportAtHour}
+                    onChange={(e) => {
+                      const localH = Number((e.target as HTMLSelectElement).value)
+                      setReportAtHour(localH)
+                      const utcH = (localH + new Date().getTimezoneOffset() / 60 + 24) % 24
+                      setSavingIntervals(true)
+                      saveFeedPatch({ reportAtHour: Math.round(utcH) }).finally(() => setSavingIntervals(false))
+                    }}
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={i}>{i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i - 12}:00 PM`}</option>
+                    ))}
+                  </select>
+                </>
+              )}
+              {savingIntervals && <span class="np-copy-muted text-xs">Saving...</span>}
+            </div>
+          )}
+
+          <div>
+            <label class="mb-1 block">Tell the AI what you want to see in {selectedFeed.name}</label>
+            <div class="flex gap-2">
+              <input
+                type="text"
+                class="np-control min-w-0 flex-1"
+                placeholder='e.g. "show me more memes", "less crypto"'
+                value={instruction}
+                onInput={(e) => setInstruction((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') addInstruction() }}
+              />
+              <button type="button" onClick={addInstruction} disabled={!instruction.trim()}
+                class="np-button np-button-secondary disabled:opacity-50 shrink-0">Add</button>
+            </div>
+          </div>
+
+          {hasPending && (
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="np-copy-muted text-xs">
+                  Pending changes ({internals.pendingNudges.length + internals.pendingInstructions.length})
+                  {!regenerating && (internals.isApplying
+                    ? <span> · applying now...</span>
+                    : internals.autoApplyAt && <Countdown targetMs={internals.autoApplyAt} prefix=" · auto-applies in " expiredLabel=" · applying soon..." />)}
+                </span>
+                <button type="button" onClick={regenerate} disabled={regenerating}
+                  class="np-button np-button-primary np-button-small disabled:opacity-50 whitespace-nowrap">
+                  {regenerating ? 'Applying...' : 'Apply now'}
+                </button>
+              </div>
+              {regenerating && regenStatus && (
+                <div class="flex items-center gap-2 text-xs np-copy-muted">
+                  <svg class="w-3.5 h-3.5 animate-spin shrink-0 np-link-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  {regenStatus}
+                </div>
+              )}
+
+              {internals.pendingInstructions.map((p) => (
+                <div key={p.id} class="np-inline-card np-inline-card-row">
+                  <span class="np-copy-subtle text-sm">"{p.instruction}"</span>
+                  <button type="button" onClick={() => removeInstruction(p.id)}
+                    class="np-link-muted text-xs ml-2 shrink-0">&times;</button>
+                </div>
+              ))}
+
+              {internals.pendingNudges.map((n) => (
+                <div key={n.id} class="np-inline-card flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <p class="text-xs mb-0.5">
+                      <span class={`font-medium ${n.direction === 'up' ? 'np-link-accent' : 'np-copy-danger'}`}>
+                        {n.direction === 'up' ? 'More like' : 'Less like'}
+                      </span>{' '}
+                      <span class="np-copy-muted">@{n.authorHandle}</span>
+                    </p>
+                    <p class="np-copy-subtle text-sm line-clamp-2">{n.tweetContent}</p>
+                  </div>
+                  <button type="button" onClick={() => removeNudge(n.tweetId)}
+                    class="np-link-muted text-sm mt-0.5 shrink-0">&times;</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!hasPending && (
+            <p class="np-copy-muted text-xs">No pending changes for this feed. Use thumbs up/down on posts or add instructions above to tune it.</p>
+          )}
+
+          {internals.lastRegenAt && (
+            <p class="np-copy-muted text-xs">Last regenerated: {new Date(internals.lastRegenAt).toLocaleString()}</p>
+          )}
+
+          <div>
+            <div class="flex items-center gap-2">
+              <button type="button" onClick={() => setShowPrompt(!showPrompt)}
+                class="np-link-muted text-xs">
+                {showPrompt ? 'Hide' : 'Show'} current prompt
+              </button>
+              {showPrompt && !editingPrompt && (
+                <button type="button" onClick={() => { setPromptDraft(internals.currentPrompt || internals.defaultPrompt); setEditingPrompt(true) }}
+                  class="np-link-muted text-xs">Edit</button>
+              )}
+            </div>
+            {showPrompt && !editingPrompt && (
+              <pre class="np-inline-code mt-2 text-xs whitespace-pre-wrap overflow-auto max-h-60 scrollbar-dark">
+                {internals.currentPrompt || internals.defaultPrompt}
+              </pre>
+            )}
+            {editingPrompt && (
+              <div class="mt-2">
+                <textarea
+                  class="np-control np-control-textarea text-xs scrollbar-dark"
+                  value={promptDraft}
+                  onInput={(e) => setPromptDraft((e.target as HTMLTextAreaElement).value)}
+                />
+                <div class="flex items-center gap-2 mt-2">
+                  <button
+                    type="button"
+                    disabled={savingPrompt}
+                    onClick={async () => {
+                      setSavingPrompt(true)
+                      try {
+                        await saveFeedPatch({ systemPrompt: promptDraft })
+                        setEditingPrompt(false)
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : 'Failed to save prompt')
+                      } finally {
+                        setSavingPrompt(false)
+                      }
+                    }}
+                    class="np-button np-button-primary np-button-small disabled:opacity-50"
+                  >
+                    {savingPrompt ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingPrompt(false)}
+                    class="np-button np-button-secondary np-button-small"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
-      )}
-
-      {/* Report intervals */}
-      {reportInterval !== null && (
-        <div class="space-y-3">
-          <label class="block">Auto-generate reports every</label>
-          <select
-            class="np-control np-control-select select-styled"
-            value={reportInterval}
-            onChange={(e) => {
-              const v = Number((e.target as HTMLSelectElement).value)
-              setReportInterval(v)
-              setSavingIntervals(true)
-              api('/ai/settings/intervals', { method: 'PUT', body: JSON.stringify({ reportIntervalHours: v }) })
-                .finally(() => setSavingIntervals(false))
-            }}
-          >
-            <option value="0">Manual only</option>
-            <option value="6">6 hours</option>
-            <option value="12">12 hours</option>
-            <option value="24">24 hours</option>
-            <option value="48">2 days</option>
-          </select>
-          {reportInterval != null && reportInterval > 0 && reportAtHour !== null && (
-            <>
-              <label class="block">Generate report at</label>
-              <select
-                class="np-control np-control-select select-styled"
-                value={reportAtHour}
-                onChange={(e) => {
-                  const localH = Number((e.target as HTMLSelectElement).value)
-                  setReportAtHour(localH)
-                  // Convert local hour to UTC for storage
-                  const utcH = (localH + new Date().getTimezoneOffset() / 60 + 24) % 24
-                  setSavingIntervals(true)
-                  api('/ai/settings/intervals', { method: 'PUT', body: JSON.stringify({ reportAtHour: Math.round(utcH) }) })
-                    .finally(() => setSavingIntervals(false))
-                }}
-              >
-                {Array.from({ length: 24 }, (_, i) => (
-                  <option key={i} value={i}>{i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i - 12}:00 PM`}</option>
-                ))}
-              </select>
-            </>
-          )}
-          {savingIntervals && <span class="np-copy-muted text-xs">Saving...</span>}
-        </div>
-      )}
-
-      {/* Quick instruction input */}
-      <div>
-        <label class="mb-1 block">Tell the AI what you want to see</label>
-        <div class="flex gap-2">
-          <input
-            type="text"
-            class="np-control min-w-0 flex-1"
-            placeholder='e.g. "show me more memes", "less crypto"'
-            value={instruction}
-            onInput={(e) => setInstruction((e.target as HTMLInputElement).value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') addInstruction() }}
-          />
-          <button type="button" onClick={addInstruction} disabled={!instruction.trim()}
-            class="np-button np-button-secondary disabled:opacity-50 shrink-0">Add</button>
-        </div>
-      </div>
-
-      {/* Pending changes */}
-      {hasPending && (
-        <div class="space-y-2">
-          <div class="flex items-center justify-between">
-            <span class="np-copy-muted text-xs">
-              Pending changes ({internals.pendingNudges.length + internals.pendingInstructions.length})
-              {!regenerating && (internals.isApplying
-                ? <span> · applying now...</span>
-                : internals.autoApplyAt && <Countdown targetMs={internals.autoApplyAt} prefix=" · auto-applies in " expiredLabel=" · applying soon..." />)}
-            </span>
-            <button type="button" onClick={regenerate} disabled={regenerating}
-              class="np-button np-button-primary np-button-small disabled:opacity-50 whitespace-nowrap">
-              {regenerating ? 'Applying...' : 'Apply now'}
-            </button>
-          </div>
-          {regenerating && regenStatus && (
-            <div class="flex items-center gap-2 text-xs np-copy-muted">
-              <svg class="w-3.5 h-3.5 animate-spin shrink-0 np-link-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              {regenStatus}
-            </div>
-          )}
-
-          {internals.pendingInstructions.map((p) => (
-            <div key={p.id} class="np-inline-card np-inline-card-row">
-              <span class="np-copy-subtle text-sm">"{p.instruction}"</span>
-              <button type="button" onClick={() => removeInstruction(p.id)}
-                class="np-link-muted text-xs ml-2 shrink-0">&times;</button>
-            </div>
-          ))}
-
-          {internals.pendingNudges.map((n) => (
-            <div key={n.id} class="np-inline-card flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <p class="text-xs mb-0.5">
-                  <span class={`font-medium ${n.direction === 'up' ? 'np-link-accent' : 'np-copy-danger'}`}>
-                    {n.direction === 'up' ? 'More like' : 'Less like'}
-                  </span>{' '}
-                  <span class="np-copy-muted">@{n.authorHandle}</span>
-                </p>
-                <p class="np-copy-subtle text-sm line-clamp-2">{n.tweetContent}</p>
-              </div>
-              <button type="button" onClick={() => removeNudge(n.tweetId)}
-                class="np-link-muted text-sm mt-0.5 shrink-0">&times;</button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!hasPending && (
-        <p class="np-copy-muted text-xs">No pending changes. Use thumbs up/down on posts or add instructions above to tune the AI.</p>
-      )}
-
-      {internals.lastRegenAt && (
-        <p class="np-copy-muted text-xs">Last regenerated: {new Date(internals.lastRegenAt).toLocaleString()}</p>
-      )}
-
-      {/* Current prompt (collapsible + editable) */}
-      <div>
-        <div class="flex items-center gap-2">
-          <button type="button" onClick={() => setShowPrompt(!showPrompt)}
-            class="np-link-muted text-xs">
-            {showPrompt ? 'Hide' : 'Show'} current prompt
-          </button>
-          {showPrompt && !editingPrompt && (
-            <button type="button" onClick={() => { setPromptDraft(internals.currentPrompt || internals.defaultPrompt); setEditingPrompt(true) }}
-              class="np-link-muted text-xs">Edit</button>
-          )}
-        </div>
-        {showPrompt && !editingPrompt && (
-          <pre class="np-inline-code mt-2 text-xs whitespace-pre-wrap overflow-auto max-h-60 scrollbar-dark">
-            {internals.currentPrompt || internals.defaultPrompt}
-          </pre>
-        )}
-        {editingPrompt && (
-          <div class="mt-2">
-            <textarea
-              class="np-control np-control-textarea text-xs scrollbar-dark"
-              value={promptDraft}
-              onInput={(e) => setPromptDraft((e.target as HTMLTextAreaElement).value)}
-            />
-            <div class="flex items-center gap-2 mt-2">
-              <button
-                type="button"
-                disabled={savingPrompt}
-                onClick={async () => {
-                  setSavingPrompt(true)
-                  try {
-                    await api('/ai/settings/prompt', { method: 'PUT', body: JSON.stringify({ systemPrompt: promptDraft }) })
-                    setEditingPrompt(false)
-                    refetch()
-                  } catch (e) {
-                    setError(e instanceof Error ? e.message : 'Failed to save prompt')
-                  } finally {
-                    setSavingPrompt(false)
-                  }
-                }}
-                class="np-button np-button-primary np-button-small disabled:opacity-50"
-              >
-                {savingPrompt ? 'Saving...' : 'Save'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditingPrompt(false)}
-                class="np-button np-button-secondary np-button-small"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

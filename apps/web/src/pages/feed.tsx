@@ -2,9 +2,10 @@ import { createPortal } from 'preact/compat'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { Link } from 'wouter-preact'
 import { api, API_BASE } from '../helpers/api'
+import { FeedTabs } from '../helpers/components'
 import { FeedLeadArticle, NewspaperFeedShell } from '../helpers/feed-shell'
 import { fmt, safeParse, timeAgo } from '../helpers/format'
-import { useApi } from '../helpers/hooks'
+import { useApi, useScoringFeeds } from '../helpers/hooks'
 import { NewspaperRouteControls, NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
 import { SetupStateBlock } from '../helpers/setup-state'
 import { Spinner } from '../helpers/spinner'
@@ -20,6 +21,11 @@ function imgProxy(url: string | null): string | undefined {
   if (!url) return undefined
   if (url.includes('pbs.twimg.com')) return `${API_BASE}/avatar?url=${encodeURIComponent(url)}`
   return url
+}
+
+function withFeedId(path: string, feedId?: string | null) {
+  if (!feedId) return path
+  return `${path}${path.includes('?') ? '&' : '?'}feedId=${encodeURIComponent(feedId)}`
 }
 
 // === Lightbox ===
@@ -1895,20 +1901,22 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
 
 // === Nudge Hook ===
 
-function useNudges(demo?: boolean) {
+function useNudges(demo?: boolean, feedId?: string | null) {
   const [nudges, setNudges] = useState<Map<string, 'up' | 'down'>>(new Map())
   const [feedback, setFeedback] = useState<string | null>(null)
 
   useEffect(() => {
     if (demo) return
-    api<{ nudges: Array<{ tweetId: string; direction: 'up' | 'down' }> }>('/ai/nudges')
+    setNudges(new Map())
+    if (!feedId) return
+    api<{ nudges: Array<{ tweetId: string; direction: 'up' | 'down' }> }>(withFeedId('/ai/nudges', feedId))
       .then((r) => {
         const map = new Map<string, 'up' | 'down'>()
         for (const n of r.nudges) map.set(n.tweetId, n.direction as 'up' | 'down')
         setNudges(map)
       })
       .catch(() => {})
-  }, [demo])
+  }, [demo, feedId])
 
   const onNudge = useCallback((tweetId: string, direction: 'up' | 'down') => {
     setNudges((prev) => {
@@ -1916,7 +1924,7 @@ function useNudges(demo?: boolean) {
       const wasSet = next.get(tweetId) === direction
       if (wasSet) {
         next.delete(tweetId)
-        api(`/ai/nudge/${tweetId}`, { method: 'DELETE' }).catch(() => {
+        api(withFeedId(`/ai/nudge/${tweetId}`, feedId), { method: 'DELETE' }).catch(() => {
           // Revert: re-apply the nudge we just removed
           setNudges((p) => { const r = new Map(p); r.set(tweetId, direction); return r })
           setFeedback('Failed to save feedback')
@@ -1925,7 +1933,7 @@ function useNudges(demo?: boolean) {
       } else {
         const prevDirection = next.get(tweetId)
         next.set(tweetId, direction)
-        api('/ai/nudge', { method: 'POST', body: JSON.stringify({ tweetId, direction }) }).catch(() => {
+        api('/ai/nudge', { method: 'POST', body: JSON.stringify({ tweetId, direction, feedId }) }).catch(() => {
           // Revert to previous state
           setNudges((p) => {
             const r = new Map(p)
@@ -1941,7 +1949,7 @@ function useNudges(demo?: boolean) {
     })
     setFeedback(direction === 'up' ? 'Will show more like this' : 'Will show less like this')
     setTimeout(() => setFeedback(null), 2000)
-  }, [])
+  }, [feedId])
 
   return { nudges, onNudge, feedback }
 }
@@ -2738,8 +2746,11 @@ function AiSetupLead({
 function AiReportView({ demo }: { demo?: boolean } = {}) {
   const prefix = demo ? '/demo' : '/ai'
   const { data: settings, loading: settingsLoading, error: settingsError, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number; reportAtHour?: number; nextReportAt?: number | null }>(demo ? null : '/ai/settings')
-  const { data, loading, refetch } = useApi<{ report: AiReportData | null }>(`${prefix}/report`)
-  const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string }> }>(`${prefix}/reports`)
+  const { feeds, selectedFeed, selectedFeedId, setSelectedFeedId, loading: feedsLoading } = useScoringFeeds(!demo)
+  const reportPath = demo ? `${prefix}/report` : (selectedFeedId ? withFeedId(`${prefix}/report`, selectedFeedId) : null)
+  const reportsPath = demo ? `${prefix}/reports` : (selectedFeedId ? withFeedId(`${prefix}/reports`, selectedFeedId) : null)
+  const { data, loading, refetch } = useApi<{ report: AiReportData | null }>(reportPath)
+  const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string; feedId: string }> }>(reportsPath)
   useNewspaperActive()
   const [generating, setGenerating] = useState(false)
   const [streamContent, setStreamContent] = useState('')
@@ -2751,6 +2762,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
   const [viewingReport, setViewingReport] = useState<AiReportData | null>(null)
   const [showPastReports, setShowPastReports] = useState(false)
   const [historyPage, setHistoryPage] = useState(1)
+  const [switchingFeeds, setSwitchingFeeds] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const refetchRef = useRef(refetch)
   const streamRetryTimerRef = useRef<number | null>(null)
@@ -2777,11 +2789,13 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
+    const statusPath = demo ? '/ai/report-status' : withFeedId('/ai/report-status', selectedFeedId)
+    const streamUrl = `${API_BASE}${demo ? '/ai/report-stream' : withFeedId('/ai/report-stream', selectedFeedId)}`
 
     const recoverStream = async (fallbackMessage: string) => {
       if (controller.signal.aborted || unmountingRef.current) return
       try {
-        const status = await api<{ generating: boolean; tweetCount: number; status: string | null; startedAt: string | null; error: string | null }>('/ai/report-status')
+        const status = await api<{ generating: boolean; tweetCount: number; status: string | null; startedAt: string | null; error: string | null }>(statusPath)
         if (controller.signal.aborted || unmountingRef.current) return
 
         if (status.error) {
@@ -2816,7 +2830,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
       }
     }
 
-    fetch(`${API_BASE}/ai/report-stream`, { credentials: 'include', signal: controller.signal })
+    fetch(streamUrl, { credentials: 'include', signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error(`Report stream failed (${res.status})`)
         const reader = res.body?.getReader()
@@ -2876,13 +2890,14 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
         if (e instanceof Error && e.name === 'AbortError') return
         await recoverStream(e instanceof Error ? e.message : 'Connection lost during report generation')
       })
-  }, [clearStreamRetry])
+  }, [clearStreamRetry, demo, selectedFeedId])
   connectStreamRef.current = connectStream
 
   // Check if report is already generating on mount
   useEffect(() => {
     if (demo) return
-    api<{ generating: boolean; tweetCount: number; status: string | null; startedAt: string | null; error: string | null }>('/ai/report-status')
+    if (!selectedFeedId) return
+    api<{ generating: boolean; tweetCount: number; status: string | null; startedAt: string | null; error: string | null }>(withFeedId('/ai/report-status', selectedFeedId))
       .then((s) => {
         if (s.error) { setError(s.error); return }
         if (s.generating) {
@@ -2899,7 +2914,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
       clearStreamRetry()
       abortRef.current?.abort()
     }
-  }, [clearStreamRetry, connectStream, demo])
+  }, [clearStreamRetry, connectStream, demo, selectedFeedId])
 
   const generate = async () => {
     setGenerating(true)
@@ -2911,7 +2926,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     streamRetryCountRef.current = 0
     clearStreamRetry()
     try {
-      await api('/ai/report', { method: 'POST' })
+      await api(withFeedId('/ai/report', selectedFeedId), { method: 'POST' })
       connectStream()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate report')
@@ -2942,7 +2957,24 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     setViewingReport(null)
   }
 
-  if ((!demo && settingsLoading) || loading) {
+  useEffect(() => {
+    setViewingReportId(null)
+    setViewingReport(null)
+    setShowPastReports(false)
+    setHistoryPage(1)
+    setError(null)
+    setStreamContent('')
+    setStreamTweets(new Map())
+    if (!demo && selectedFeedId) setSwitchingFeeds(true)
+  }, [selectedFeedId])
+
+  useEffect(() => {
+    if (!switchingFeeds) return
+    if (loading) return
+    setSwitchingFeeds(false)
+  }, [loading, switchingFeeds])
+
+  if ((!demo && (settingsLoading || feedsLoading || !selectedFeedId)) || loading || switchingFeeds) {
     return (
       <NewspaperShell
         leftControls={<NewspaperRouteControls current="report" showSettings={!demo} />}
@@ -2967,6 +2999,14 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
   }
 
   const activeReport = viewingReportId ? viewingReport : data?.report
+  const reportTabs = !demo && feeds.length > 1 ? (
+    <FeedTabs
+      feeds={feeds}
+      selectedFeedId={selectedFeedId}
+      onSelect={setSelectedFeedId}
+      className="mb-3"
+    />
+  ) : null
   const refTweetMap = new Map<string, Tweet>()
   if (activeReport?.refTweets) {
     for (const t of activeReport.refTweets) refTweetMap.set(t.id, t)
@@ -3069,6 +3109,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
           rightControls={newspaperControls}
           preContent={
             <>
+              {reportTabs}
               {error && <p class="np-alert np-alert-error text-center mb-3">{error}</p>}
               {renderGenerationPanel()}
             </>
@@ -3084,6 +3125,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
         showMeta={false}
         subtitle={getBriefingLabel(new Date())}
       >
+        {reportTabs}
         {error && <p class="np-alert np-alert-error text-center mb-3">{error}</p>}
         {renderGenerationPanel()}
       </NewspaperShell>
@@ -3104,7 +3146,12 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
           leftControls={newspaperLeftControls}
           rightControls={newspaperControls}
           historyPanel={historyPanel}
-          preContent={generating ? renderGenerationPanel() : undefined}
+          preContent={
+            <>
+              {reportTabs}
+              {generating ? renderGenerationPanel() : null}
+            </>
+          }
         />
       )}
 
@@ -3114,6 +3161,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
           rightControls={newspaperControls}
           showMeta={false}
         >
+          {reportTabs}
           <div class="np-page-grid">
             <article class="np-article np-article-lead">
               <div class="flex flex-col items-center justify-center py-24">
@@ -3124,7 +3172,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
                   <p class="np-empty-copy">No reports available yet.</p>
                 ) : (
                   <>
-                    <p class="np-empty-copy mb-4">Generate an AI report from your last 24 hours of posts</p>
+                    <p class="np-empty-copy mb-4">Generate an AI report for {selectedFeed?.name || 'this feed'} from your last 24 hours of posts</p>
                     <button
                       type="button"
                       onClick={generate}
@@ -3148,15 +3196,20 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
 
 const FEED_LIMIT = 50
 
-function usePaginatedFeed(url: string, resetKey: number) {
+function usePaginatedFeed(url: string | null, resetKey: number) {
   const [allTweets, setAllTweets] = useState<Tweet[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!!url)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const loadPage = useCallback(async (p: number, reset: boolean) => {
+    if (!url) {
+      setLoading(false)
+      setLoadingMore(false)
+      return
+    }
     if (reset) { setLoading(true); setError(null) }
     else setLoadingMore(true)
     try {
@@ -3183,7 +3236,19 @@ function usePaginatedFeed(url: string, resetKey: number) {
     }
   }, [url])
 
-  useEffect(() => { loadPage(1, true) }, [resetKey, loadPage])
+  useEffect(() => {
+    setAllTweets([])
+    setPage(1)
+    setTotal(0)
+    setError(null)
+    setLoading(!!url)
+    setLoadingMore(false)
+  }, [url, resetKey])
+
+  useEffect(() => {
+    if (!url) return
+    loadPage(1, true)
+  }, [resetKey, loadPage, url])
 
   const remaining = Math.max(0, total - allTweets.length)
   const loadMore = useCallback(() => loadPage(page + 1, false), [loadPage, page])
@@ -3197,18 +3262,21 @@ export function AiReportPage({ demo }: { demo?: boolean } = {}) {
   return <AiReportView demo={demo} />
 }
 
-function useAiSettings(demo?: boolean): { minScore: number; configured: boolean; error: string | null } {
-  const { data, error } = useApi<{ configured: boolean; minScore?: number }>(demo ? null : '/ai/settings')
-  if (demo) return { minScore: 50, configured: true, error: null }
-  return { minScore: data?.minScore ?? 50, configured: data?.configured ?? false, error }
+function useAiSettings(demo?: boolean): { minScore: number; configured: boolean; loading: boolean; error: string | null } {
+  const { data, loading, error } = useApi<{ configured: boolean; minScore?: number }>(demo ? null : '/ai/settings')
+  if (demo) return { minScore: 50, configured: true, loading: false, error: null }
+  return { minScore: data?.minScore ?? 50, configured: data?.configured ?? false, loading, error }
 }
 
 export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise<void>) => void; demo?: boolean }) {
   useNewspaperActive()
-  const { nudges, onNudge, feedback } = useNudges(demo)
-  const { minScore, configured: aiConfigured, error: aiSettingsError } = useAiSettings(demo)
+  const { configured: aiConfigured, loading: aiSettingsLoading, error: aiSettingsError } = useAiSettings(demo)
+  const { feeds, selectedFeed, selectedFeedId, setSelectedFeedId, loading: feedsLoading } = useScoringFeeds(!demo && aiConfigured)
+  const { nudges, onNudge, feedback } = useNudges(demo, selectedFeedId)
+  const minScore = selectedFeed?.minScore ?? 50
   const [feedKey, setFeedKey] = useState(0) // bump to re-fetch feed
-  const { allTweets, loading, loadingMore, error, remaining, loadMore } = usePaginatedFeed(demo ? '/demo/filtered-feed' : '/ai/filtered-feed', feedKey)
+  const filteredFeedPath = demo ? '/demo/filtered-feed' : (selectedFeedId ? withFeedId('/ai/filtered-feed', selectedFeedId) : null)
+  const { allTweets, loading, loadingMore, error, remaining, loadMore } = usePaginatedFeed(filteredFeedPath, feedKey)
   const [filterError, setFilterError] = useState<string | null>(null)
   const [fetchingPosts, setFetchingPosts] = useState(false)
   const [showScoringDetails, setShowScoringDetails] = useState(false)
@@ -3223,8 +3291,9 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
   // Single effect drives the polling interval based on scoringPolling state
   useEffect(() => {
     if (!scoringPolling) return
+    if (!selectedFeedId) return
     const poll = () => {
-      api<ScoringStatus>('/ai/scoring-status').then((st) => {
+      api<ScoringStatus>(withFeedId('/ai/scoring-status', selectedFeedId)).then((st) => {
         setScoringData(st)
         if (st.active) {
           setScoringWasActive(true)
@@ -3238,7 +3307,7 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
     poll() // immediate
     const id = setInterval(poll, 2000)
     return () => clearInterval(id)
-  }, [scoringPolling, scoringWasActive])
+  }, [scoringPolling, scoringWasActive, selectedFeedId])
 
   // When polling stops with wasActive, compute new posts
   useEffect(() => {
@@ -3250,8 +3319,8 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
     }
   }, [scoringPolling, scoringWasActive, scoringData, scoringBaseline])
 
-  const scoringActive = scoringPolling
   const st = scoringData
+  const scoringActive = !!st && (st.active || st.pending > 0)
   const pendingCount = st?.pending ?? 0
   const scoringBatch = st?.batch ?? 0
   const scoringTotalBatches = st?.totalBatches ?? 0
@@ -3260,16 +3329,16 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
 
   // Check initial scoring status on mount
   useEffect(() => {
-    if (!aiConfigured || demo) return
-    api<ScoringStatus>('/ai/scoring-status')
+    if (!aiConfigured || demo || !selectedFeedId) return
+    api<ScoringStatus>(withFeedId('/ai/scoring-status', selectedFeedId))
       .then((s) => {
         if (s.active || s.pending > 0) {
-          if (s.pending > 0 && !s.active) api('/ai/filter', { method: 'POST' }).catch(() => {})
+          if (s.pending > 0 && !s.active) api(withFeedId('/ai/filter', selectedFeedId), { method: 'POST' }).catch(() => {})
           setScoringPolling(true)
         }
       })
       .catch(() => {})
-  }, [aiConfigured, demo])
+  }, [aiConfigured, demo, selectedFeedId])
 
   const refresh = useCallback(async () => {
     setFetchingPosts(true)
@@ -3290,6 +3359,25 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
   // Cleanup polling on unmount only
   useEffect(() => () => setScoringPolling(false), [])
 
+  useEffect(() => {
+    setFilterError(null)
+    setShowScoringDetails(false)
+    setNewReady(0)
+    setScoringData(null)
+    setScoringBaseline(null)
+    setScoringWasActive(false)
+    if (!demo && aiConfigured && selectedFeedId) setScoringPolling(true)
+  }, [aiConfigured, demo, selectedFeedId])
+
+  const feedTabs = !demo && feeds.length > 1 ? (
+    <FeedTabs
+      feeds={feeds}
+      selectedFeedId={selectedFeedId}
+      onSelect={setSelectedFeedId}
+      className="mb-4"
+    />
+  ) : null
+
   const showNewPosts = () => {
     setNewReady(0)
     setScoringBaseline(null)
@@ -3309,7 +3397,7 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
     </button>
   ) : null
 
-  if (!demo && !loading && !aiConfigured) {
+  if (!demo && !aiSettingsLoading && !loading && !aiConfigured) {
     return (
       <AiSetupLead
         current="filtered"
@@ -3327,7 +3415,7 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
       showSettings={!demo}
       rightControls={rightControls}
       toast={feedback}
-      loading={loading}
+      loading={aiSettingsLoading || loading || (!demo && aiConfigured && (feedsLoading || !selectedFeedId))}
       error={
         <>
           {filterError && <p class="np-alert np-alert-error text-center mb-2">{filterError}</p>}
@@ -3354,6 +3442,7 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
       loadingMore={loadingMore}
       onLoadMore={loadMore}
     >
+      {feedTabs}
       {/* Scoring progress */}
       {scoringActive && (() => {
         // Progress based on batch completion, not total scored ratio
