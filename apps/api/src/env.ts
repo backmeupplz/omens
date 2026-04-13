@@ -19,4 +19,8 @@ export default cleanEnv(process.env, {
   CORS_ORIGIN: str({ default: '' }),
   WEB_DIR: str({ default: '' }),
   DEMO_USER_EMAIL: str({ default: isDev ? 'n@bdut.ch' : '' }),
+  REDDIT_CLIENT_ID: str({ default: '' }),
+  REDDIT_CLIENT_SECRET: str({ default: '' }),
+  REDDIT_REDIRECT_URI: str({ default: '' }),
+  REDDIT_USER_AGENT: str({ default: isDev ? 'Omens/dev by borodutch' : '' }),
 })

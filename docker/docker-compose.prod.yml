@@ -14,31 +14,103 @@ services:
       timeout: 5s
       retries: 5
 
+  postgres-grafana-setup:
+    image: postgres:17-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-omens}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-change-me-grafana-db-password}
+    volumes:
+      - ./postgres:/scripts:ro
+    command: ["sh", "/scripts/provision-grafana.sh"]
+    restart: "no"
+
   omens:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     expose:
       - '3000'
-    env_file: .env
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
     environment:
-      - NODE_ENV=production
-      - DATABASE_URL=postgres://omens:${POSTGRES_PASSWORD:-omens}@postgres:5432/omens
+      NODE_ENV: production
+      PORT: ${PORT:-3000}
+      DATABASE_URL: postgres://omens:${POSTGRES_PASSWORD:-omens}@postgres:5432/omens
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      SINGLE_USER_MODE: ${SINGLE_USER_MODE:-false}
+      POLL_INTERVAL_MINUTES: ${POLL_INTERVAL_MINUTES:-5}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      DEMO_USER_EMAIL: ${DEMO_USER_EMAIL:-}
+      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID:-}
+      REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET:-}
+      REDDIT_REDIRECT_URI: ${REDDIT_REDIRECT_URI:-}
+      REDDIT_USER_AGENT: ${REDDIT_USER_AGENT:-}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3000/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
 
+  grafana:
+    image: grafana/grafana:12.4.2
+    expose:
+      - '3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-grafana-setup:
+        condition: service_completed_successfully
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me-grafana-admin-password}
+      GF_SERVER_ROOT_URL: https://${GRAFANA_DOMAIN:-dash.omens.online}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_PUBLIC_DASHBOARDS_ENABLED: "true"
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-change-me-grafana-db-password}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  grafana-public-dashboard:
+    image: curlimages/curl:8.13.0
+    depends_on:
+      grafana:
+        condition: service_healthy
+    environment:
+      GRAFANA_URL: http://grafana:3000
+      GRAFANA_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me-grafana-admin-password}
+      GRAFANA_PUBLIC_DASHBOARD_UID: omens-public-overview
+      GRAFANA_SHARED_DASHBOARD_UID: ${GRAFANA_SHARED_DASHBOARD_UID:-omens-public-share}
+      GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN: ${GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN:-omens-public-overview}
+    volumes:
+      - ./grafana:/scripts:ro
+    command: ["sh", "/scripts/bootstrap-public-dashboard.sh"]
+    restart: "no"
+
   caddy:
     image: caddy:2-alpine
     ports:
       - '80:80'
       - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      GRAFANA_DOMAIN: ${GRAFANA_DOMAIN:-dash.omens.online}
+      GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN: ${GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN:-omens-public-overview}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -50,5 +122,6 @@ services:
 
 volumes:
   postgres_data:
+  grafana_data:
   caddy_data:
   caddy_config:

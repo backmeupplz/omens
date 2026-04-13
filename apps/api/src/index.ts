@@ -19,10 +19,10 @@ if (env.SINGLE_USER_MODE) {
   )
 }
 
-console.log(`Omens API starting on port ${env.PORT}`)
-
-export default {
+Bun.serve({
   port: env.PORT,
   fetch: app.fetch,
   idleTimeout: 120, // seconds — report generation can take 30-60s
-}
+})
+
+console.log(`Omens API starting on port ${env.PORT}`)

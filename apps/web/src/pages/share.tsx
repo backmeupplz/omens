@@ -3,7 +3,7 @@ import { api } from '../helpers/api'
 import { SharePromoArticle } from '../helpers/share-promo'
 import { NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
 import { Spinner } from '../helpers/spinner'
-import { NewspaperReportPage, TweetCard, type Tweet } from './feed'
+import { NewspaperReportPage, TweetCard, type TimelineItem, type Tweet } from './feed'
 
 export function SharePage({ handle, tweetId }: { handle: string; tweetId: string }) {
   useNewspaperActive()
@@ -67,9 +67,9 @@ interface SharedReport {
   id: string
   content: string
   model: string
-  tweetCount: number
-  tweetRefs: string[]
-  refTweets: Tweet[]
+  itemCount: number
+  itemRefs: string[]
+  refItems: TimelineItem[]
   createdAt: string
 }
 
@@ -111,16 +111,16 @@ export function ReportSharePage({ id }: { id: string }) {
     )
   }
 
-  const refTweetMap = new Map<string, Tweet>()
-  for (const t of report.refTweets) refTweetMap.set(t.id, t)
+  const refItemMap = new Map<string, TimelineItem>()
+  for (const item of report.refItems) refItemMap.set(item.id, item)
 
   return (
     <div>
       <NewspaperReportPage
         text={report.content}
-        refTweets={refTweetMap}
+        refItems={refItemMap}
         reportDate={report.createdAt}
-        tweetCount={report.tweetCount}
+        itemCount={report.itemCount}
         issueNumber={1}
         showIssueNumber={false}
         postContent={(

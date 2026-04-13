@@ -51,6 +51,7 @@ export function FeedTabs({
   action,
   footer,
   className = '',
+  compact = false,
 }: {
   feeds: ScoringFeed[]
   selectedFeedId: string | null
@@ -58,31 +59,39 @@ export function FeedTabs({
   action?: preact.ComponentChildren
   footer?: preact.ComponentChildren
   className?: string
+  compact?: boolean
 }) {
   if (feeds.length <= 1 && !action && !footer) return null
   const expanded = !!action || !!footer
+  const hasTabs = feeds.length > 1
+  const containerClass = compact
+    ? `np-settings-feed-header ${className}`.trim()
+    : `${expanded ? `np-inline-card flex flex-wrap items-center gap-3 ${hasTabs ? 'justify-between' : 'justify-end'}` : 'mb-2 flex items-center gap-2'} ${className}`.trim()
+  const tabsClass = compact
+    ? 'np-settings-feed-controls'
+    : `flex min-w-0 flex-1 flex-wrap items-center ${expanded ? 'gap-2' : 'gap-1.5'}`
 
   return (
-    <div class={`${expanded ? 'np-inline-card flex flex-wrap items-center justify-between gap-3' : 'mb-2 flex items-center gap-2'} ${className}`.trim()}>
-      {feeds.length > 1 ? (
-        <div class={`flex min-w-0 flex-1 flex-wrap items-center ${expanded ? 'gap-2' : 'gap-1.5'}`}>
+    <div class={containerClass}>
+      {hasTabs ? (
+        <div class={tabsClass}>
           {feeds.map((feed) => (
             <button
               key={feed.id}
               type="button"
               onClick={() => onSelect(feed.id)}
-              class={expanded
+              class={compact
+                ? `rounded-full border transition-colors ${selectedFeedId === feed.id ? 'np-control-active' : 'np-copy-muted'}`
+                : expanded
                 ? `rounded-full border px-3 py-1.5 text-xs transition-colors ${selectedFeedId === feed.id ? 'np-control-active' : 'np-copy-muted'}`
                 : `rounded-full border px-2 py-0.5 text-[11px] transition-colors ${selectedFeedId === feed.id ? 'np-control-active' : 'np-copy-muted opacity-80 hover:opacity-100'}`}
             >
-              <span class={expanded ? 'mr-1.5' : 'mr-1'}>{feed.icon}</span>
+              <span class={compact ? '' : expanded ? 'mr-1.5' : 'mr-1'}>{feed.icon}</span>
               {feed.name}
             </button>
           ))}
         </div>
-      ) : (
-        <div />
-      )}
+      ) : null}
       {action && <div class="shrink-0">{action}</div>}
       {footer && <div class="w-full">{footer}</div>}
     </div>

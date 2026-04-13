@@ -233,7 +233,7 @@ shareRouter.get('/report/:id/og.png', async (c) => {
     id: report.id,
     content: report.content,
     model: report.model,
-    tweetCount: report.tweetCount,
+    tweetCount: report.itemCount,
     createdAt: report.createdAt,
   })
 
@@ -250,7 +250,7 @@ shareRouter.on('HEAD', '/report/:id/og.png', async (c) => {
     id: report.id,
     content: report.content,
     model: report.model,
-    tweetCount: report.tweetCount,
+    tweetCount: report.itemCount,
     createdAt: report.createdAt,
   })
 

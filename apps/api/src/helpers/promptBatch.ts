@@ -3,7 +3,7 @@
  * Checks every 60 seconds, processes any unconsumed changes.
  */
 
-import { getDb, aiSettings, nudges, promptChanges } from '@omens/db'
+import { aiSettings, getDb, itemNudges, promptChanges } from '@omens/db'
 import { eq } from 'drizzle-orm'
 import env from '../env'
 import { regeneratePromptForUser } from '../routes/ai'
@@ -15,9 +15,9 @@ async function processAll() {
 
   // Find users with any pending nudges
   const feedsWithNudges = await db
-    .selectDistinct({ userId: nudges.userId, feedId: nudges.feedId })
-    .from(nudges)
-    .where(eq(nudges.consumed, false))
+    .selectDistinct({ userId: itemNudges.userId, feedId: itemNudges.feedId })
+    .from(itemNudges)
+    .where(eq(itemNudges.consumed, false))
 
   // Find users with any pending instructions
   const feedsWithInstructions = await db

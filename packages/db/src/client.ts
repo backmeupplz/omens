@@ -1,11 +1,12 @@
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
+import { resolveConnectionOptions } from './connection'
 import * as schema from './schema'
 
 let db: ReturnType<typeof createDb> | null = null
 
 function createDb(url: string) {
-  const client = postgres(url)
+  const client = postgres(resolveConnectionOptions(url))
   return drizzle(client, { schema })
 }
 

@@ -47,7 +47,7 @@ export const aiSettingsSchema = z.object({
 
 export const nudgeSchema = z.object({
   feedId: z.string().min(1).optional(),
-  tweetId: z.string().min(1),
+  itemId: z.string().min(1),
   direction: z.enum(['up', 'down']),
 })
 

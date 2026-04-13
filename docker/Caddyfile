@@ -1,3 +1,9 @@
 {$DOMAIN:localhost} {
 	reverse_proxy omens:3000
 }
+
+{$GRAFANA_DOMAIN:dash.omens.online} {
+	@root path /
+	rewrite @root /public-dashboards/{$GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN:omens-public-overview}
+	reverse_proxy grafana:3000
+}

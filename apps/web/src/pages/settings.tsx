@@ -1,16 +1,70 @@
+import type { ComponentChildren } from 'preact'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { useLocation } from 'wouter-preact'
 import { api, API_BASE } from '../helpers/api'
-import { Countdown, FeedTabs } from '../helpers/components'
-import { useApi, useScoringFeeds } from '../helpers/hooks'
+import { Countdown } from '../helpers/components'
+import { useApi, useScoringFeeds, type ScoringFeed } from '../helpers/hooks'
 import { NewspaperRouteControls, NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
-import { SetupStateBlock, type SetupStep } from '../helpers/setup-state'
+import { SetupStateBlock } from '../helpers/setup-state'
 import { Spinner } from '../helpers/spinner'
 import { THEME_OPTIONS, useThemePreference } from '../helpers/theme'
 
+function SettingsBlockIntro({
+  title,
+  description,
+  compact = false,
+}: {
+  title: string
+  description?: string
+  compact?: boolean
+}) {
+  if (compact) {
+    return (
+      <div class="np-settings-item-head">
+        <p class="np-settings-item-title">{title}</p>
+        {description && <p class="np-settings-item-copy">{description}</p>}
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <h3>{title}</h3>
+      {description && <p class="np-copy-muted">{description}</p>}
+    </>
+  )
+}
+
+function SettingsItem({
+  title,
+  copy,
+  actions,
+  children,
+}: {
+  title?: ComponentChildren
+  copy?: ComponentChildren
+  actions?: ComponentChildren
+  children?: ComponentChildren
+}) {
+  return (
+    <div class="np-settings-item">
+      {(title || copy || actions) && (
+        <div class="np-settings-item-row">
+          <div class="np-settings-item-main">
+            {title && <p class="np-settings-item-title">{title}</p>}
+            {copy}
+          </div>
+          {actions && <div class="np-settings-item-actions">{actions}</div>}
+        </div>
+      )}
+      {children && <div class="np-settings-item-body">{children}</div>}
+    </div>
+  )
+}
+
 // === X Section ===
 
-function XSection({ onXChange }: { onXChange: () => void }) {
+function XSection({ onXChange, compact = false }: { onXChange: () => void; compact?: boolean }) {
   const [, navigate] = useLocation()
   const { data: session, loading: sessionLoading, error: sessionError, refetch } = useApi<{
     connected: boolean
@@ -64,67 +118,145 @@ function XSection({ onXChange }: { onXChange: () => void }) {
     }
   }
 
-  if (sessionLoading) return <Spinner />
+  if (sessionLoading) return <Spinner class={compact ? 'py-2' : undefined} />
 
   if (session?.connected) {
     return (
-      <div class="space-y-3">
-        <h3 class="font-medium">X Account</h3>
+      <div class={compact ? 'np-settings-item' : 'np-settings-subsection'}>
+        {!compact && <h3>X Account</h3>}
         {error && (
           <p class="np-alert np-alert-error">{error}</p>
         )}
-        <div class="np-inline-card np-inline-card-row">
-          <span class="np-copy-subtle text-sm">
-            Connected as <span class="np-copy-strong font-medium">{session.username}</span>
-          </span>
-          <div class="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setShowReconnect((v) => !v)}
-              class="np-button np-button-secondary np-button-small whitespace-nowrap"
-            >
-              Reconnect
-            </button>
-            <button
-              type="button"
-              onClick={disconnect}
-              class="np-button np-button-danger np-button-small whitespace-nowrap"
-            >
-              Disconnect
-            </button>
+        {compact ? (
+          <SettingsItem
+            title={<>X <span class="np-settings-item-copy-inline">({session.username})</span></>}
+            actions={(
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowReconnect((v) => !v)}
+                  class="np-button np-button-secondary np-button-small whitespace-nowrap"
+                >
+                  Reconnect
+                </button>
+                <button
+                  type="button"
+                  onClick={disconnect}
+                  class="np-button np-button-danger np-button-small whitespace-nowrap"
+                >
+                  Disconnect
+                </button>
+              </>
+            )}
+          >
+            {showReconnect && (
+              <div class="np-settings-fields">
+                <input
+                  type="text"
+                  class="np-control"
+                  placeholder="X email or phone"
+                  value={username}
+                  onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
+                />
+                <input
+                  type="text"
+                  class="np-control"
+                  placeholder="X handle (optional)"
+                  value={handle}
+                  onInput={(e) => setHandle((e.target as HTMLInputElement).value)}
+                />
+                <input
+                  type="password"
+                  class="np-control"
+                  placeholder="Password"
+                  value={password}
+                  onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
+                />
+                <input
+                  type="text"
+                  class="np-control"
+                  placeholder="2FA code (optional)"
+                  value={totp}
+                  onInput={(e) => setTotp((e.target as HTMLInputElement).value)}
+                />
+                <div class="np-settings-inline">
+                  <button
+                    type="button"
+                    onClick={connect}
+                    disabled={loading || !username || !password}
+                    class="np-button np-button-primary disabled:opacity-50"
+                  >
+                    {loading ? 'Reconnecting...' : 'Update credentials'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowReconnect(false)}
+                    class="np-button np-button-secondary"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </SettingsItem>
+        ) : (
+          <div class="np-inline-card np-inline-card-row">
+            <div class="min-w-0">
+              <p class="np-copy-subtle">
+                Connected as <span class="np-copy-strong">{session.username}</span>
+              </p>
+            </div>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowReconnect((v) => !v)}
+                class="np-button np-button-secondary np-button-small whitespace-nowrap"
+              >
+                Reconnect
+              </button>
+              <button
+                type="button"
+                onClick={disconnect}
+                class="np-button np-button-danger np-button-small whitespace-nowrap"
+              >
+                Disconnect
+              </button>
+            </div>
           </div>
-        </div>
-        {showReconnect && (
-          <div class="np-inline-card space-y-3">
-            <p class="np-copy-muted text-sm">Re-enter credentials to update your session without losing posts.</p>
-            <input
-              type="text"
-              class="np-control"
-              placeholder="X email or phone"
-              value={username}
-              onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
-            />
-            <input
-              type="text"
-              class="np-control"
-              placeholder="X handle, e.g. backmeupplz (optional)"
-              value={handle}
-              onInput={(e) => setHandle((e.target as HTMLInputElement).value)}
-            />
-            <input
-              type="password"
-              class="np-control"
-              placeholder="Password"
-              value={password}
-              onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
-            />
-            <input
-              type="text"
-              class="np-control"
-              placeholder="2FA code (optional)"
-              value={totp}
-              onInput={(e) => setTotp((e.target as HTMLInputElement).value)}
-            />
+        )}
+        {!compact && showReconnect && (
+          <div class="np-inline-card np-settings-subsection">
+            {!compact && <p class="np-copy-muted">Re-enter credentials to refresh the session without losing posts.</p>}
+            <div class="np-settings-subsection">
+              <input
+                type="text"
+                class="np-control"
+                placeholder="X email or phone"
+                value={username}
+                onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
+              />
+              <input
+                type="text"
+                class="np-control"
+                placeholder="X handle (optional)"
+                value={handle}
+                onInput={(e) => setHandle((e.target as HTMLInputElement).value)}
+              />
+              <input
+                type="password"
+                class="np-control"
+                placeholder="Password"
+                value={password}
+                onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
+              />
+              <input
+                type="text"
+                class="np-control"
+                placeholder="2FA code (optional)"
+                value={totp}
+                onInput={(e) => setTotp((e.target as HTMLInputElement).value)}
+              />
+            </div>
             <div class="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -149,9 +281,11 @@ function XSection({ onXChange }: { onXChange: () => void }) {
   }
 
   return (
-    <div class="space-y-3">
-      <h3 class="font-medium">Connect X</h3>
-      <p class="np-copy-muted text-sm">Connect your X account to read your home feed.</p>
+    <div class={compact ? 'np-settings-item' : 'np-settings-subsection'}>
+      <SettingsBlockIntro
+        title="X"
+        compact={compact}
+      />
 
       {sessionError && (
         <p class="np-alert np-alert-error">Couldn&apos;t verify your saved X session. Reconnect below.</p>
@@ -160,35 +294,37 @@ function XSection({ onXChange }: { onXChange: () => void }) {
         <p class="np-alert np-alert-error">{error}</p>
       )}
 
-      <div class="space-y-3">
-        <input
-          type="text"
-          class="np-control"
-          placeholder="X email or phone"
-          value={username}
-          onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
-        />
-        <input
-          type="text"
-          class="np-control"
-          placeholder="X handle, e.g. backmeupplz (optional)"
-          value={handle}
-          onInput={(e) => setHandle((e.target as HTMLInputElement).value)}
-        />
-        <input
-          type="password"
-          class="np-control"
-          placeholder="Password"
-          value={password}
-          onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
-        />
-        <input
-          type="text"
-          class="np-control"
-          placeholder="2FA code (optional)"
-          value={totp}
-          onInput={(e) => setTotp((e.target as HTMLInputElement).value)}
-        />
+      <div class={compact ? 'np-settings-item-body' : 'np-settings-subsection'}>
+        <div class={compact ? 'np-settings-fields' : 'np-settings-subsection'}>
+          <input
+            type="text"
+            class="np-control"
+            placeholder="X email or phone"
+            value={username}
+            onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
+          />
+          <input
+            type="text"
+            class="np-control"
+            placeholder="X handle, e.g. backmeupplz (optional)"
+            value={handle}
+            onInput={(e) => setHandle((e.target as HTMLInputElement).value)}
+          />
+          <input
+            type="password"
+            class="np-control"
+            placeholder="Password"
+            value={password}
+            onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
+          />
+          <input
+            type="text"
+            class="np-control"
+            placeholder="2FA code (optional)"
+            value={totp}
+            onInput={(e) => setTotp((e.target as HTMLInputElement).value)}
+          />
+        </div>
         <button
           type="button"
           onClick={connect}
@@ -204,6 +340,124 @@ function XSection({ onXChange }: { onXChange: () => void }) {
 
 // === AI Provider Section ===
 
+function RedditSection({ onSourcesChange, compact = false }: { onSourcesChange: () => void; compact?: boolean }) {
+  const [, navigate] = useLocation()
+  const { data: session, loading: sessionLoading, error: sessionError, refetch } = useApi<{
+    connected: boolean
+    username?: string
+    connectedAt?: string
+  }>('/reddit/session')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const connectError = params.get('reddit_error')
+    if (connectError) {
+      setError(connectError.replace(/_/g, ' '))
+      params.delete('reddit_error')
+      const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`
+      window.history.replaceState({}, '', next)
+    }
+    if (params.get('reddit_connected')) {
+      params.delete('reddit_connected')
+      const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`
+      window.history.replaceState({}, '', next)
+      refetch()
+      onSourcesChange()
+    }
+  }, [onSourcesChange, refetch])
+
+  const connect = () => {
+    window.location.href = `${API_BASE}/reddit/connect`
+  }
+
+  const disconnect = async () => {
+    try {
+      await api('/reddit/session', { method: 'DELETE' })
+      refetch()
+      onSourcesChange()
+      navigate('/settings')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to disconnect')
+    }
+  }
+
+  if (sessionLoading) return <Spinner class={compact ? 'py-2' : undefined} />
+
+  if (session?.connected) {
+    return (
+      <div class={compact ? 'np-settings-item' : 'np-settings-subsection'}>
+        {!compact && <h3>Reddit Account</h3>}
+        {error && <p class="np-alert np-alert-error">{error}</p>}
+        {compact ? (
+          <SettingsItem
+            title={<>Reddit <span class="np-settings-item-copy-inline">(u/{session.username})</span></>}
+            actions={(
+              <button
+                type="button"
+                onClick={disconnect}
+                class="np-button np-button-danger np-button-small whitespace-nowrap"
+              >
+                Disconnect
+              </button>
+            )}
+          />
+        ) : (
+          <div class="np-inline-card np-inline-card-row">
+            <div class="min-w-0">
+              <p class="np-copy-subtle">
+                Connected as <span class="np-copy-strong">u/{session.username}</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={disconnect}
+              class="np-button np-button-danger np-button-small whitespace-nowrap"
+            >
+              Disconnect
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (compact) {
+    return (
+      <SettingsItem
+        title="Reddit"
+        actions={(
+          <button
+            type="button"
+            onClick={connect}
+            class="np-button np-button-primary np-button-small"
+          >
+            Connect
+          </button>
+        )}
+      />
+    )
+  }
+
+  return (
+    <div class="np-settings-subsection">
+      <SettingsBlockIntro
+        title="Reddit"
+        compact={compact}
+      />
+      {sessionError && <p class="np-alert np-alert-error">Couldn&apos;t verify your saved Reddit session. Reconnect below.</p>}
+      {error && <p class="np-alert np-alert-error">{error}</p>}
+      <button
+        type="button"
+        onClick={connect}
+        class="np-button np-button-primary"
+      >
+        Connect Reddit
+      </button>
+    </div>
+  )
+}
+
 const AI_PROVIDERS = [
   { id: 'openai', name: 'OpenAI' },
   { id: 'anthropic', name: 'Anthropic' },
@@ -215,17 +469,43 @@ const AI_PROVIDERS = [
   { id: 'openrouter', name: 'OpenRouter' },
 ] as const
 
-function ThemeSection() {
+function ThemeSection({ compact = false }: { compact?: boolean } = {}) {
   const { theme, setTheme } = useThemePreference()
 
+  if (compact) {
+    return (
+      <SettingsItem
+        title="Theme"
+        actions={THEME_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => setTheme(option.value)}
+            class={
+              theme === option.value
+                ? 'np-button np-button-primary np-button-small'
+                : 'np-button np-button-secondary np-button-small'
+            }
+          >
+            {option.label}
+          </button>
+        ))}
+      />
+    )
+  }
+
   return (
-    <div class="space-y-3">
-      <h3 class="font-medium">Edition Theme</h3>
-      <p class="np-copy-muted text-sm">Choose the newspaper palette for Omens across report, feed, and settings.</p>
+    <div class="np-settings-subsection">
+      <SettingsBlockIntro
+        title="Edition Theme"
+        description="Choose the newspaper palette for Omens across report, feed, and settings."
+      />
       <div class="np-inline-card np-inline-card-row">
-        <p class="np-copy-subtle text-sm">
-          Current theme: <span class="np-copy-strong font-medium">{theme === 'light' ? 'Light' : 'Dark'}</span>
-        </p>
+        <div class="min-w-0">
+          <p class="np-copy-subtle">
+            Theme: <span class="np-copy-strong">{theme === 'light' ? 'Light' : 'Dark'}</span>
+          </p>
+        </div>
         <div class="flex flex-wrap gap-2">
           {THEME_OPTIONS.map((option) => (
             <button
@@ -247,15 +527,26 @@ function ThemeSection() {
   )
 }
 
-function VersionSection() {
+function VersionSection({ compact = false }: { compact?: boolean } = {}) {
   const { data: versionData } = useApi<{ version: string }>('/version')
 
   if (!versionData?.version) return null
 
+  if (compact) {
+    return (
+      <SettingsItem
+        title="Build"
+        actions={<p class="np-settings-item-copy">v{versionData.version}</p>}
+      />
+    )
+  }
+
   return (
     <div class="np-inline-card">
-      <p class="np-copy-subtle text-sm">Build version</p>
-      <p class="np-copy-muted text-xs mt-1">Running Docker build v{versionData.version}</p>
+      <>
+        <p class="np-copy-subtle">Build version</p>
+        <p class="np-copy-muted mt-1">Running Docker build v{versionData.version}</p>
+      </>
     </div>
   )
 }
@@ -275,8 +566,8 @@ interface ModelInfo {
   name: string
 }
 
-export function AiSection({ onSave }: { onSave?: () => void } = {}) {
-  const { data: settings, error: settingsError, refetch } = useApi<AiSettingsData>('/ai/settings')
+export function AiSection({ onSave, compact = false }: { onSave?: () => void; compact?: boolean } = {}) {
+  const { data: settings, loading: settingsLoading, error: settingsError, refetch } = useApi<AiSettingsData>('/ai/settings')
   const [editing, setEditing] = useState(false)
   const [provider, setProvider] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -376,32 +667,66 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
   // Connected state
   if (settings?.configured && !editing) {
     return (
-      <div class="space-y-3">
-        <h3 class="font-medium">AI Provider</h3>
+      <div class={compact ? 'np-settings-item' : 'np-settings-subsection'}>
+        {!compact && <h3>AI Provider</h3>}
         {error && <p class="np-alert np-alert-error">{error}</p>}
-        <div class="np-inline-card np-inline-card-row">
-          <span class="np-copy-subtle text-sm">
-            {providerName} &middot; <span class="np-copy-strong font-medium">{settings.model}</span>
-          </span>
-          <button
-            type="button"
-            onClick={() => { setEditing(true); fetchSavedModels() }}
-            class="np-button np-button-secondary np-button-small whitespace-nowrap"
-          >
-            Change
-          </button>
-        </div>
+        {compact ? (
+          <SettingsItem
+            title="AI Provider"
+            copy={(
+              <>
+                <p class="np-settings-item-copy">{providerName}</p>
+                <p class="np-settings-item-copy np-settings-truncate">{settings.model}</p>
+              </>
+            )}
+            actions={(
+              <button
+                type="button"
+                onClick={() => { setEditing(true); fetchSavedModels() }}
+                class="np-button np-button-secondary np-button-small whitespace-nowrap"
+              >
+                Change
+              </button>
+            )}
+          />
+        ) : (
+          <div class="np-inline-card np-inline-card-row">
+            <div class="min-w-0 flex-1">
+              <p class="np-copy-subtle">
+                {providerName} &middot; <span class="np-copy-strong">{settings.model}</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setEditing(true); fetchSavedModels() }}
+              class="np-button np-button-secondary np-button-small whitespace-nowrap"
+            >
+              Change
+            </button>
+          </div>
+        )}
       </div>
     )
   }
 
   const showBaseUrl = provider === 'ollama' || provider === 'openrouter'
 
+  if (settingsLoading && !settings && !settingsError) {
+    return (
+      <div class="np-settings-subsection">
+        {!compact && <h3>AI Provider</h3>}
+        <Spinner class={compact ? 'py-2' : 'py-4'} />
+      </div>
+    )
+  }
+
   // Setup / edit form
   return (
-    <div class="space-y-4">
-      <h3 class="font-medium">AI Provider</h3>
-      <p class="np-copy-muted text-sm">Bring your own AI provider, model, and API key to score your X feed and generate the newspaper.</p>
+    <div class={compact ? 'np-settings-item' : 'np-settings-subsection'}>
+      <SettingsBlockIntro
+        title="AI Provider"
+        compact={compact}
+      />
 
       {settingsError && <p class="np-alert np-alert-error">Couldn&apos;t load saved AI settings. Re-enter them below.</p>}
       {error && <p class="np-alert np-alert-error">{error}</p>}
@@ -412,7 +737,7 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
         <p class="np-setup-hint">Check the provider, API key, base URL, and model access. Some providers only return model lists for fully valid keys.</p>
       )}
 
-      <div class="space-y-3">
+      <div class={compact ? 'np-settings-item-body' : 'np-settings-subsection'}>
         <div>
           <label class="mb-1 block">Provider</label>
           <select
@@ -439,7 +764,7 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
                 <span class="np-copy-muted">(current: {settings.apiKeyMasked})</span>
               )}
             </label>
-            <div class="flex gap-2">
+            <div class="flex flex-wrap gap-2">
               <input
                 type="password"
                 class="np-control min-w-0 flex-1"
@@ -503,14 +828,14 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
                     <option key={m.id} value={m.id}>{m.name}</option>
                   ))}
                 </datalist>
-                <p class="np-copy-muted text-xs mt-1">You can type any model manually or pick one of the fetched suggestions.</p>
+                <p class="np-copy-muted mt-1">You can type any model manually or pick one of the fetched suggestions.</p>
               </>
             )}
           </div>
         )}
 
         {provider && (
-          <div class="flex gap-2">
+          <div class="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={save}
@@ -535,53 +860,51 @@ export function AiSection({ onSave }: { onSave?: () => void } = {}) {
   )
 }
 
-function SettingsOverview({ xConnected }: { xConnected: boolean }) {
-  const { data: aiSettings } = useApi<Pick<AiSettingsData, 'configured' | 'provider' | 'model'>>('/ai/settings')
+function SettingsOverview({ sourceConnected }: { sourceConnected: boolean }) {
+  const { data: aiSettings, loading: aiSettingsLoading } = useApi<Pick<AiSettingsData, 'configured' | 'provider' | 'model'>>('/ai/settings')
+
+  if (sourceConnected && aiSettingsLoading && !aiSettings) {
+    return (
+      <SetupStateBlock
+        kicker="Setup Status"
+        title="Loading your edition"
+        intro="Checking your sources and AI configuration before rendering settings."
+        steps={[
+          {
+            label: 'Resolve saved connections',
+            detail: 'Verifying connected sources and edition settings.',
+            state: 'active',
+          },
+          {
+            label: 'Render your controls',
+            detail: 'Settings will appear once the current edition state is loaded.',
+            state: 'pending',
+          },
+        ]}
+      >
+        <Spinner class="py-4" />
+      </SetupStateBlock>
+    )
+  }
+
   const aiReady = !!aiSettings?.configured
   const providerName = aiSettings?.provider
     ? (AI_PROVIDERS.find((p) => p.id === aiSettings.provider)?.name || aiSettings.provider)
     : null
 
-  const steps: SetupStep[] = [
-    {
-      label: 'Connect your X account',
-      detail: xConnected
-        ? 'Your home timeline is connected and ready to fetch.'
-        : 'Omens needs your own X feed before it can ingest posts or build a briefing.',
-      state: xConnected ? 'done' : 'active',
-    },
-    {
-      label: 'Bring your own AI provider',
-      detail: !xConnected
-        ? 'This unlocks after X is connected.'
-        : aiReady
-          ? `${providerName} ${aiSettings?.model ? `· ${aiSettings.model}` : ''} is configured for scoring and reports.`
-          : 'Add your provider, API key, and model to filter the feed and write the newspaper.',
-      state: !xConnected ? 'pending' : aiReady ? 'done' : 'active',
-    },
-    {
-      label: 'Generate your own edition',
-      detail: aiReady
-        ? 'Reports, filtered feed, and AI tuning are ready.'
-        : 'Once AI is configured, Omens can score posts, draft reports, and learn from your nudges.',
-      state: aiReady ? 'done' : 'pending',
-    },
-  ]
-
   return (
-    <SetupStateBlock
-      kicker="Setup Status"
-      title={xConnected ? (aiReady ? 'Your edition is configured' : 'One step left') : 'Set up your own edition'}
-      intro={xConnected
-        ? (aiReady
-          ? 'Your X feed and AI provider are connected. You can fetch posts, tune relevance, and generate reports.'
-          : 'Your X feed is connected. Add an AI provider next to unlock the filtered feed and daily briefings.')
-        : 'Start by connecting X. After that, bring your own AI provider to filter the people you follow and publish your own briefing.'}
-      steps={steps}
-    >
-      <ThemeSection />
-      <VersionSection />
-    </SetupStateBlock>
+    <div class="np-settings-inline">
+      <span class={`np-settings-status-badge ${sourceConnected && aiReady ? 'is-done' : sourceConnected ? 'is-live' : 'is-later'}`}>
+        {sourceConnected && aiReady ? 'Ready' : sourceConnected ? 'Setup' : 'Start'}
+      </span>
+      <p class="np-settings-item-copy">
+        {sourceConnected && aiReady
+          ? `Sources connected. ${providerName || 'AI'} is configured.`
+          : sourceConnected
+            ? 'Sources connected. Configure AI provider next.'
+            : 'Connect a source, then configure an AI provider.'}
+      </p>
+    </div>
   )
 }
 
@@ -597,7 +920,15 @@ interface InternalsData {
   isApplying: boolean
 }
 
-function FetchIntervalSection() {
+const FETCH_INTERVAL_OPTIONS = [
+  { value: 0, label: 'Manual only' },
+  { value: 5, label: '5 minutes' },
+  { value: 15, label: '15 minutes' },
+  { value: 30, label: '30 minutes' },
+  { value: 60, label: '1 hour' },
+] as const
+
+function FetchIntervalSection({ compact = false }: { compact?: boolean } = {}) {
   const { data: settings } = useApi<{ fetchIntervalMinutes?: number }>('/ai/settings')
   const [fetchInterval, setFetchInterval] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
@@ -608,79 +939,116 @@ function FetchIntervalSection() {
 
   if (fetchInterval === null) return null
 
+  const currentIntervalLabel = FETCH_INTERVAL_OPTIONS.find((option) => option.value === fetchInterval)?.label || `${fetchInterval} minutes`
+
+  const updateInterval = (value: number) => {
+    setFetchInterval(value)
+    setSaving(true)
+    api('/ai/settings/intervals', { method: 'PUT', body: JSON.stringify({ fetchIntervalMinutes: value }) })
+      .finally(() => setSaving(false))
+  }
+
+  if (compact) {
+    return (
+      <SettingsItem
+        title="Auto-fetch posts"
+        actions={(
+          <div class="np-settings-inline">
+            <div class="np-settings-inline-select-wrap">
+              <select
+                class="np-control np-control-select select-styled np-settings-inline-select"
+                value={fetchInterval}
+                onChange={(e) => updateInterval(Number((e.target as HTMLSelectElement).value))}
+                aria-label="Auto-fetch interval"
+              >
+                {FETCH_INTERVAL_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <span class="np-settings-inline-select-indicator" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none">
+                  <path d="M6 8l4 4 4-4" />
+                </svg>
+              </span>
+            </div>
+            {saving && <span class="np-settings-item-copy">Saving...</span>}
+          </div>
+        )}
+      />
+    )
+  }
+
   return (
-    <div class="space-y-3">
-      <h3 class="font-medium">Auto-fetch</h3>
-      <label class="block">Fetch new posts every</label>
-      <select
-        class="np-control np-control-select select-styled"
-        value={fetchInterval}
-        onChange={(e) => {
-          const v = Number((e.target as HTMLSelectElement).value)
-          setFetchInterval(v)
-          setSaving(true)
-          api('/ai/settings/intervals', { method: 'PUT', body: JSON.stringify({ fetchIntervalMinutes: v }) })
-            .finally(() => setSaving(false))
-        }}
-      >
-        <option value="0">Manual only</option>
-        <option value="5">5 minutes</option>
-        <option value="15">15 minutes</option>
-        <option value="30">30 minutes</option>
-        <option value="60">1 hour</option>
-      </select>
-      {saving && <span class="np-copy-muted text-xs">Saving...</span>}
+    <div class="np-settings-subsection">
+      <h3>Auto-fetch</h3>
+      <div class="np-settings-subsection">
+        <div class="min-w-0">
+          <label class="block">Fetch new posts every</label>
+        </div>
+        <div class="flex items-center gap-2">
+          <select
+            class="np-control np-control-select select-styled min-w-[11rem]"
+            value={fetchInterval}
+            onChange={(e) => updateInterval(Number((e.target as HTMLSelectElement).value))}
+          >
+            {FETCH_INTERVAL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          {saving && <span class="np-copy-muted">Saving...</span>}
+        </div>
+      </div>
     </div>
   )
 }
 
-function AiTuningSection() {
-  const { data: settings } = useApi<{ configured: boolean }>('/ai/settings')
-  const { feeds, selectedFeed, selectedFeedId, setSelectedFeedId, loading: feedsLoading, refetch: refetchFeeds } = useScoringFeeds(!!settings?.configured)
-  const { data: internals, refetch } = useApi<InternalsData>(settings?.configured && selectedFeedId ? `/ai/internals?feedId=${encodeURIComponent(selectedFeedId)}` : null)
-
-  useEffect(() => {
-    const id = setInterval(refetch, 30_000)
-    return () => clearInterval(id)
-  }, [refetch])
-
+function FeedTuningEditor({
+  feed,
+  refetchFeeds,
+}: {
+  feed: ScoringFeed
+  refetchFeeds: () => void
+}) {
+  const feedId = feed.id
+  const { data: internals, refetch } = useApi<InternalsData>(`/ai/internals?feedId=${encodeURIComponent(feedId)}`)
   const [instruction, setInstruction] = useState('')
   const [regenerating, setRegenerating] = useState(false)
   const [regenStatus, setRegenStatus] = useState('')
   const [editingPrompt, setEditingPrompt] = useState(false)
   const [promptDraft, setPromptDraft] = useState('')
   const [savingPrompt, setSavingPrompt] = useState(false)
-  const [feedName, setFeedName] = useState('')
-  const [feedIcon, setFeedIcon] = useState('')
-  const [showAddFeed, setShowAddFeed] = useState(false)
-  const [newFeedName, setNewFeedName] = useState('')
-  const [newFeedIcon, setNewFeedIcon] = useState('✦')
-  const [creatingFeed, setCreatingFeed] = useState(false)
+  const [feedName, setFeedName] = useState(feed.name)
+  const [feedIcon, setFeedIcon] = useState(feed.icon)
   const [savingFeedMeta, setSavingFeedMeta] = useState(false)
   const [deletingFeed, setDeletingFeed] = useState(false)
-  const [localMinScore, setLocalMinScore] = useState<number | null>(null)
-  const [reportInterval, setReportInterval] = useState<number | null>(null)
+  const [localMinScore, setLocalMinScore] = useState<number | null>(feed.minScore)
+  const [reportInterval, setReportInterval] = useState<number | null>(feed.reportIntervalHours)
   const [reportAtHour, setReportAtHour] = useState<number | null>(null)
   const [savingScore, setSavingScore] = useState(false)
   const [savingIntervals, setSavingIntervals] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const regenAbortRef = useRef<AbortController | null>(null)
   const [error, setError] = useState('')
   const [showPrompt, setShowPrompt] = useState(false)
 
   useEffect(() => {
-    if (!selectedFeed) return
-    setFeedName(selectedFeed.name)
-    setFeedIcon(selectedFeed.icon)
-    setLocalMinScore(selectedFeed.minScore)
-    setReportInterval(selectedFeed.reportIntervalHours)
-    const localH = (selectedFeed.reportAtHour + 24 - new Date().getTimezoneOffset() / 60) % 24
+    const id = setInterval(refetch, 30_000)
+    return () => clearInterval(id)
+  }, [refetch])
+
+  useEffect(() => {
+    setFeedName(feed.name)
+    setFeedIcon(feed.icon)
+    setLocalMinScore(feed.minScore)
+    setReportInterval(feed.reportIntervalHours)
+    const localH = (feed.reportAtHour + 24 - new Date().getTimezoneOffset() / 60) % 24
     setReportAtHour(Math.round(localH))
-    setPromptDraft(selectedFeed.systemPrompt || '')
+    setPromptDraft(feed.systemPrompt || '')
     setInstruction('')
     setShowPrompt(false)
     setEditingPrompt(false)
     setError('')
-  }, [selectedFeed])
+  }, [feed])
 
   const saveFeedPatch = useCallback(async (patch: Partial<{
     name: string
@@ -690,9 +1058,9 @@ function AiTuningSection() {
     reportIntervalHours: number
     reportAtHour: number
   }>) => {
-    if (!selectedFeedId || localMinScore === null || reportInterval === null || reportAtHour === null) return
+    if (localMinScore === null || reportInterval === null || reportAtHour === null) return
     const utcH = (reportAtHour + new Date().getTimezoneOffset() / 60 + 24) % 24
-    await api(`/ai/feeds/${selectedFeedId}`, {
+    await api(`/ai/feeds/${feedId}`, {
       method: 'PUT',
       body: JSON.stringify({
         name: patch.name ?? feedName,
@@ -705,7 +1073,7 @@ function AiTuningSection() {
     })
     refetchFeeds()
     refetch()
-  }, [feedIcon, feedName, localMinScore, promptDraft, refetch, refetchFeeds, reportAtHour, reportInterval, selectedFeedId])
+  }, [feedIcon, feedId, feedName, localMinScore, promptDraft, refetch, refetchFeeds, reportAtHour, reportInterval])
 
   const onSliderChange = (val: number) => {
     setLocalMinScore(val)
@@ -720,10 +1088,10 @@ function AiTuningSection() {
   }
 
   const addInstruction = async () => {
-    if (!instruction.trim() || !selectedFeedId) return
+    if (!instruction.trim()) return
     setError('')
     try {
-      await api('/ai/prompt-change', { method: 'POST', body: JSON.stringify({ instruction: instruction.trim(), feedId: selectedFeedId }) })
+      await api('/ai/prompt-change', { method: 'POST', body: JSON.stringify({ instruction: instruction.trim(), feedId }) })
       setInstruction('')
       refetch()
     } catch (e) {
@@ -732,8 +1100,7 @@ function AiTuningSection() {
   }
 
   const removeNudge = async (tweetId: string) => {
-    if (!selectedFeedId) return
-    await api(`/ai/nudge/${tweetId}?feedId=${encodeURIComponent(selectedFeedId)}`, { method: 'DELETE' }).catch(() => {})
+    await api(`/ai/nudge/${tweetId}?feedId=${encodeURIComponent(feedId)}`, { method: 'DELETE' }).catch(() => {})
     refetch()
   }
 
@@ -742,15 +1109,12 @@ function AiTuningSection() {
     refetch()
   }
 
-  const regenAbortRef = useRef<AbortController | null>(null)
-
   const connectToRegenStream = useCallback(() => {
-    if (!selectedFeedId) return
     regenAbortRef.current?.abort()
     const controller = new AbortController()
     regenAbortRef.current = controller
     setRegenerating(true)
-    fetch(`${API_BASE}/ai/regenerate-stream?feedId=${encodeURIComponent(selectedFeedId)}`, { credentials: 'include', signal: controller.signal })
+    fetch(`${API_BASE}/ai/regenerate-stream?feedId=${encodeURIComponent(feedId)}`, { credentials: 'include', signal: controller.signal })
       .then(async (res) => {
         const reader = res.body?.getReader()
         if (!reader) return
@@ -779,11 +1143,10 @@ function AiTuningSection() {
         setRegenerating(false)
         setRegenStatus('')
       })
-  }, [refetch, selectedFeedId])
+  }, [feedId, refetch])
 
   useEffect(() => {
-    if (!selectedFeedId) return
-    api<{ active: boolean; status: string | null }>(`/ai/regenerate-status?feedId=${encodeURIComponent(selectedFeedId)}`)
+    api<{ active: boolean; status: string | null }>(`/ai/regenerate-status?feedId=${encodeURIComponent(feedId)}`)
       .then((s) => {
         if (s.active) {
           setRegenStatus(s.status || 'Applying...')
@@ -791,15 +1154,14 @@ function AiTuningSection() {
         }
       })
       .catch(() => {})
-  }, [connectToRegenStream, selectedFeedId])
+  }, [connectToRegenStream, feedId])
 
   const regenerate = async () => {
-    if (!selectedFeedId) return
     setRegenerating(true)
     setRegenStatus('Starting...')
     setError('')
     try {
-      await api(`/ai/regenerate-prompt?feedId=${encodeURIComponent(selectedFeedId)}`, { method: 'POST' })
+      await api(`/ai/regenerate-prompt?feedId=${encodeURIComponent(feedId)}`, { method: 'POST' })
       connectToRegenStream()
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') return
@@ -809,103 +1171,23 @@ function AiTuningSection() {
     }
   }
 
-  if (!settings?.configured) return null
-  if (feedsLoading && !selectedFeed) return <Spinner />
-  if (!selectedFeed || !internals) return null
+  if (!internals) {
+    return (
+      <section class="np-settings-section">
+        <Spinner class="py-4" />
+      </section>
+    )
+  }
 
   const hasPending = internals.pendingNudges.length > 0 || internals.pendingInstructions.length > 0
 
   return (
-    <div class="space-y-4">
-      <h3 class="font-medium">AI Tuning</h3>
-      <p class="np-copy-muted text-sm">Set up the main feed first, then add extra scoring feeds with their own prompts, thresholds, and report schedules.</p>
-
+    <section class="np-settings-section">
       {error && <p class="np-alert np-alert-error">{error}</p>}
-
-      <FeedTabs
-        feeds={feeds}
-        selectedFeedId={selectedFeedId}
-        onSelect={setSelectedFeedId}
-        footer={(
-          <div class="pt-1">
-            <button
-              type="button"
-              onClick={() => setShowAddFeed((v) => !v)}
-              class="np-button np-button-secondary np-button-small whitespace-nowrap"
-            >
-              {showAddFeed ? 'Close add feed' : 'Add feed'}
-            </button>
-          </div>
-        )}
-      />
-
-      {showAddFeed && (
-        <div class="np-inline-card space-y-3">
-          <p class="np-copy-subtle text-sm">Create a new scoring feed with its own prompt and report schedule.</p>
-          <div class="grid gap-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
-            <div>
-              <label class="mb-1 block">Icon</label>
-              <input
-                type="text"
-                class="np-control text-center"
-                maxLength={8}
-                value={newFeedIcon}
-                onInput={(e) => setNewFeedIcon((e.target as HTMLInputElement).value)}
-              />
-            </div>
-            <div>
-              <label class="mb-1 block">Name</label>
-              <input
-                type="text"
-                class="np-control"
-                placeholder="e.g. Work, Memes"
-                value={newFeedName}
-                onInput={(e) => setNewFeedName((e.target as HTMLInputElement).value)}
-              />
-            </div>
-          </div>
-          <button
-            type="button"
-            disabled={creatingFeed || !newFeedName.trim() || !newFeedIcon.trim()}
-            onClick={async () => {
-              setCreatingFeed(true)
-              setError('')
-              try {
-                const result = await api<{ feed: { id: string } }>('/ai/feeds', {
-                  method: 'POST',
-                  body: JSON.stringify({ name: newFeedName.trim(), icon: newFeedIcon.trim() }),
-                })
-                setNewFeedName('')
-                setNewFeedIcon('✦')
-                setShowAddFeed(false)
-                refetchFeeds()
-                setSelectedFeedId(result.feed.id)
-              } catch (e) {
-                setError(e instanceof Error ? e.message : 'Failed to create feed')
-              } finally {
-                setCreatingFeed(false)
-              }
-            }}
-            class="np-button np-button-primary disabled:opacity-50"
-          >
-            {creatingFeed ? 'Creating...' : 'Create feed'}
-          </button>
-        </div>
-      )}
-
-      <div class="np-inline-card space-y-3">
-        <div class="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p class="np-copy-strong text-sm font-medium">
-              {selectedFeed.icon} {selectedFeed.name} {selectedFeed.isMain ? '· Main feed' : '· Scoring feed'}
-            </p>
-            <p class="np-copy-muted text-xs mt-1">
-              {selectedFeed.isMain
-                ? 'This is your default lens. It should represent the feed you care about most.'
-                : 'This feed learns independently and gets its own filtered view and report schedule.'}
-            </p>
-          </div>
-          {!selectedFeed.isMain && (
+      <div class="np-settings-section-items">
+        <SettingsItem
+          title={`${feed.icon} ${feed.name}${feed.isMain ? ' · Main feed' : ''}`}
+          actions={!feed.isMain ? (
             <button
               type="button"
               disabled={deletingFeed}
@@ -913,7 +1195,7 @@ function AiTuningSection() {
                 setDeletingFeed(true)
                 setError('')
                 try {
-                  await api(`/ai/feeds/${selectedFeed.id}`, { method: 'DELETE' })
+                  await api(`/ai/feeds/${feed.id}`, { method: 'DELETE' })
                   refetchFeeds()
                 } catch (e) {
                   setError(e instanceof Error ? e.message : 'Failed to delete feed')
@@ -925,92 +1207,97 @@ function AiTuningSection() {
             >
               {deletingFeed ? 'Removing...' : 'Remove'}
             </button>
-          )}
-        </div>
-        <div class="grid gap-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
-          <div>
-            <label class="mb-1 block">Icon</label>
-            <input
-              type="text"
-              class="np-control text-center"
-              maxLength={8}
-              value={feedIcon}
-              onInput={(e) => setFeedIcon((e.target as HTMLInputElement).value)}
-            />
-          </div>
-          <div>
-            <label class="mb-1 block">Feed name</label>
-            <input
-              type="text"
-              class="np-control"
-              value={feedName}
-              onInput={(e) => setFeedName((e.target as HTMLInputElement).value)}
-            />
-          </div>
-        </div>
-        <button
-          type="button"
-          disabled={savingFeedMeta || !feedName.trim() || !feedIcon.trim()}
-          onClick={async () => {
-            setSavingFeedMeta(true)
-            setError('')
-            try {
-              await saveFeedPatch({ name: feedName.trim(), icon: feedIcon.trim() })
-            } catch (e) {
-              setError(e instanceof Error ? e.message : 'Failed to save feed details')
-            } finally {
-              setSavingFeedMeta(false)
-            }
-          }}
-          class="np-button np-button-secondary np-button-small disabled:opacity-50"
+          ) : undefined}
         >
-          {savingFeedMeta ? 'Saving...' : 'Save feed details'}
-        </button>
-        <div class="space-y-4 border-t border-[var(--np-rule)] pt-4">
-          {localMinScore !== null && (
-            <div>
-              <label class="mb-1 block">Min relevance for {selectedFeed.name}</label>
-              <div class="flex items-center gap-3">
+          <div class="np-settings-fields">
+            <div class="np-settings-form-grid np-settings-form-grid-feed">
+              <div>
+                <label class="block">Icon</label>
                 <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="5"
-                  value={localMinScore}
-                  onInput={(e) => onSliderChange(Number((e.target as HTMLInputElement).value))}
-                  class="flex-1"
+                  type="text"
+                  class="np-control text-center"
+                  maxLength={8}
+                  value={feedIcon}
+                  onInput={(e) => setFeedIcon((e.target as HTMLInputElement).value)}
                 />
-                <span class="np-copy-subtle text-sm w-8 text-right tabular-nums">{localMinScore}</span>
-                {savingScore && (
-                  <svg class="w-3.5 h-3.5 animate-spin np-copy-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                )}
+              </div>
+              <div>
+                <label class="block">Feed name</label>
+                <input
+                  type="text"
+                  class="np-control"
+                  value={feedName}
+                  onInput={(e) => setFeedName((e.target as HTMLInputElement).value)}
+                />
               </div>
             </div>
-          )}
+            <button
+              type="button"
+              disabled={savingFeedMeta || !feedName.trim() || !feedIcon.trim()}
+              onClick={async () => {
+                setSavingFeedMeta(true)
+                setError('')
+                try {
+                  await saveFeedPatch({ name: feedName.trim(), icon: feedIcon.trim() })
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : 'Failed to save feed details')
+                } finally {
+                  setSavingFeedMeta(false)
+                }
+              }}
+              class="np-button np-button-secondary np-button-small disabled:opacity-50"
+            >
+              {savingFeedMeta ? 'Saving...' : 'Save feed details'}
+            </button>
+          </div>
+        </SettingsItem>
 
-          {reportInterval !== null && (
-            <div class="space-y-3">
-              <label class="block">Auto-generate reports for {selectedFeed.name} every</label>
-              <select
-                class="np-control np-control-select select-styled"
-                value={reportInterval}
-                onChange={(e) => {
-                  const v = Number((e.target as HTMLSelectElement).value)
-                  setReportInterval(v)
-                  setSavingIntervals(true)
-                  saveFeedPatch({ reportIntervalHours: v }).finally(() => setSavingIntervals(false))
-                }}
-              >
-                <option value="0">Manual only</option>
-                <option value="6">6 hours</option>
-                <option value="12">12 hours</option>
-                <option value="24">24 hours</option>
-                <option value="48">2 days</option>
-              </select>
+        {localMinScore !== null && (
+          <SettingsItem title={`Min relevance for ${feed.name}`}>
+            <div class="np-settings-inline">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                value={localMinScore}
+                onInput={(e) => onSliderChange(Number((e.target as HTMLInputElement).value))}
+                class="flex-1"
+              />
+              <span class="np-settings-item-copy">{localMinScore}</span>
+              {savingScore && (
+                <svg class="w-3.5 h-3.5 animate-spin np-copy-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+            </div>
+          </SettingsItem>
+        )}
+
+        {reportInterval !== null && (
+          <SettingsItem title="Report schedule">
+            <div class="np-settings-fields">
+              <div>
+                <label class="block">Auto-generate reports for {feed.name} every</label>
+                <select
+                  class="np-control np-control-select select-styled"
+                  value={reportInterval}
+                  onChange={(e) => {
+                    const v = Number((e.target as HTMLSelectElement).value)
+                    setReportInterval(v)
+                    setSavingIntervals(true)
+                    saveFeedPatch({ reportIntervalHours: v }).finally(() => setSavingIntervals(false))
+                  }}
+                >
+                  <option value="0">Manual only</option>
+                  <option value="6">6 hours</option>
+                  <option value="12">12 hours</option>
+                  <option value="24">24 hours</option>
+                  <option value="48">2 days</option>
+                </select>
+              </div>
               {reportInterval > 0 && reportAtHour !== null && (
-                <>
+                <div>
                   <label class="block">Generate report at</label>
                   <select
                     class="np-control np-control-select select-styled"
@@ -1027,147 +1314,242 @@ function AiTuningSection() {
                       <option key={i} value={i}>{i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i - 12}:00 PM`}</option>
                     ))}
                   </select>
-                </>
+                </div>
               )}
-              {savingIntervals && <span class="np-copy-muted text-xs">Saving...</span>}
+              {savingIntervals && <p class="np-settings-item-copy">Saving...</p>}
             </div>
-          )}
+          </SettingsItem>
+        )}
 
-          <div>
-            <label class="mb-1 block">Tell the AI what you want to see in {selectedFeed.name}</label>
-            <div class="flex gap-2">
-              <input
-                type="text"
-                class="np-control min-w-0 flex-1"
-                placeholder='e.g. "show me more memes", "less crypto"'
-                value={instruction}
-                onInput={(e) => setInstruction((e.target as HTMLInputElement).value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') addInstruction() }}
-              />
-              <button type="button" onClick={addInstruction} disabled={!instruction.trim()}
-                class="np-button np-button-secondary disabled:opacity-50 shrink-0">Add</button>
-            </div>
+        <SettingsItem title={`Tell the AI what you want to see in ${feed.name}`}>
+          <div class="np-settings-inline">
+            <input
+              type="text"
+              class="np-control min-w-0 flex-1"
+              placeholder='e.g. "show me more memes", "less crypto"'
+              value={instruction}
+              onInput={(e) => setInstruction((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') addInstruction() }}
+            />
+            <button type="button" onClick={addInstruction} disabled={!instruction.trim()}
+              class="np-button np-button-secondary disabled:opacity-50 shrink-0">Add</button>
           </div>
+        </SettingsItem>
 
+        <SettingsItem
+          title="Pending changes"
+          copy={!hasPending ? 'No pending changes for this feed. Use thumbs up/down on posts or add instructions above to tune it.' : undefined}
+          actions={hasPending ? (
+            <button type="button" onClick={regenerate} disabled={regenerating}
+              class="np-button np-button-primary np-button-small disabled:opacity-50 whitespace-nowrap">
+              {regenerating ? 'Applying...' : 'Apply now'}
+            </button>
+          ) : undefined}
+        >
           {hasPending && (
-            <div class="space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="np-copy-muted text-xs">
-                  Pending changes ({internals.pendingNudges.length + internals.pendingInstructions.length})
-                  {!regenerating && (internals.isApplying
-                    ? <span> · applying now...</span>
-                    : internals.autoApplyAt && <Countdown targetMs={internals.autoApplyAt} prefix=" · auto-applies in " expiredLabel=" · applying soon..." />)}
-                </span>
-                <button type="button" onClick={regenerate} disabled={regenerating}
-                  class="np-button np-button-primary np-button-small disabled:opacity-50 whitespace-nowrap">
-                  {regenerating ? 'Applying...' : 'Apply now'}
-                </button>
-              </div>
+            <div class="np-settings-fields">
+              <p class="np-settings-item-copy">
+                Pending changes ({internals.pendingNudges.length + internals.pendingInstructions.length})
+                {!regenerating && (internals.isApplying
+                  ? <span> · applying now...</span>
+                  : internals.autoApplyAt && <Countdown targetMs={internals.autoApplyAt} prefix=" · auto-applies in " expiredLabel=" · applying soon..." />)}
+              </p>
               {regenerating && regenStatus && (
-                <div class="flex items-center gap-2 text-xs np-copy-muted">
+                <div class="np-settings-inline">
                   <svg class="w-3.5 h-3.5 animate-spin shrink-0 np-link-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  {regenStatus}
+                  <span class="np-settings-item-copy">{regenStatus}</span>
                 </div>
               )}
-
               {internals.pendingInstructions.map((p) => (
-                <div key={p.id} class="np-inline-card np-inline-card-row">
-                  <span class="np-copy-subtle text-sm">"{p.instruction}"</span>
+                <div key={p.id} class="np-settings-item-row">
+                  <div class="np-settings-item-main">
+                    <span class="np-settings-item-copy">"{p.instruction}"</span>
+                  </div>
                   <button type="button" onClick={() => removeInstruction(p.id)}
-                    class="np-link-muted text-xs ml-2 shrink-0">&times;</button>
+                    class="np-link-muted shrink-0">&times;</button>
                 </div>
               ))}
-
               {internals.pendingNudges.map((n) => (
-                <div key={n.id} class="np-inline-card flex items-start justify-between gap-2">
-                  <div class="min-w-0">
-                    <p class="text-xs mb-0.5">
-                      <span class={`font-medium ${n.direction === 'up' ? 'np-link-accent' : 'np-copy-danger'}`}>
+                <div key={n.id} class="np-settings-item-row">
+                  <div class="np-settings-item-main">
+                    <p class="np-settings-item-copy">
+                      <span class={n.direction === 'up' ? 'np-link-accent' : 'np-copy-danger'}>
                         {n.direction === 'up' ? 'More like' : 'Less like'}
                       </span>{' '}
                       <span class="np-copy-muted">@{n.authorHandle}</span>
                     </p>
-                    <p class="np-copy-subtle text-sm line-clamp-2">{n.tweetContent}</p>
+                    <p class="np-settings-item-copy line-clamp-2">{n.tweetContent}</p>
                   </div>
                   <button type="button" onClick={() => removeNudge(n.tweetId)}
-                    class="np-link-muted text-sm mt-0.5 shrink-0">&times;</button>
+                    class="np-link-muted shrink-0">&times;</button>
                 </div>
               ))}
             </div>
           )}
+        </SettingsItem>
 
-          {!hasPending && (
-            <p class="np-copy-muted text-xs">No pending changes for this feed. Use thumbs up/down on posts or add instructions above to tune it.</p>
-          )}
-
-          {internals.lastRegenAt && (
-            <p class="np-copy-muted text-xs">Last regenerated: {new Date(internals.lastRegenAt).toLocaleString()}</p>
-          )}
-
-          <div>
-            <div class="flex items-center gap-2">
-              <button type="button" onClick={() => setShowPrompt(!showPrompt)}
-                class="np-link-muted text-xs">
+        <SettingsItem
+          title="Prompt"
+          actions={(
+            <>
+              <button type="button" onClick={() => setShowPrompt(!showPrompt)} class="np-link-muted">
                 {showPrompt ? 'Hide' : 'Show'} current prompt
               </button>
               {showPrompt && !editingPrompt && (
-                <button type="button" onClick={() => { setPromptDraft(internals.currentPrompt || internals.defaultPrompt); setEditingPrompt(true) }}
-                  class="np-link-muted text-xs">Edit</button>
+                <button type="button" onClick={() => { setPromptDraft(internals.currentPrompt || internals.defaultPrompt); setEditingPrompt(true) }} class="np-link-muted">
+                  Edit
+                </button>
               )}
+            </>
+          )}
+          copy={internals.lastRegenAt ? `Last regenerated: ${new Date(internals.lastRegenAt).toLocaleString()}` : undefined}
+        >
+          {showPrompt && !editingPrompt && (
+            <pre class="np-inline-code whitespace-pre-wrap overflow-auto max-h-60 scrollbar-dark">
+              {internals.currentPrompt || internals.defaultPrompt}
+            </pre>
+          )}
+          {editingPrompt && (
+            <div class="np-settings-fields">
+              <textarea
+                class="np-control np-control-textarea scrollbar-dark"
+                value={promptDraft}
+                onInput={(e) => setPromptDraft((e.target as HTMLTextAreaElement).value)}
+              />
+              <div class="np-settings-inline">
+                <button
+                  type="button"
+                  disabled={savingPrompt}
+                  onClick={async () => {
+                    setSavingPrompt(true)
+                    try {
+                      await saveFeedPatch({ systemPrompt: promptDraft })
+                      setEditingPrompt(false)
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : 'Failed to save prompt')
+                    } finally {
+                      setSavingPrompt(false)
+                    }
+                  }}
+                  class="np-button np-button-primary np-button-small disabled:opacity-50"
+                >
+                  {savingPrompt ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingPrompt(false)}
+                  class="np-button np-button-secondary np-button-small"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-            {showPrompt && !editingPrompt && (
-              <pre class="np-inline-code mt-2 text-xs whitespace-pre-wrap overflow-auto max-h-60 scrollbar-dark">
-                {internals.currentPrompt || internals.defaultPrompt}
-              </pre>
+          )}
+        </SettingsItem>
+      </div>
+    </section>
+  )
+}
+
+function AiTuningSection({ compact = false }: { compact?: boolean } = {}) {
+  const { data: settings } = useApi<{ configured: boolean }>('/ai/settings')
+  const { feeds, loading: feedsLoading, refetch: refetchFeeds } = useScoringFeeds(!!settings?.configured)
+  const [showAddFeed, setShowAddFeed] = useState(false)
+  const [newFeedName, setNewFeedName] = useState('')
+  const [newFeedIcon, setNewFeedIcon] = useState('✦')
+  const [creatingFeed, setCreatingFeed] = useState(false)
+  const [error, setError] = useState('')
+
+  if (!settings?.configured) return null
+  if (feedsLoading && feeds.length === 0) return <Spinner />
+
+  return (
+    <div class="np-settings-feed-panel">
+      {error && <p class="np-alert np-alert-error">{error}</p>}
+      {feeds.map((feed) => (
+        <FeedTuningEditor
+          key={feed.id}
+          feed={feed}
+          refetchFeeds={refetchFeeds}
+        />
+      ))}
+      <section class="np-settings-section">
+        <div class="np-settings-section-items">
+          <SettingsItem
+            title="Add new feed"
+            actions={(
+              <button
+                type="button"
+                onClick={() => setShowAddFeed((v) => !v)}
+                class="np-button np-button-secondary np-button-small whitespace-nowrap"
+              >
+                {showAddFeed ? 'Close' : 'Add feed'}
+              </button>
             )}
-            {editingPrompt && (
-              <div class="mt-2">
-                <textarea
-                  class="np-control np-control-textarea text-xs scrollbar-dark"
-                  value={promptDraft}
-                  onInput={(e) => setPromptDraft((e.target as HTMLTextAreaElement).value)}
-                />
-                <div class="flex items-center gap-2 mt-2">
-                  <button
-                    type="button"
-                    disabled={savingPrompt}
-                    onClick={async () => {
-                      setSavingPrompt(true)
-                      try {
-                        await saveFeedPatch({ systemPrompt: promptDraft })
-                        setEditingPrompt(false)
-                      } catch (e) {
-                        setError(e instanceof Error ? e.message : 'Failed to save prompt')
-                      } finally {
-                        setSavingPrompt(false)
-                      }
-                    }}
-                    class="np-button np-button-primary np-button-small disabled:opacity-50"
-                  >
-                    {savingPrompt ? 'Saving...' : 'Save'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingPrompt(false)}
-                    class="np-button np-button-secondary np-button-small"
-                  >
-                    Cancel
-                  </button>
+          >
+            {showAddFeed && (
+              <div class="np-settings-fields">
+                <div class="np-settings-form-grid np-settings-form-grid-feed">
+                  <div>
+                    <label class="block">Icon</label>
+                    <input
+                      type="text"
+                      class="np-control text-center"
+                      maxLength={8}
+                      value={newFeedIcon}
+                      onInput={(e) => setNewFeedIcon((e.target as HTMLInputElement).value)}
+                    />
+                  </div>
+                  <div>
+                    <label class="block">Name</label>
+                    <input
+                      type="text"
+                      class="np-control"
+                      placeholder="e.g. Work, Memes"
+                      value={newFeedName}
+                      onInput={(e) => setNewFeedName((e.target as HTMLInputElement).value)}
+                    />
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  disabled={creatingFeed || !newFeedName.trim() || !newFeedIcon.trim()}
+                  onClick={async () => {
+                    setCreatingFeed(true)
+                    setError('')
+                    try {
+                      await api('/ai/feeds', {
+                        method: 'POST',
+                        body: JSON.stringify({ name: newFeedName.trim(), icon: newFeedIcon.trim() }),
+                      })
+                      setNewFeedName('')
+                      setNewFeedIcon('✦')
+                      setShowAddFeed(false)
+                      refetchFeeds()
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : 'Failed to create feed')
+                    } finally {
+                      setCreatingFeed(false)
+                    }
+                  }}
+                  class="np-button np-button-primary disabled:opacity-50"
+                >
+                  {creatingFeed ? 'Creating...' : 'Create feed'}
+                </button>
               </div>
             )}
-          </div>
+          </SettingsItem>
         </div>
-      </div>
+      </section>
     </div>
   )
 }
 
 // === API Keys Section ===
 
-function ApiKeysSection() {
+function ApiKeysSection({ compact = false }: { compact?: boolean } = {}) {
   const { data: keys, refetch } = useApi<any[]>('/api-keys')
   const [name, setName] = useState('')
   const [newKey, setNewKey] = useState('')
@@ -1200,8 +1582,8 @@ function ApiKeysSection() {
   }
 
   return (
-    <div class="space-y-4">
-      <h3 class="font-medium">API Keys</h3>
+    <div class={compact ? 'np-settings-item' : 'np-settings-subsection'}>
+      {!compact && <h3>API Keys</h3>}
 
       {error && (
         <p class="np-alert np-alert-error">{error}</p>
@@ -1218,14 +1600,14 @@ function ApiKeysSection() {
           <button
             type="button"
             onClick={() => setNewKey('')}
-            class="np-link-muted mt-2 text-xs"
+            class="np-link-muted mt-2"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      <div class="flex gap-2">
+      <div class={compact ? 'np-settings-inline' : 'flex flex-wrap gap-2'}>
         <input
           type="text"
           class="np-control flex-1"
@@ -1239,21 +1621,24 @@ function ApiKeysSection() {
           disabled={!name}
           class="np-button np-button-secondary disabled:opacity-50"
         >
-          Create
+          Create API key
         </button>
       </div>
 
-      <div class="space-y-2">
+      <div class={compact ? 'np-settings-item-body' : 'np-settings-subsection'}>
+        {!keys?.length && !newKey && (
+          <p class="np-settings-item-copy">No API keys yet.</p>
+        )}
         {keys?.map((k: any) => (
           <div
             key={k.id}
-            class="np-inline-card np-inline-card-row"
+            class={compact ? 'np-settings-item-row' : 'np-inline-card np-inline-card-row'}
           >
-            <div>
-              <span class="np-copy-subtle text-sm">{k.name}</span>
-              <span class="ml-2 text-xs np-copy-muted font-mono">{k.prefix}...</span>
+            <div class={compact ? 'np-settings-item-main' : ''}>
+              <span class={compact ? 'np-settings-item-title' : 'np-copy-subtle'}>{k.name}</span>
+              <span class={compact ? 'np-settings-item-copy' : 'ml-2 np-copy-muted'}>{k.prefix}...</span>
               {k.lastUsedAt && (
-                <span class="ml-2 text-xs np-copy-muted">
+                <span class={compact ? 'np-settings-item-copy' : 'ml-2 np-copy-muted'}>
                   Last used: {new Date(k.lastUsedAt).toLocaleDateString()}
                 </span>
               )}
@@ -1272,62 +1657,145 @@ function ApiKeysSection() {
   )
 }
 
+function SessionSection({ onLogout, compact = false }: { onLogout: () => void; compact?: boolean }) {
+  if (compact) {
+    return (
+      <SettingsItem
+        title="Session"
+        actions={(
+          <button
+            type="button"
+            onClick={onLogout}
+            class="np-button np-button-secondary np-button-small"
+          >
+            Log out
+          </button>
+        )}
+      />
+    )
+  }
+
+  return (
+    <div class="np-settings-subsection">
+      <SettingsBlockIntro
+        title="Session"
+      />
+      <div>
+        <button
+          type="button"
+          onClick={onLogout}
+          class="np-button np-button-secondary"
+        >
+          Log out
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // === Main Settings ===
 
 export function Settings({
-  onXChange,
-  xConnected,
+  onSourcesChange,
+  xChecked,
+  redditChecked,
+  sourcesChecked,
+  sourceConnected,
   singleUser,
   onLogout,
 }: {
-  onXChange: () => void
-  xConnected: boolean
+  onSourcesChange: () => void
+  xChecked: boolean
+  redditChecked: boolean
+  sourcesChecked: boolean
+  sourceConnected: boolean
   singleUser: boolean
   onLogout: () => void
 }) {
   useNewspaperActive()
+
+  if (!xChecked || !redditChecked || !sourcesChecked) {
+    return (
+      <NewspaperShell leftControls={<NewspaperRouteControls current="settings" />} showMeta={false}>
+        <div class="np-settings-page">
+          <article class="np-settings-section">
+            <SetupStateBlock
+              kicker="Settings"
+              title="Loading your edition"
+              intro="Checking connected sources and saved configuration before showing settings."
+              steps={[
+                {
+                  label: 'Resolve source sessions',
+                  detail: 'Verifying X, Reddit, and feed availability.',
+                  state: 'active',
+                },
+                {
+                  label: 'Load controls',
+                  detail: 'The settings desk appears once the current state is known.',
+                  state: 'pending',
+                },
+              ]}
+            >
+              <Spinner class="py-4" />
+            </SetupStateBlock>
+          </article>
+        </div>
+      </NewspaperShell>
+    )
+  }
+
   return (
     <NewspaperShell leftControls={<NewspaperRouteControls current="settings" />} showMeta={false}>
-      <div class="np-settings-grid">
-        <article class="np-article np-settings-card np-settings-card-wide">
-          <SettingsOverview xConnected={xConnected} />
+      <div class="np-settings-page">
+        <article class="np-settings-section np-settings-status-section">
+          <SettingsOverview sourceConnected={sourceConnected} />
         </article>
-        <article class="np-article np-settings-card">
-          <XSection onXChange={onXChange} />
-        </article>
-        {xConnected && (
-          <>
-            <article class="np-article np-settings-card">
-              <FetchIntervalSection />
-            </article>
-            <article class="np-article np-settings-card">
-              <AiSection />
-            </article>
-            <article class="np-article np-settings-card np-settings-card-wide">
-              <AiTuningSection />
-            </article>
-            <article class="np-article np-settings-card">
-              <ApiKeysSection />
-            </article>
-          </>
-        )}
-        {!singleUser && (
-          <article class="np-article np-settings-card">
-            <div class="space-y-4">
-              <h3 class="font-medium">Session</h3>
-              <p class="np-copy-muted text-sm">Sign out of this Omens session on this device.</p>
-              <div>
-                <button
-                  type="button"
-                  onClick={onLogout}
-                  class="np-button np-button-secondary"
-                >
-                  Log out
-                </button>
+        <div class="np-settings-flow">
+          <div class="np-settings-section-block">
+            <p class="np-settings-section-title">Sources</p>
+            <section class="np-settings-section">
+              <div class="np-settings-section-items">
+                <XSection onXChange={onSourcesChange} compact />
+                <RedditSection onSourcesChange={onSourcesChange} compact />
               </div>
+            </section>
+          </div>
+
+          <div class="np-settings-section-block">
+            <p class="np-settings-section-title">Basics</p>
+            <section class="np-settings-section">
+              <div class="np-settings-section-items">
+                <ThemeSection compact />
+                {sourceConnected ? (
+                  <>
+                    <FetchIntervalSection compact />
+                    <AiSection compact />
+                  </>
+                ) : (
+                  <p class="np-copy-muted">Connect a source to unlock AI setup.</p>
+                )}
+                <VersionSection compact />
+              </div>
+            </section>
+          </div>
+
+          {sourceConnected && (
+            <div class="np-settings-section-block">
+              <p class="np-settings-section-title">Feed Tuning</p>
+              <AiTuningSection compact />
             </div>
-          </article>
-        )}
+          )}
+
+          <div class="np-settings-section-block">
+            <p class="np-settings-section-title">Access</p>
+            <section class="np-settings-section">
+              <div class="np-settings-section-items">
+                <ApiKeysSection compact />
+                {!singleUser && <SessionSection onLogout={onLogout} compact />}
+              </div>
+            </section>
+          </div>
+        </div>
       </div>
     </NewspaperShell>
   )

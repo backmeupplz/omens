@@ -618,8 +618,50 @@ interface TweetConversationData {
   thread: RemoteTweet[]
 }
 
-interface FeedResponse {
-  data: Tweet[]
+interface RedditFeedPayload {
+  id: string
+  redditPostId: string
+  fullname: string
+  subreddit: string
+  authorName: string | null
+  title: string
+  body: string | null
+  thumbnailUrl: string | null
+  previewUrl: string | null
+  media: string | null
+  domain: string | null
+  permalink: string
+  url: string
+  score: number
+  commentCount: number
+  over18: boolean
+  spoiler: boolean
+  isSelf: boolean
+  linkFlairText: string | null
+  postHint: string | null
+  publishedAt: string | null
+}
+
+export type TimelineItem =
+  | {
+      id: string
+      provider: 'x'
+      entityType: 'x_post'
+      score: number | null
+      publishedAt: string | null
+      payload: Tweet
+    }
+  | {
+      id: string
+      provider: 'reddit'
+      entityType: 'reddit_post'
+      score: number | null
+      publishedAt: string | null
+      payload: RedditFeedPayload
+    }
+
+interface FeedResponse<T> {
+  data: T[]
   pagination: { page: number; limit: number; total: number; totalPages: number }
 }
 
@@ -1899,6 +1941,149 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
   )
 }
 
+function parseRedditMedia(media: string | null, previewUrl: string | null, thumbnailUrl: string | null): MediaItem[] {
+  const items: MediaItem[] = []
+  const parsed = safeParse<any>(media)
+  const galleryEntries = parsed?.mediaMetadata && typeof parsed.mediaMetadata === 'object'
+    ? Object.values(parsed.mediaMetadata)
+    : []
+
+  for (const entry of galleryEntries) {
+    const source = decodeURIComponent((entry as any)?.s?.u || '')
+    if (source && /^https?:\/\//.test(source)) {
+      items.push({ type: 'photo', url: source, thumbnail: source })
+    }
+  }
+
+  const videoUrl = (parsed?.secureMedia as any)?.reddit_video?.fallback_url
+  if (videoUrl && /^https?:\/\//.test(videoUrl)) {
+    items.push({ type: 'video', url: videoUrl, thumbnail: previewUrl || thumbnailUrl || videoUrl })
+  }
+
+  if (items.length === 0 && previewUrl) items.push({ type: 'photo', url: previewUrl, thumbnail: previewUrl })
+  if (items.length === 0 && thumbnailUrl) items.push({ type: 'photo', url: thumbnailUrl, thumbnail: thumbnailUrl })
+  return items
+}
+
+function RedditCard({
+  item,
+  nudge,
+  onNudge,
+  score,
+  minScore,
+}: {
+  item: Extract<TimelineItem, { provider: 'reddit' }>
+  nudge?: 'up' | 'down' | null
+  onNudge?: (id: string, direction: 'up' | 'down') => void
+  score?: number | null
+  minScore?: number
+}) {
+  const post = item.payload
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+  const mediaItems = useMemo(() => parseRedditMedia(post.media, post.previewUrl, post.thumbnailUrl), [post.media, post.previewUrl, post.thumbnailUrl])
+
+  return (
+    <article class="np-tweet relative overflow-hidden">
+      <div class="space-y-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+              <span class="np-chip px-2 py-0.5 font-semibold">r/{post.subreddit}</span>
+              <span class="np-copy-muted">u/{post.authorName || '[deleted]'}</span>
+              {post.linkFlairText && <span class="np-chip px-2 py-0.5">{post.linkFlairText}</span>}
+              {post.over18 && <span class="np-chip px-2 py-0.5 text-red-700">NSFW</span>}
+              {post.spoiler && <span class="np-chip px-2 py-0.5">Spoiler</span>}
+              {post.publishedAt && <span class="np-copy-muted">{timeAgo(post.publishedAt)}</span>}
+            </div>
+            <h3 class="mt-2 text-[1.02rem] font-semibold leading-snug np-copy-strong">{post.title}</h3>
+          </div>
+          {score != null && (
+            <span class={`np-post-score rounded-sm px-1 py-0.5 text-[10px] font-medium ${minScore != null && score < minScore ? 'np-score-low' : score >= 70 ? 'np-score-high' : score >= 50 ? 'np-score-mid' : 'np-score-cutoff'}`}>
+              {score}
+            </span>
+          )}
+        </div>
+
+        {post.body && (
+          <p class="np-copy-subtle whitespace-pre-wrap break-words text-[0.95rem] leading-relaxed">
+            {post.body.length > 420 ? `${post.body.slice(0, 420)}…` : post.body}
+          </p>
+        )}
+
+        {mediaItems.length > 0 && (
+          <div class={`grid gap-2 ${mediaItems.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {mediaItems.slice(0, 4).map((mediaItem, index) => (
+              <button
+                key={`${mediaItem.url}-${index}`}
+                type="button"
+                class="overflow-hidden rounded-xl border border-black/10"
+                onClick={() => setLightboxIndex(index)}
+              >
+                {mediaItem.type === 'photo' ? (
+                  <img src={imgProxy(mediaItem.thumbnail)} alt="" class="h-full max-h-80 w-full object-cover" />
+                ) : (
+                  <video src={videoProxyUrl(mediaItem.url)} class="h-full max-h-80 w-full object-cover" muted />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!post.isSelf && post.domain && (
+          <a
+            href={post.url}
+            target="_blank"
+            rel="noopener"
+            class="block rounded-xl border border-black/10 p-3 transition-colors hover:bg-black/[0.03]"
+          >
+            <div class="text-xs uppercase tracking-[0.12em] np-copy-muted">{post.domain}</div>
+            <div class="mt-1 text-sm np-copy-strong">{post.title}</div>
+          </a>
+        )}
+
+        <div class="flex items-center justify-between gap-3 text-xs np-copy-muted">
+          <span class="flex items-center gap-3">
+            <span>{fmt(post.score)} points</span>
+            <span>{fmt(post.commentCount)} comments</span>
+          </span>
+          <span class="flex items-center gap-2">
+            {onNudge && (
+              <span class="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  class={`p-0.5 rounded transition-colors ${nudge === 'up' ? 'np-score-high' : 'np-nudge-up'}`}
+                  onClick={() => onNudge(item.id, 'up')}
+                  title="Show more like this"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={nudge === 'up' ? '2.5' : '1.5'}>
+                    <path d="M12 19V5m0 0l-6 6m6-6l6 6" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class={`p-0.5 rounded transition-colors ${nudge === 'down' ? 'np-score-low' : 'np-nudge-down'}`}
+                  onClick={() => onNudge(item.id, 'down')}
+                  title="Show less like this"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={nudge === 'down' ? '2.5' : '1.5'}>
+                    <path d="M12 5v14m0 0l6-6m-6 6l-6-6" />
+                  </svg>
+                </button>
+              </span>
+            )}
+            <CopyShareButton url={post.url} iconOnly />
+            <a href={post.url} target="_blank" rel="noopener" class="np-action-strong">Open</a>
+          </span>
+        </div>
+      </div>
+
+      {lightboxIndex != null && (
+        <Lightbox items={mediaItems} index={lightboxIndex} onClose={() => setLightboxIndex(null)} />
+      )}
+    </article>
+  )
+}
+
 // === Nudge Hook ===
 
 function useNudges(demo?: boolean, feedId?: string | null) {
@@ -1909,36 +2094,36 @@ function useNudges(demo?: boolean, feedId?: string | null) {
     if (demo) return
     setNudges(new Map())
     if (!feedId) return
-    api<{ nudges: Array<{ tweetId: string; direction: 'up' | 'down' }> }>(withFeedId('/ai/nudges', feedId))
+    api<{ nudges: Array<{ itemId: string; direction: 'up' | 'down' }> }>(withFeedId('/ai/nudges', feedId))
       .then((r) => {
         const map = new Map<string, 'up' | 'down'>()
-        for (const n of r.nudges) map.set(n.tweetId, n.direction as 'up' | 'down')
+        for (const n of r.nudges) map.set(n.itemId, n.direction as 'up' | 'down')
         setNudges(map)
       })
       .catch(() => {})
   }, [demo, feedId])
 
-  const onNudge = useCallback((tweetId: string, direction: 'up' | 'down') => {
+  const onNudge = useCallback((itemId: string, direction: 'up' | 'down') => {
     setNudges((prev) => {
       const next = new Map(prev)
-      const wasSet = next.get(tweetId) === direction
+      const wasSet = next.get(itemId) === direction
       if (wasSet) {
-        next.delete(tweetId)
-        api(withFeedId(`/ai/nudge/${tweetId}`, feedId), { method: 'DELETE' }).catch(() => {
+        next.delete(itemId)
+        api(withFeedId(`/ai/nudge/${itemId}`, feedId), { method: 'DELETE' }).catch(() => {
           // Revert: re-apply the nudge we just removed
-          setNudges((p) => { const r = new Map(p); r.set(tweetId, direction); return r })
+          setNudges((p) => { const r = new Map(p); r.set(itemId, direction); return r })
           setFeedback('Failed to save feedback')
           setTimeout(() => setFeedback(null), 3000)
         })
       } else {
-        const prevDirection = next.get(tweetId)
-        next.set(tweetId, direction)
-        api('/ai/nudge', { method: 'POST', body: JSON.stringify({ tweetId, direction, feedId }) }).catch(() => {
+        const prevDirection = next.get(itemId)
+        next.set(itemId, direction)
+        api('/ai/nudge', { method: 'POST', body: JSON.stringify({ itemId, direction, feedId }) }).catch(() => {
           // Revert to previous state
           setNudges((p) => {
             const r = new Map(p)
-            if (prevDirection) r.set(tweetId, prevDirection)
-            else r.delete(tweetId)
+            if (prevDirection) r.set(itemId, prevDirection)
+            else r.delete(itemId)
             return r
           })
           setFeedback('Failed to save feedback')
@@ -1960,9 +2145,9 @@ interface AiReportData {
   id: string
   content: string
   model: string
-  tweetCount: number
-  tweetRefs: string[]
-  refTweets: Tweet[]
+  itemCount: number
+  itemRefs: string[]
+  refItems: TimelineItem[]
   createdAt: string
 }
 
@@ -1989,6 +2174,17 @@ function fixtureThumb(bg: string, accent: string, label: string) {
       <text x="110" y="760" font-size="120" font-family="Georgia, serif" fill="rgba(255,255,255,.85)">${label}</text>
     </svg>`,
   )}`
+}
+
+function tweetToTimelineItem(tweet: Tweet, score?: number | null): Extract<TimelineItem, { provider: 'x' }> {
+  return {
+    id: tweet.id,
+    provider: 'x',
+    entityType: 'x_post',
+    score: score ?? null,
+    publishedAt: tweet.publishedAt,
+    payload: tweet,
+  }
 }
 
 function createFixtureTweet(overrides: Partial<Tweet> & Pick<Tweet, 'id' | 'tweetId' | 'authorName' | 'authorHandle' | 'content'>): Tweet {
@@ -2082,7 +2278,7 @@ export function NewspaperFixturePage() {
     }),
   ]
 
-  const refTweets = new Map(fixtureTweets.map((tweet) => [tweet.id, tweet] as const))
+  const refItems = new Map(fixtureTweets.map((tweet) => [tweet.id, tweetToTimelineItem(tweet)] as const))
   const text = `# AI CODING INFRASTRUCTURE: POLICY SHIFTS AND SECURITY REVELATIONS
 Anthropic quietly changed its terms to block first-party harness use, routing "extra usage" to third-party app limits rather than plan limits, a move that breaks existing CLI workflows and forces developers to pay per-token.
 
@@ -2108,28 +2304,20 @@ Karpathy's framing around personal research knowledge bases and Farza's prototyp
 [[tweet:fx-6]]`
 
   return (
-    <div class="app-shell">
-      <nav class="app-nav sticky top-0 z-30 px-3 sm:px-4 py-3">
-        <div class="mx-auto max-w-xl w-full flex items-center justify-between gap-2">
-          <span class="app-brand">Omens Fixture</span>
-        </div>
-      </nav>
-      <main class="mx-auto w-full py-4 pb-16 overflow-hidden">
-        <div class="newspaper np-outer">
-          <NewspaperContent
-            text={text}
-            refTweets={refTweets}
-            reportDate="2026-04-05T09:02:00.000Z"
-            tweetCount={fixtureTweets.length}
-            issueNumber={7}
-          />
-        </div>
-      </main>
-    </div>
+    <NewspaperShell subtitle="Fixture Preview" showMeta={false}>
+      <NewspaperContent
+        text={text}
+        refItems={refItems}
+        reportDate="2026-04-05T09:02:00.000Z"
+        itemCount={fixtureTweets.length}
+        issueNumber={7}
+        showMasthead={false}
+      />
+    </NewspaperShell>
   )
 }
 
-type SectionItem = { type: 'text' | 'tweet'; line: string; tweet?: Tweet }
+type SectionItem = { type: 'text' | 'item'; line: string; item?: TimelineItem }
 type ParsedReportSection = {
   header: string | null
   headerLevel: number
@@ -2145,7 +2333,7 @@ function slugifyHeadline(text: string): string {
   return slug || 'section'
 }
 
-function parseReportSections(text: string, refTweets: Map<string, Tweet>): ParsedReportSection[] {
+function parseReportSections(text: string, refItems: Map<string, TimelineItem>): ParsedReportSection[] {
   const cleaned = text.replace(/\\([^\\])/g, '$1')
   const lines = cleaned.split('\n')
   const sections: ParsedReportSection[] = []
@@ -2170,8 +2358,8 @@ function parseReportSections(text: string, refTweets: Map<string, Tweet>): Parse
       }
       continue
     }
-    const tweetMatch = line.match(/\[\[tweet:([^\]]+)\]\]/)
-    if (tweetMatch) current.items.push({ type: 'tweet', line, tweet: refTweets.get(tweetMatch[1]) || undefined })
+    const itemMatch = line.match(/\[\[(?:item|tweet):([^\]]+)\]\]/)
+    if (itemMatch) current.items.push({ type: 'item', line, item: refItems.get(itemMatch[1]) || undefined })
     else current.items.push({ type: 'text', line })
   }
 
@@ -2260,7 +2448,7 @@ type TextFragment =
   | { type: 'spacer' }
 type ArticleTile =
   | { type: 'text'; fragments: TextFragment[]; charCount: number; lead: boolean }
-  | { type: 'tweet'; tweet?: Tweet }
+  | { type: 'item'; item?: TimelineItem }
 type ArticlePackageKind = 'lead' | 'feature' | 'standard' | 'brief'
 
 function parseBoldText(text: string): preact.ComponentChildren[] {
@@ -2330,9 +2518,9 @@ function buildArticleTiles(items: SectionItem[]) {
 
   for (let ii = 0; ii < items.length; ii++) {
     const item = items[ii]
-    if (item.type === 'tweet') {
+    if (item.type === 'item') {
       flushText()
-      tiles.push({ type: 'tweet', tweet: item.tweet })
+      tiles.push({ type: 'item', item: item.item })
       continue
     }
 
@@ -2385,26 +2573,26 @@ function buildArticleTiles(items: SectionItem[]) {
 
 function arrangeArticleTiles(tiles: ArticleTile[]) {
   const textTiles = tiles.filter((tile): tile is Extract<ArticleTile, { type: 'text' }> => tile.type === 'text')
-  const tweetTiles = tiles.filter((tile): tile is Extract<ArticleTile, { type: 'tweet' }> => tile.type === 'tweet')
+  const itemTiles = tiles.filter((tile): tile is Extract<ArticleTile, { type: 'item' }> => tile.type === 'item')
   const arranged: ArticleTile[] = []
 
   if (textTiles.length > 0) arranged.push(textTiles.shift()!)
-  if (tweetTiles.length > 0) arranged.push(tweetTiles.shift()!)
+  if (itemTiles.length > 0) arranged.push(itemTiles.shift()!)
   if (textTiles.length > 0) arranged.push(textTiles.shift()!)
-  if (tweetTiles.length > 0) arranged.push(tweetTiles.shift()!)
+  if (itemTiles.length > 0) arranged.push(itemTiles.shift()!)
 
-  while (textTiles.length > 0 || tweetTiles.length > 0) {
-    if (tweetTiles.length > textTiles.length && tweetTiles.length > 0) arranged.push(tweetTiles.shift()!)
+  while (textTiles.length > 0 || itemTiles.length > 0) {
+    if (itemTiles.length > textTiles.length && itemTiles.length > 0) arranged.push(itemTiles.shift()!)
     if (textTiles.length > 0) arranged.push(textTiles.shift()!)
-    if (tweetTiles.length > 0) arranged.push(tweetTiles.shift()!)
-    if (tweetTiles.length > textTiles.length && tweetTiles.length > 0) arranged.push(tweetTiles.shift()!)
+    if (itemTiles.length > 0) arranged.push(itemTiles.shift()!)
+    if (itemTiles.length > textTiles.length && itemTiles.length > 0) arranged.push(itemTiles.shift()!)
   }
 
   return arranged
 }
 
 function estimateArticleTileWeight(tile: ArticleTile) {
-  if (tile.type === 'tweet') return 6
+  if (tile.type === 'item') return 6
   const listWeight = tile.fragments.some((fragment) => fragment.type === 'list') ? 2 : 0
   const paragraphWeight = Math.ceil(tile.charCount / 180)
   return Math.max(2, paragraphWeight + listWeight + (tile.lead ? 1 : 0))
@@ -2424,13 +2612,13 @@ function distributeArticleTiles(tiles: ArticleTile[], columnCount: number) {
 }
 
 function getArticlePackageKind(items: SectionItem[], index: number): ArticlePackageKind {
-  const tweetCount = items.filter((item) => item.type === 'tweet').length
+  const itemCount = items.filter((item) => item.type === 'item').length
   const textLength = items.reduce((total, item) => total + (item.type === 'text' ? item.line.trim().length : 0), 0)
-  const contentWeight = textLength + tweetCount * 360
+  const contentWeight = textLength + itemCount * 360
 
   if (index === 0) return 'lead'
-  if (contentWeight >= 1700 || tweetCount >= 4 || textLength > 1050) return 'feature'
-  if (contentWeight >= 780 || tweetCount >= 2 || textLength > 520) return 'standard'
+  if (contentWeight >= 1700 || itemCount >= 4 || textLength > 1050) return 'feature'
+  if (contentWeight >= 780 || itemCount >= 2 || textLength > 520) return 'standard'
   return 'brief'
 }
 
@@ -2492,10 +2680,12 @@ function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefi
   const columns = useMemo(() => distributeArticleTiles(tiles, columnCount), [tiles, columnCount])
 
   const renderTile = (tile: ArticleTile, key: string) => {
-    if (tile.type === 'tweet') {
-      return tile.tweet ? (
+    if (tile.type === 'item') {
+      return tile.item ? (
         <div key={key} class="np-grid-tile np-grid-tile-tweet">
-          <TweetCard tweet={tile.tweet} expandBehavior="detail" />
+          {tile.item.provider === 'x'
+            ? <TweetCard tweet={tile.item.payload} expandBehavior="detail" />
+            : <RedditCard item={tile.item} />}
         </div>
       ) : (
         <div key={key} class="np-grid-tile np-grid-tile-fallback">
@@ -2524,18 +2714,18 @@ function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefi
   )
 }
 
-function NewspaperContent({ text, refTweets, reportDate, tweetCount: totalTweetCount, issueNumber, leftControls, controls, historyPanel, showMasthead = true }: {
+function NewspaperContent({ text, refItems, reportDate, itemCount: totalItemCount, issueNumber, leftControls, controls, historyPanel, showMasthead = true }: {
   text: string
-  refTweets: Map<string, Tweet>
+  refItems: Map<string, TimelineItem>
   reportDate: string
-  tweetCount: number
+  itemCount: number
   issueNumber: number
   leftControls?: preact.ComponentChildren
   controls?: preact.ComponentChildren
   historyPanel?: preact.ComponentChildren
   showMasthead?: boolean
 }) {
-  const sections = useMemo(() => parseReportSections(text, refTweets), [text, refTweets])
+  const sections = useMemo(() => parseReportSections(text, refItems), [text, refItems])
 
   const articles = sections.filter((s) => s.header)
   const renderArticlePackage = (
@@ -2589,7 +2779,7 @@ function NewspaperContent({ text, refTweets, reportDate, tweetCount: totalTweetC
             <div class="np-masthead-meta">
               <span>{dateStr}</span>
               <span>No. {issueNumber}</span>
-              <span>{totalTweetCount} sources &middot; {timeStr}</span>
+              <span>{totalItemCount} sources &middot; {timeStr}</span>
             </div>
           </div>
           {historyPanel}
@@ -2631,9 +2821,9 @@ function getBriefingLabel(date: Date) {
 
 export function NewspaperReportPage({
   text,
-  refTweets,
+  refItems,
   reportDate,
-  tweetCount,
+  itemCount,
   issueNumber,
   showIssueNumber = true,
   leftControls,
@@ -2643,9 +2833,9 @@ export function NewspaperReportPage({
   postContent,
 }: {
   text: string
-  refTweets: Map<string, Tweet>
+  refItems: Map<string, TimelineItem>
   reportDate: string
-  tweetCount: number
+  itemCount: number
   issueNumber: number
   showIssueNumber?: boolean
   leftControls?: preact.ComponentChildren
@@ -2656,10 +2846,10 @@ export function NewspaperReportPage({
 }) {
   const date = new Date(reportDate)
   const outlineSections = useMemo(
-    () => parseReportSections(text, refTweets)
+    () => parseReportSections(text, refItems)
       .filter((section): section is ParsedReportSection & { header: string; anchorId: string } => !!section.header && !!section.anchorId)
       .map((section) => ({ header: section.header, anchorId: section.anchorId, headerLevel: section.headerLevel })),
-    [text, refTweets],
+    [text, refItems],
   )
   const metaRow = (
     <div class="np-masthead-meta">
@@ -2668,7 +2858,7 @@ export function NewspaperReportPage({
         <span>{date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
       </span>
       {showIssueNumber && <span>No. {issueNumber}</span>}
-      <span>{tweetCount} sources &middot; {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+      <span>{itemCount} sources &middot; {date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
     </div>
   )
 
@@ -2683,9 +2873,9 @@ export function NewspaperReportPage({
       {preContent}
       <NewspaperContent
         text={text}
-        refTweets={refTweets}
+        refItems={refItems}
         reportDate={reportDate}
-        tweetCount={tweetCount}
+        itemCount={itemCount}
         issueNumber={issueNumber}
         showMasthead={false}
       />
@@ -2719,8 +2909,8 @@ function AiSetupLead({
           intro={intro}
           steps={[
             {
-              label: 'X feed connected',
-              detail: 'Omens already has access to your timeline.',
+              label: 'Source connected',
+              detail: 'Omens already has access to your feed.',
               state: 'done',
             },
             {
@@ -2746,15 +2936,16 @@ function AiSetupLead({
 function AiReportView({ demo }: { demo?: boolean } = {}) {
   const prefix = demo ? '/demo' : '/ai'
   const { data: settings, loading: settingsLoading, error: settingsError, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number; reportAtHour?: number; nextReportAt?: number | null }>(demo ? null : '/ai/settings')
-  const { feeds, selectedFeed, selectedFeedId, setSelectedFeedId, loading: feedsLoading } = useScoringFeeds(!demo)
+  const aiConfigured = demo || !!settings?.configured
+  const { feeds, selectedFeed, selectedFeedId, setSelectedFeedId, loading: feedsLoading } = useScoringFeeds(aiConfigured)
   const reportPath = demo ? `${prefix}/report` : (selectedFeedId ? withFeedId(`${prefix}/report`, selectedFeedId) : null)
   const reportsPath = demo ? `${prefix}/reports` : (selectedFeedId ? withFeedId(`${prefix}/reports`, selectedFeedId) : null)
   const { data, loading, refetch } = useApi<{ report: AiReportData | null }>(reportPath)
-  const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; tweetCount: number; createdAt: string; feedId: string }> }>(reportsPath)
+  const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; itemCount: number; createdAt: string; feedId: string }> }>(reportsPath)
   useNewspaperActive()
   const [generating, setGenerating] = useState(false)
   const [streamContent, setStreamContent] = useState('')
-  const [streamTweets, setStreamTweets] = useState<Map<string, Tweet>>(new Map())
+  const [streamItems, setStreamItems] = useState<Map<string, TimelineItem>>(new Map())
   const [genStatus, setGenStatus] = useState('Generating...')
   const [genStartedAt, setGenStartedAt] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -2795,7 +2986,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     const recoverStream = async (fallbackMessage: string) => {
       if (controller.signal.aborted || unmountingRef.current) return
       try {
-        const status = await api<{ generating: boolean; tweetCount: number; status: string | null; startedAt: string | null; error: string | null }>(statusPath)
+        const status = await api<{ generating: boolean; itemCount: number; status: string | null; startedAt: string | null; error: string | null }>(statusPath)
         if (controller.signal.aborted || unmountingRef.current) return
 
         if (status.error) {
@@ -2869,10 +3060,10 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
             }
             try {
               const json = JSON.parse(data)
-              if (json.tweets) {
-                const map = new Map<string, Tweet>()
-                for (const t of json.tweets) map.set(t.id, t)
-                setStreamTweets(map)
+              if (json.items) {
+                const map = new Map<string, TimelineItem>()
+                for (const item of json.items) map.set(item.id, item)
+                setStreamItems(map)
               }
               if (json.status) setGenStatus(json.status)
               if (json.content) setStreamContent(json.content)
@@ -2897,7 +3088,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
   useEffect(() => {
     if (demo) return
     if (!selectedFeedId) return
-    api<{ generating: boolean; tweetCount: number; status: string | null; startedAt: string | null; error: string | null }>(withFeedId('/ai/report-status', selectedFeedId))
+    api<{ generating: boolean; itemCount: number; status: string | null; startedAt: string | null; error: string | null }>(withFeedId('/ai/report-status', selectedFeedId))
       .then((s) => {
         if (s.error) { setError(s.error); return }
         if (s.generating) {
@@ -2919,7 +3110,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
   const generate = async () => {
     setGenerating(true)
     setStreamContent('')
-    setStreamTweets(new Map())
+    setStreamItems(new Map())
     setGenStatus('Starting...')
     setGenStartedAt(Date.now())
     setError(null)
@@ -2964,7 +3155,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     setHistoryPage(1)
     setError(null)
     setStreamContent('')
-    setStreamTweets(new Map())
+    setStreamItems(new Map())
     if (!demo && selectedFeedId) setSwitchingFeeds(true)
   }, [selectedFeedId])
 
@@ -2974,7 +3165,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     setSwitchingFeeds(false)
   }, [loading, switchingFeeds])
 
-  if ((!demo && (settingsLoading || feedsLoading || !selectedFeedId)) || loading || switchingFeeds) {
+  if ((!demo && (settingsLoading || (aiConfigured && (feedsLoading || !selectedFeedId)))) || loading || switchingFeeds) {
     return (
       <NewspaperShell
         leftControls={<NewspaperRouteControls current="report" showSettings={!demo} />}
@@ -2991,7 +3182,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
       <AiSetupLead
         current="report"
         title="Add an AI provider to publish your briefing"
-        intro="Your X feed is connected. Omens still needs your own AI provider and model before it can draft daily reports."
+        intro="Your sources are connected. Omens still needs your own AI provider and model before it can draft daily reports."
         error={settingsError}
         onSave={refetchSettings}
       />
@@ -3007,9 +3198,9 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
       className="mb-3"
     />
   ) : null
-  const refTweetMap = new Map<string, Tweet>()
-  if (activeReport?.refTweets) {
-    for (const t of activeReport.refTweets) refTweetMap.set(t.id, t)
+  const refItemMap = new Map<string, TimelineItem>()
+  if (activeReport?.refItems) {
+    for (const item of activeReport.refItems) refItemMap.set(item.id, item)
   }
   const reportIssueNumber = activeReport
     ? (pastData ? pastData.reports.length - (pastData.reports.findIndex((r) => r.id === (viewingReportId || activeReport.id))) : 1)
@@ -3031,7 +3222,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
             >
               <div class="np-history-row">
                 <span class="np-history-time">{new Date(r.createdAt).toLocaleString()}</span>
-                <span class="np-history-count">{r.tweetCount} posts</span>
+                <span class="np-history-count">{r.itemCount} posts</span>
               </div>
             </button>
           ))}
@@ -3101,9 +3292,9 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
       return (
         <NewspaperReportPage
           text={streamContent}
-          refTweets={streamTweets}
+          refItems={streamItems}
           reportDate={new Date().toISOString()}
-          tweetCount={streamTweets.size}
+          itemCount={streamItems.size}
           issueNumber={(pastData?.reports.length || 0) + 1}
           leftControls={newspaperLeftControls}
           rightControls={newspaperControls}
@@ -3139,9 +3330,9 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
       {activeReport && (
         <NewspaperReportPage
           text={activeReport.content}
-          refTweets={refTweetMap}
+          refItems={refItemMap}
           reportDate={activeReport.createdAt}
-          tweetCount={activeReport.tweetCount}
+          itemCount={activeReport.itemCount}
           issueNumber={reportIssueNumber}
           leftControls={newspaperLeftControls}
           rightControls={newspaperControls}
@@ -3196,8 +3387,32 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
 
 const FEED_LIMIT = 50
 
-function usePaginatedFeed(url: string | null, resetKey: number) {
-  const [allTweets, setAllTweets] = useState<Tweet[]>([])
+function renderTimelineFeedItem(item: TimelineItem, nudges: Map<string, 'up' | 'down'>, onNudge?: (id: string, direction: 'up' | 'down') => void, minScore?: number) {
+  if (item.provider === 'x') {
+    return (
+      <TweetCard
+        tweet={item.payload}
+        nudge={nudges.get(item.id) || null}
+        onNudge={onNudge}
+        score={item.score}
+        minScore={minScore}
+      />
+    )
+  }
+
+  return (
+    <RedditCard
+      item={item}
+      nudge={nudges.get(item.id) || null}
+      onNudge={onNudge}
+      score={item.score}
+      minScore={minScore}
+    />
+  )
+}
+
+function usePaginatedFeed<T extends { id: string }>(url: string | null, resetKey: number) {
+  const [allItems, setAllItems] = useState<T[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(!!url)
@@ -3213,12 +3428,12 @@ function usePaginatedFeed(url: string | null, resetKey: number) {
     if (reset) { setLoading(true); setError(null) }
     else setLoadingMore(true)
     try {
-      const res = await api<FeedResponse>(`${url}${url.includes('?') ? '&' : '?'}limit=${FEED_LIMIT}&page=${p}`)
+      const res = await api<FeedResponse<T>>(`${url}${url.includes('?') ? '&' : '?'}limit=${FEED_LIMIT}&page=${p}`)
       const newData = res.data
-      setAllTweets(prev => {
+      setAllItems(prev => {
         if (reset) return newData
-        const ids = new Set(prev.map(t => t.id))
-        const unique = newData.filter(t => !ids.has(t.id))
+        const ids = new Set(prev.map((item) => item.id))
+        const unique = newData.filter((item) => !ids.has(item.id))
         return [...prev, ...unique]
       })
       // If a "load more" page returned no new data, we've exhausted the feed
@@ -3237,7 +3452,7 @@ function usePaginatedFeed(url: string | null, resetKey: number) {
   }, [url])
 
   useEffect(() => {
-    setAllTweets([])
+    setAllItems([])
     setPage(1)
     setTotal(0)
     setError(null)
@@ -3250,10 +3465,10 @@ function usePaginatedFeed(url: string | null, resetKey: number) {
     loadPage(1, true)
   }, [resetKey, loadPage, url])
 
-  const remaining = Math.max(0, total - allTweets.length)
+  const remaining = Math.max(0, total - allItems.length)
   const loadMore = useCallback(() => loadPage(page + 1, false), [loadPage, page])
 
-  return { allTweets, loading, loadingMore, error, remaining, loadMore }
+  return { allItems, loading, loadingMore, error, remaining, loadMore }
 }
 
 // === Exported Pages ===
@@ -3276,7 +3491,7 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
   const minScore = selectedFeed?.minScore ?? 50
   const [feedKey, setFeedKey] = useState(0) // bump to re-fetch feed
   const filteredFeedPath = demo ? '/demo/filtered-feed' : (selectedFeedId ? withFeedId('/ai/filtered-feed', selectedFeedId) : null)
-  const { allTweets, loading, loadingMore, error, remaining, loadMore } = usePaginatedFeed(filteredFeedPath, feedKey)
+  const { allItems, loading, loadingMore, error, remaining, loadMore } = usePaginatedFeed<TimelineItem | Tweet>(filteredFeedPath, feedKey)
   const [filterError, setFilterError] = useState<string | null>(null)
   const [fetchingPosts, setFetchingPosts] = useState(false)
   const [showScoringDetails, setShowScoringDetails] = useState(false)
@@ -3343,7 +3558,7 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
   const refresh = useCallback(async () => {
     setFetchingPosts(true)
     try {
-      await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
+      await api<{ ok: boolean; count: number }>('/inputs/sync', { method: 'POST' })
       setScoringPolling(true)
     } catch (e) {
       setFilterError(e instanceof Error ? e.message : 'Failed to refresh')
@@ -3383,7 +3598,6 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
     setScoringBaseline(null)
     setFeedKey((k) => k + 1)
   }
-  const tweets = dedupThreads(allTweets)
   const rightControls = !demo ? (
     <button
       type="button"
@@ -3402,7 +3616,7 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
       <AiSetupLead
         current="filtered"
         title="Add an AI provider to unlock the filtered feed"
-        intro="Your X posts are ready, but Omens needs your own AI provider to score them and decide what makes the front page."
+        intro="Your sources are ready, but Omens needs your own AI provider to score them and decide what makes the front page."
         error={aiSettingsError}
         onSave={() => window.location.reload()}
       />
@@ -3422,7 +3636,7 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
           {error && <p class="np-alert np-alert-error text-center">{error}</p>}
         </>
       }
-      hasTweets={allTweets.length > 0}
+      hasTweets={allItems.length > 0}
       emptyState={pendingCount === 0 ? (
         <FeedLeadArticle>
           {demo ? (
@@ -3520,9 +3734,11 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
       )}
 
       <div class="feed-masonry">
-        {tweets.map((tweet: any) => (
-          <div key={tweet.id} class="feed-masonry-item">
-            <TweetCard tweet={tweet} nudge={demo ? undefined : nudges.get(tweet.id) || null} onNudge={demo ? undefined : onNudge} score={tweet.score} minScore={minScore} />
+        {allItems.map((item: any) => (
+          <div key={item.id} class="feed-masonry-item">
+            {'provider' in item
+              ? renderTimelineFeedItem(item as TimelineItem, demo ? new Map() : nudges, demo ? undefined : onNudge, minScore)
+              : <TweetCard tweet={item as Tweet} nudge={demo ? undefined : nudges.get(item.id) || null} onNudge={demo ? undefined : onNudge} score={(item as any).score} minScore={minScore} />}
           </div>
         ))}
       </div>
@@ -3535,7 +3751,7 @@ export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise
   const { nudges, onNudge, feedback } = useNudges(demo)
   const { minScore } = useAiSettings(demo)
   const [feedKey, setFeedKey] = useState(0)
-  const { allTweets, loading, loadingMore, error, remaining, loadMore } = usePaginatedFeed(demo ? '/demo/feed' : '/feed', feedKey)
+  const { allItems, loading, loadingMore, error, remaining, loadMore } = usePaginatedFeed<TimelineItem | Tweet>(demo ? '/demo/feed' : '/feed', feedKey)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const [refreshCount, setRefreshCount] = useState<number | null>(null)
@@ -3545,7 +3761,7 @@ export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise
     setRefreshError(null)
     setRefreshCount(null)
     try {
-      const res = await api<{ ok: boolean; count: number }>('/x/refresh', { method: 'POST' })
+      const res = await api<{ ok: boolean; count: number }>('/inputs/sync', { method: 'POST' })
       setRefreshCount(res.count)
       setFeedKey((k) => k + 1)
       setTimeout(() => setRefreshCount(null), 4000)
@@ -3559,7 +3775,6 @@ export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise
   useEffect(() => {
     onRefreshRef?.(refresh)
   }, [refresh, onRefreshRef])
-  const tweets = dedupThreads(allTweets)
   const rightControls = !demo ? (
     <button
       type="button"
@@ -3586,7 +3801,7 @@ export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise
           {error && <p class="np-alert np-alert-error text-center">{error}</p>}
         </>
       }
-      hasTweets={allTweets.length > 0}
+      hasTweets={allItems.length > 0}
       emptyState={(
         <FeedLeadArticle>
           {demo ? (
@@ -3596,7 +3811,7 @@ export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise
               <svg class="np-empty-icon w-10 h-10 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
                 <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2" />
               </svg>
-              <p class="np-empty-copy mb-4">No posts yet. Fetch your X feed to get started.</p>
+              <p class="np-empty-copy mb-4">No posts yet. Fetch your connected sources to get started.</p>
               <button type="button" onClick={refresh} disabled={refreshing}
                 class="np-button np-button-primary disabled:opacity-50">
                 {refreshing ? 'Fetching...' : 'Fetch posts'}
@@ -3610,9 +3825,11 @@ export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise
       onLoadMore={loadMore}
     >
       <div class="feed-masonry">
-        {tweets.map((tweet) => (
-          <div key={tweet.id} class="feed-masonry-item">
-            <TweetCard tweet={tweet} nudge={demo ? undefined : nudges.get(tweet.id) || null} onNudge={demo ? undefined : onNudge} score={(tweet as any).score} minScore={minScore} />
+        {allItems.map((item: any) => (
+          <div key={item.id} class="feed-masonry-item">
+            {'provider' in item
+              ? renderTimelineFeedItem(item as TimelineItem, demo ? new Map() : nudges, demo ? undefined : onNudge, minScore)
+              : <TweetCard tweet={item as Tweet} nudge={demo ? undefined : nudges.get(item.id) || null} onNudge={demo ? undefined : onNudge} score={(item as any).score} minScore={minScore} />}
           </div>
         ))}
       </div>

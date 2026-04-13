@@ -5,7 +5,7 @@
 
 import type { AiProvider } from '@omens/shared'
 
-export const DEFAULT_SYSTEM_PROMPT = `You analyze an X/Twitter feed to find signal in the noise.
+export const DEFAULT_SYSTEM_PROMPT = `You analyze a multi-source social feed to find signal in the noise.
 
 Surface what matters: important news, interesting insights, notable discussions. Skip spam, promotions, low-value retweets, and filler.`
 
@@ -14,13 +14,13 @@ export const REPORT_SYSTEM_PROMPT = `Generate a feed digest. Focus only on what 
 Rules:
 - Use ## headers to separate distinct topics/stories
 - Write 2-3 sentence summaries per topic. Add context and why it matters.
-- Embed posts inline using [[tweet:TWEET_DB_ID]] on its own line (use the [ID: xxx] shown before each post). Embed every post you mention — never reference a post without embedding it.
-- Do NOT repeat tweet text when you embed it — just provide context around it.
+- Embed posts inline using [[item:CONTENT_ITEM_ID]] on its own line (use the [ID: xxx] shown before each post). Embed every post you mention — never reference a post without embedding it.
+- Do NOT repeat the raw post text when you embed it — just provide context around it.
 - Leave blank lines between paragraphs for readability.
 - No forced categories like "Action Items". Just tell me what happened, organized by topic.
 - Cover ALL significant topics from the feed, don't stop early.`
 
-export const FILTER_SYSTEM_PROMPT = `You are a tweet relevance scorer. Score each tweet from 0 to 100 based on the user's preferences described below.
+export const FILTER_SYSTEM_PROMPT = `You are a post relevance scorer. Score each post from 0 to 100 based on the user's preferences described below.
 
 Score guidelines:
 - 90-100: Must-see, directly matches interests
@@ -30,7 +30,7 @@ Score guidelines:
 - 0-19: Spam or noise
 
 Respond with ONLY a JSON array, no markdown, no explanation.
-Format: [{"id":"tweet_db_id","score":85},...]`
+Format: [{"id":"content_item_id","score":85},...]`
 
 export const META_PROMPT = `You are a prompt engineer. Refine an AI system prompt based on user feedback.
 
@@ -456,51 +456,87 @@ function timeAgo(date: Date): string {
   return `${Math.floor(hours / 24)}d ago`
 }
 
-export interface TweetForAI {
-  id: string // DB id
-  authorHandle: string
-  authorName: string
-  authorFollowers: number
-  content: string
-  likes: number
-  retweets: number
-  replies: number
-  views: number
-  publishedAt: Date | null
-  isRetweet: string | null
-  quotedTweet: string | null
-  card: string | null
-}
+export type ItemForAI =
+  | {
+      id: string
+      provider: 'x'
+      authorHandle: string
+      authorName: string
+      authorFollowers: number
+      content: string
+      likes: number
+      retweets: number
+      replies: number
+      views: number
+      publishedAt: Date | null
+      isRetweet: string | null
+      quotedTweet: string | null
+      card: string | null
+    }
+  | {
+      id: string
+      provider: 'reddit'
+      subreddit: string
+      authorName: string | null
+      title: string
+      body: string | null
+      score: number
+      commentCount: number
+      domain: string | null
+      linkFlairText: string | null
+      over18: boolean
+      spoiler: boolean
+      isSelf: boolean
+      previewUrl: string | null
+      publishedAt: Date | null
+    }
 
-export function formatTweetsForAI(tweets: TweetForAI[]): string {
-  return tweets
-    .map((t) => {
+export function formatItemsForAI(items: ItemForAI[]): string {
+  return items
+    .map((item) => {
+      if (item.provider === 'x') {
+        const lines: string[] = []
+        const rt = item.isRetweet ? ` (RT by @${item.isRetweet})` : ''
+        const time = item.publishedAt ? ` - ${timeAgo(item.publishedAt)}` : ''
+        lines.push(`[ID: ${item.id}]`)
+        lines.push(
+          `[SOURCE: X] @${item.authorHandle} (${item.authorName}, ${item.authorFollowers} followers)${rt}${time}`,
+        )
+        const content = item.content.length > 500 ? item.content.slice(0, 500) + '...' : item.content
+        lines.push(content)
+        lines.push(
+          `[Likes: ${item.likes} | RTs: ${item.retweets} | Replies: ${item.replies} | Views: ${item.views}]`,
+        )
+        if (item.quotedTweet) {
+          try {
+            const qt = JSON.parse(item.quotedTweet)
+            lines.push(`> Quoting @${qt.authorHandle}: ${qt.content?.slice(0, 200) || ''}`)
+          } catch {}
+        }
+        if (item.card) {
+          try {
+            const card = JSON.parse(item.card)
+            if (card.title) lines.push(`> Link: ${card.title} (${card.domain})`)
+          } catch {}
+        }
+        return lines.join('\n')
+      }
+
       const lines: string[] = []
-      const rt = t.isRetweet ? ` (RT by @${t.isRetweet})` : ''
-      const time = t.publishedAt ? ` - ${timeAgo(t.publishedAt)}` : ''
-      lines.push(`[ID: ${t.id}]`)
+      const time = item.publishedAt ? ` - ${timeAgo(item.publishedAt)}` : ''
+      lines.push(`[ID: ${item.id}]`)
       lines.push(
-        `@${t.authorHandle} (${t.authorName}, ${t.authorFollowers} followers)${rt}${time}`,
+        `[SOURCE: Reddit] r/${item.subreddit} by u/${item.authorName || '[deleted]'}${time}`,
       )
-      const content = t.content.length > 500 ? t.content.slice(0, 500) + '...' : t.content
-      lines.push(content)
+      lines.push(item.title)
+      if (item.body) lines.push(item.body.length > 500 ? `${item.body.slice(0, 500)}...` : item.body)
       lines.push(
-        `[Likes: ${t.likes} | RTs: ${t.retweets} | Replies: ${t.replies} | Views: ${t.views}]`,
+        `[Score: ${item.score} | Comments: ${item.commentCount}${item.linkFlairText ? ` | Flair: ${item.linkFlairText}` : ''}]`,
       )
-      if (t.quotedTweet) {
-        try {
-          const qt = JSON.parse(t.quotedTweet)
-          lines.push(`> Quoting @${qt.authorHandle}: ${qt.content?.slice(0, 200) || ''}`)
-        } catch {}
-      }
-      if (t.card) {
-        try {
-          const c = JSON.parse(t.card)
-          if (c.title) lines.push(`> Link: ${c.title} (${c.domain})`)
-        } catch {}
-      }
+      if (item.domain && !item.isSelf) lines.push(`> Link domain: ${item.domain}`)
+      if (item.over18) lines.push('> NSFW')
+      if (item.spoiler) lines.push('> Spoiler')
       return lines.join('\n')
     })
     .join('\n---\n')
 }
-

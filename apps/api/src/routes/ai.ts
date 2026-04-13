@@ -1,14 +1,17 @@
 import { zValidator } from '@hono/zod-validator'
 import {
   aiReports,
+  aiScoringFeedInputs,
   aiScoringFeeds,
   aiSettings,
+  contentItems,
   getDb,
-  nudges,
+  itemNudges,
+  itemScores,
+  inputs,
   promptChanges,
-  tweets,
-  tweetScores,
-  userTweets,
+  redditPosts,
+  xPosts,
 } from '@omens/db'
 import {
   aiSettingsSchema,
@@ -20,9 +23,9 @@ import {
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import env from '../env'
-import { buildPagination, hydrateFeedRows } from '../helpers/feed'
 import { parsePagination } from '../helpers/http'
 import { hydrateReport } from '../helpers/report'
+import { feedInputsScope, getTimelineItemsByIds, getTimelinePage, serializeTimelineItems, type TimelineItem } from '../helpers/timeline'
 import {
   DEFAULT_SYSTEM_PROMPT,
   FILTER_SYSTEM_PROMPT,
@@ -30,7 +33,8 @@ import {
   REPORT_SYSTEM_PROMPT,
   callAI,
   callAIStream,
-  formatTweetsForAI,
+  formatItemsForAI,
+  type ItemForAI,
   listModels,
 } from '../helpers/ai'
 import type { AppEnv } from '../middleware/auth'
@@ -39,6 +43,12 @@ import { decrypt, encrypt } from '../helpers/crypto'
 const aiRouter = new Hono<AppEnv>()
 const DEFAULT_FEED_NAME = 'Main'
 const DEFAULT_FEED_ICON = '✦'
+
+type ItemRow = {
+  contentItem: typeof contentItems.$inferSelect
+  xPost: typeof xPosts.$inferSelect | null
+  redditPost: typeof redditPosts.$inferSelect | null
+}
 
 // --- Helpers ---
 
@@ -60,11 +70,6 @@ async function getAiConfig(userId: string) {
       model: settings.model,
     },
   }
-}
-
-async function getUserMinScore(userId: string): Promise<number> {
-  const feed = await getFeedForUser(userId)
-  return feed?.minScore ?? 50
 }
 
 function feedScopeKey(userId: string, feedId: string) {
@@ -104,6 +109,12 @@ async function ensureMainFeed(userId: string) {
     promptLastRegenAt: settings?.promptLastRegenAt ?? null,
     lastAutoReportAt: settings?.lastAutoReportAt ?? null,
   }).returning()
+  const userInputs = await db.select({ id: inputs.id }).from(inputs).where(eq(inputs.userId, userId))
+  if (userInputs.length > 0) {
+    await db.insert(aiScoringFeedInputs)
+      .values(userInputs.map((input) => ({ feedId: created.id, inputId: input.id })))
+      .onConflictDoNothing()
+  }
   return created
 }
 
@@ -145,6 +156,63 @@ function serializeFeed(feed: typeof aiScoringFeeds.$inferSelect) {
     promptLastRegenAt: feed.promptLastRegenAt,
     lastAutoReportAt: feed.lastAutoReportAt,
     nextReportAt: computeNextReportAt(feed),
+  }
+}
+
+function mapRowToAiItem(row: ItemRow): ItemForAI | null {
+  if (row.contentItem.provider === 'x' && row.xPost) {
+    return {
+      id: row.contentItem.id,
+      provider: 'x',
+      authorHandle: row.xPost.authorHandle,
+      authorName: row.xPost.authorName,
+      authorFollowers: row.xPost.authorFollowers,
+      content: row.xPost.content,
+      likes: row.xPost.likes,
+      retweets: row.xPost.retweets,
+      replies: row.xPost.replies,
+      views: row.xPost.views,
+      publishedAt: row.contentItem.publishedAt,
+      isRetweet: row.xPost.isRetweet,
+      quotedTweet: row.xPost.quotedTweet,
+      card: row.xPost.card,
+    }
+  }
+
+  if (row.contentItem.provider === 'reddit' && row.redditPost) {
+    return {
+      id: row.contentItem.id,
+      provider: 'reddit',
+      subreddit: row.redditPost.subreddit,
+      authorName: row.redditPost.authorName,
+      title: row.redditPost.title,
+      body: row.redditPost.body,
+      score: row.redditPost.score,
+      commentCount: row.redditPost.commentCount,
+      domain: row.redditPost.domain,
+      linkFlairText: row.redditPost.linkFlairText,
+      over18: row.redditPost.over18,
+      spoiler: row.redditPost.spoiler,
+      isSelf: row.redditPost.isSelf,
+      previewUrl: row.redditPost.previewUrl,
+      publishedAt: row.contentItem.publishedAt,
+    }
+  }
+
+  return null
+}
+
+function summarizeItemForFeedback(item: TimelineItem | null) {
+  if (!item) return { label: 'Post', preview: '' }
+  if (item.provider === 'x') {
+    return {
+      label: `@${item.payload.authorHandle}`,
+      preview: item.payload.content.slice(0, 200),
+    }
+  }
+  return {
+    label: `r/${item.payload.subreddit}`,
+    preview: (item.payload.body || item.payload.title).slice(0, 200),
   }
 }
 
@@ -269,6 +337,14 @@ aiRouter.put('/settings/intervals', async (c) => {
     const existing = await db.select({ id: aiSettings.id }).from(aiSettings).where(eq(aiSettings.userId, user.id)).limit(1)
     if (existing.length > 0) {
       await db.update(aiSettings).set(settingsUpdates).where(eq(aiSettings.userId, user.id))
+      if (settingsUpdates.fetchIntervalMinutes !== undefined) {
+        await db.update(inputs)
+          .set({
+            pollIntervalMinutes: Number(settingsUpdates.fetchIntervalMinutes),
+            updatedAt: new Date(),
+          })
+          .where(eq(inputs.userId, user.id))
+      }
     } else {
       return c.json({ error: 'AI not configured' }, 400)
     }
@@ -310,6 +386,12 @@ aiRouter.post('/feeds', zValidator('json', scoringFeedCreateSchema), async (c) =
     reportIntervalHours: mainFeed.reportIntervalHours,
     reportAtHour: mainFeed.reportAtHour,
   }).returning()
+  const userInputs = await db.select({ id: inputs.id }).from(inputs).where(eq(inputs.userId, user.id))
+  if (userInputs.length > 0) {
+    await db.insert(aiScoringFeedInputs)
+      .values(userInputs.map((input) => ({ feedId: feed.id, inputId: input.id })))
+      .onConflictDoNothing()
+  }
   return c.json({ feed: serializeFeed(feed) })
 })
 
@@ -381,29 +463,29 @@ aiRouter.post(
 
 aiRouter.post('/nudge', zValidator('json', nudgeSchema), async (c) => {
   const user = c.get('user')
-  const { tweetId, direction, feedId } = c.req.valid('json')
+  const { itemId, direction, feedId } = c.req.valid('json')
   const db = getDb(env.DATABASE_URL)
   const feed = await getFeedForUser(user.id, feedId)
 
-  await db.insert(nudges).values({
+  await db.insert(itemNudges).values({
     userId: user.id,
     feedId: feed.id,
-    tweetId,
+    contentItemId: itemId,
     direction,
   }).onConflictDoUpdate({
-    target: [nudges.userId, nudges.feedId, nudges.tweetId],
+    target: [itemNudges.userId, itemNudges.feedId, itemNudges.contentItemId],
     set: { direction, consumed: false, createdAt: new Date() },
   })
   return c.json({ ok: true })
 })
 
-aiRouter.delete('/nudge/:tweetId', async (c) => {
+aiRouter.delete('/nudge/:itemId', async (c) => {
   const user = c.get('user')
-  const tweetId = c.req.param('tweetId')
+  const itemId = c.req.param('itemId')
   const db = getDb(env.DATABASE_URL)
   const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
-  await db.delete(nudges).where(
-    and(eq(nudges.userId, user.id), eq(nudges.feedId, feed.id), eq(nudges.tweetId, tweetId)),
+  await db.delete(itemNudges).where(
+    and(eq(itemNudges.userId, user.id), eq(itemNudges.feedId, feed.id), eq(itemNudges.contentItemId, itemId)),
   )
   return c.json({ ok: true })
 })
@@ -413,9 +495,9 @@ aiRouter.get('/nudges', async (c) => {
   const db = getDb(env.DATABASE_URL)
   const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
   const rows = await db.select({
-    tweetId: nudges.tweetId,
-    direction: nudges.direction,
-  }).from(nudges).where(and(eq(nudges.userId, user.id), eq(nudges.feedId, feed.id)))
+    itemId: itemNudges.contentItemId,
+    direction: itemNudges.direction,
+  }).from(itemNudges).where(and(eq(itemNudges.userId, user.id), eq(itemNudges.feedId, feed.id)))
   return c.json({ nudges: rows })
 })
 
@@ -453,17 +535,17 @@ aiRouter.get('/internals', async (c) => {
 
   const pendingNudgeRows = await db
     .select({
-      id: nudges.id,
-      tweetId: nudges.tweetId,
-      direction: nudges.direction,
-      createdAt: nudges.createdAt,
-      tweetContent: tweets.content,
-      authorHandle: tweets.authorHandle,
+      id: itemNudges.id,
+      itemId: itemNudges.contentItemId,
+      direction: itemNudges.direction,
+      createdAt: itemNudges.createdAt,
     })
-    .from(nudges)
-    .innerJoin(tweets, eq(nudges.tweetId, tweets.id))
-    .where(and(eq(nudges.userId, user.id), eq(nudges.feedId, feed.id), eq(nudges.consumed, false)))
-    .orderBy(desc(nudges.createdAt))
+    .from(itemNudges)
+    .where(and(eq(itemNudges.userId, user.id), eq(itemNudges.feedId, feed.id), eq(itemNudges.consumed, false)))
+    .orderBy(desc(itemNudges.createdAt))
+
+  const refItems = await getTimelineItemsByIds(pendingNudgeRows.map((row) => row.itemId))
+  const refItemsById = new Map(refItems.map((item) => [item.id, item] as const))
 
   const pendingInstructions = await db
     .select()
@@ -487,9 +569,8 @@ aiRouter.get('/internals', async (c) => {
     defaultPrompt: DEFAULT_SYSTEM_PROMPT,
     pendingNudges: pendingNudgeRows.map((n) => ({
       id: n.id,
-      tweetId: n.tweetId,
-      tweetContent: n.tweetContent?.slice(0, 200) || '',
-      authorHandle: n.authorHandle,
+      itemId: n.itemId,
+      ...summarizeItemForFeedback(refItemsById.get(n.itemId) || null),
       direction: n.direction,
     })),
     pendingInstructions: pendingInstructions.map((p) => ({
@@ -522,22 +603,22 @@ export async function regeneratePromptForUser(userId: string, feedId?: string | 
 
   setStatus('Collecting feedback...')
 
-  // Get pending nudges with tweet context
   const pendingNudgeRows = await db
     .select({
-      id: nudges.id,
-      direction: nudges.direction,
-      tweetContent: tweets.content,
-      authorHandle: tweets.authorHandle,
+      id: itemNudges.id,
+      direction: itemNudges.direction,
+      itemId: itemNudges.contentItemId,
     })
-    .from(nudges)
-    .innerJoin(tweets, eq(nudges.tweetId, tweets.id))
-    .where(and(eq(nudges.userId, userId), eq(nudges.feedId, feed.id), eq(nudges.consumed, false)))
+    .from(itemNudges)
+    .where(and(eq(itemNudges.userId, userId), eq(itemNudges.feedId, feed.id), eq(itemNudges.consumed, false)))
 
   const pendingInstructions = await db.select().from(promptChanges)
     .where(and(eq(promptChanges.userId, userId), eq(promptChanges.feedId, feed.id), eq(promptChanges.consumed, false)))
 
   if (pendingNudgeRows.length === 0 && pendingInstructions.length === 0) return null
+
+  const refItems = await getTimelineItemsByIds(pendingNudgeRows.map((row) => row.itemId))
+  const refItemsById = new Map(refItems.map((item) => [item.id, item] as const))
 
   // Build feedback text
   const upTweets = pendingNudgeRows.filter((n) => n.direction === 'up')
@@ -546,12 +627,22 @@ export async function regeneratePromptForUser(userId: string, feedId?: string | 
   let feedback = ''
   if (upTweets.length > 0) {
     feedback += 'Thumbs UP (show more like these):\n'
-    feedback += upTweets.map((t) => `- @${t.authorHandle}: "${t.tweetContent?.slice(0, 150)}"`).join('\n')
+    feedback += upTweets
+      .map((item) => {
+        const summary = summarizeItemForFeedback(refItemsById.get(item.itemId) || null)
+        return `- ${summary.label}: "${summary.preview.slice(0, 150)}"`
+      })
+      .join('\n')
     feedback += '\n\n'
   }
   if (downTweets.length > 0) {
     feedback += 'Thumbs DOWN (show less like these):\n'
-    feedback += downTweets.map((t) => `- @${t.authorHandle}: "${t.tweetContent?.slice(0, 150)}"`).join('\n')
+    feedback += downTweets
+      .map((item) => {
+        const summary = summarizeItemForFeedback(refItemsById.get(item.itemId) || null)
+        return `- ${summary.label}: "${summary.preview.slice(0, 150)}"`
+      })
+      .join('\n')
     feedback += '\n\n'
   }
   if (pendingInstructions.length > 0) {
@@ -576,7 +667,7 @@ export async function regeneratePromptForUser(userId: string, feedId?: string | 
 
   const nudgeIds = pendingNudgeRows.map((n) => n.id)
   if (nudgeIds.length > 0) {
-    await db.update(nudges).set({ consumed: true }).where(inArray(nudges.id, nudgeIds))
+    await db.update(itemNudges).set({ consumed: true }).where(inArray(itemNudges.id, nudgeIds))
   }
   const instrIds = pendingInstructions.map((p) => p.id)
   if (instrIds.length > 0) {
@@ -717,40 +808,55 @@ export async function scoreUnscoredTweets(userId: string, feedId?: string | null
   const ai = await getAiConfig(userId)
   if (!ai) { scoringActive.delete(progressKey); return 0 }
   const db = getDb(env.DATABASE_URL)
+  const scope = feedInputsScope(userId, feed.id)
 
-  const allTweets = await db
-    .select({ id: tweets.id, tweetId: tweets.tweetId, authorId: tweets.authorId, authorName: tweets.authorName, authorHandle: tweets.authorHandle, authorAvatar: tweets.authorAvatar, authorFollowers: tweets.authorFollowers, authorBio: tweets.authorBio, content: tweets.content, mediaUrls: tweets.mediaUrls, isRetweet: tweets.isRetweet, quotedTweet: tweets.quotedTweet, card: tweets.card, replyToHandle: tweets.replyToHandle, url: tweets.url, likes: tweets.likes, retweets: tweets.retweets, replies: tweets.replies, views: tweets.views, publishedAt: tweets.publishedAt, fetchedAt: tweets.fetchedAt })
-    .from(tweets)
-    .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
+  const allItems = await db
+    .select({
+      contentItem: contentItems,
+      xPost: xPosts,
+      redditPost: redditPosts,
+    })
+    .from(contentItems)
+    .leftJoin(xPosts, eq(xPosts.contentItemId, contentItems.id))
+    .leftJoin(redditPosts, eq(redditPosts.contentItemId, contentItems.id))
     .where(and(
-      eq(userTweets.userId, userId),
-      ...(feed.scoreFromAt ? [gte(tweets.publishedAt, feed.scoreFromAt)] : []),
-      sql`NOT EXISTS (SELECT 1 FROM tweet_scores WHERE tweet_scores.tweet_id = tweets.id AND tweet_scores.user_id = ${userId} AND tweet_scores.feed_id = ${feed.id})`,
+      scope,
+      ...(feed.scoreFromAt ? [gte(contentItems.publishedAt, feed.scoreFromAt)] : []),
+      sql`NOT EXISTS (
+        SELECT 1
+        FROM item_scores
+        WHERE item_scores.content_item_id = ${contentItems.id}
+          AND item_scores.user_id = ${userId}
+          AND item_scores.feed_id = ${feed.id}
+      )`,
     ))
-    .orderBy(desc(tweets.publishedAt))
+    .orderBy(desc(contentItems.publishedAt))
 
-  if (allTweets.length === 0) { scoringActive.delete(progressKey); scoringProgress.delete(progressKey); return 0 }
+  if (allItems.length === 0) { scoringActive.delete(progressKey); scoringProgress.delete(progressKey); return 0 }
 
   const BATCH_SIZE = 10
-  const totalBatches = Math.ceil(allTweets.length / BATCH_SIZE)
-  const log: string[] = [`Found ${allTweets.length} unscored posts for ${feed.name}`]
+  const totalBatches = Math.ceil(allItems.length / BATCH_SIZE)
+  const log: string[] = [`Found ${allItems.length} unscored posts for ${feed.name}`]
   scoringProgress.set(progressKey, { batch: 0, totalBatches, batchSize: BATCH_SIZE, log })
   const userPrefs = feed.systemPrompt || DEFAULT_SYSTEM_PROMPT
   let totalScored = 0
 
-  for (let i = 0; i < allTweets.length; i += BATCH_SIZE) {
+  for (let i = 0; i < allItems.length; i += BATCH_SIZE) {
     const batchNum = Math.floor(i / BATCH_SIZE) + 1
     log.push(`Sending batch ${batchNum}/${totalBatches} to ${ai.config.provider}...`)
     scoringProgress.set(progressKey, { batch: batchNum, totalBatches, batchSize: BATCH_SIZE, log })
 
-    const batch = allTweets.slice(i, i + BATCH_SIZE)
-    const tweetText = formatTweetsForAI(batch)
+    const batch = allItems
+      .slice(i, i + BATCH_SIZE)
+      .map(mapRowToAiItem)
+      .filter((item): item is ItemForAI => !!item)
+    const itemText = formatItemsForAI(batch)
     const prompt = `${FILTER_SYSTEM_PROMPT}\n\nUser preferences:\n${userPrefs}`
 
-    const validIds = new Set(batch.map((t) => t.id))
+    const validIds = new Set(batch.map((item) => item.id))
 
     try {
-      let response = await callAI(ai.config, prompt, tweetText)
+      let response = await callAI(ai.config, prompt, itemText)
       response = response.replace(/^```json?\n?/m, '').replace(/\n?```$/m, '').trim()
       const scores: Array<{ id: string; score: number }> = JSON.parse(response)
 
@@ -759,10 +865,10 @@ export async function scoreUnscoredTweets(userId: string, feedId?: string | null
           typeof s.id === 'string' && typeof s.score === 'number' && validIds.has(s.id),
       )
       await Promise.all(validScores.map((s) =>
-        db.insert(tweetScores).values({
+        db.insert(itemScores).values({
           userId: userId,
           feedId: feed.id,
-          tweetId: s.id,
+          contentItemId: s.id,
           score: Math.max(0, Math.min(100, Math.round(s.score))),
         }).onConflictDoNothing(),
       ))
@@ -783,7 +889,7 @@ export async function scoreUnscoredTweets(userId: string, feedId?: string | null
   log.push(`Done — scored ${totalScored} posts total`)
   scoringProgress.delete(progressKey)
   scoringActive.delete(progressKey)
-  if (totalScored > 0) console.log(`[ai] Scored ${totalScored} tweets for user ${userId}, feed ${feed.id}`)
+  if (totalScored > 0) console.log(`[ai] Scored ${totalScored} items for user ${userId}, feed ${feed.id}`)
   return totalScored
 }
 
@@ -806,30 +912,29 @@ aiRouter.get('/scoring-status', async (c) => {
   const db = getDb(env.DATABASE_URL)
   const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
   const minScore = feed.minScore
-  const eligibility = feed.scoreFromAt ? gte(tweets.publishedAt, feed.scoreFromAt) : undefined
+  const scope = feedInputsScope(user.id, feed.id)
+  const eligibility = feed.scoreFromAt ? gte(contentItems.publishedAt, feed.scoreFromAt) : undefined
 
   const [{ total }] = await db.select({ total: sql<number>`count(*)` })
-    .from(userTweets)
-    .innerJoin(tweets, eq(tweets.id, userTweets.tweetId))
-    .where(and(eq(userTweets.userId, user.id), ...(eligibility ? [eligibility] : [])))
+    .from(contentItems)
+    .where(and(scope, ...(eligibility ? [eligibility] : [])))
 
   const [{ scored }] = await db.select({ scored: sql<number>`count(*)` })
-    .from(tweetScores)
-    .innerJoin(tweets, eq(tweets.id, tweetScores.tweetId))
+    .from(itemScores)
+    .innerJoin(contentItems, eq(contentItems.id, itemScores.contentItemId))
     .where(and(
-      eq(tweetScores.userId, user.id),
-      eq(tweetScores.feedId, feed.id),
+      eq(itemScores.userId, user.id),
+      eq(itemScores.feedId, feed.id),
       ...(eligibility ? [eligibility] : []),
     ))
 
-  // Count how many scored tweets are above threshold (for "N new posts" banner)
   const [{ aboveThreshold }] = await db.select({ aboveThreshold: sql<number>`count(*)` })
-    .from(tweetScores)
-    .innerJoin(tweets, eq(tweets.id, tweetScores.tweetId))
+    .from(itemScores)
+    .innerJoin(contentItems, eq(contentItems.id, itemScores.contentItemId))
     .where(and(
-      eq(tweetScores.userId, user.id),
-      eq(tweetScores.feedId, feed.id),
-      gte(tweetScores.score, minScore),
+      eq(itemScores.userId, user.id),
+      eq(itemScores.feedId, feed.id),
+      gte(itemScores.score, minScore),
       ...(eligibility ? [eligibility] : []),
     ))
 
@@ -849,47 +954,24 @@ aiRouter.get('/scoring-status', async (c) => {
 
 aiRouter.get('/filtered-feed', async (c) => {
   const user = c.get('user')
-  const db = getDb(env.DATABASE_URL)
   const feed = await getFeedForUser(user.id, getRequestedFeedId(c))
-  const minScore = feed.minScore
-  const { page, limit, offset } = parsePagination(c)
-
-  const result = await db
-    .select({
-      tweet: tweets,
-      score: tweetScores.score,
-    })
-    .from(tweets)
-    .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
-    .innerJoin(tweetScores, and(
-      eq(tweetScores.tweetId, tweets.id),
-      eq(tweetScores.userId, user.id),
-      eq(tweetScores.feedId, feed.id),
-    ))
-    .where(and(
-      eq(userTweets.userId, user.id),
-      gte(tweetScores.score, minScore),
-    ))
-    .orderBy(desc(tweets.publishedAt))
-    .limit(limit)
-    .offset(offset)
-
-  const [{ count }] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(tweets)
-    .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
-    .innerJoin(tweetScores, and(
-      eq(tweetScores.tweetId, tweets.id),
-      eq(tweetScores.userId, user.id),
-      eq(tweetScores.feedId, feed.id),
-    ))
-    .where(and(eq(userTweets.userId, user.id), gte(tweetScores.score, minScore)))
-
-  const data = await hydrateFeedRows(db, result)
+  const { page, limit } = parsePagination(c)
+  const timeline = await getTimelinePage({
+    userId: user.id,
+    feedId: feed.id,
+    page,
+    limit,
+    minScore: feed.minScore,
+  })
 
   return c.json({
-    data,
-    pagination: buildPagination(page, limit, count),
+    data: timeline.items,
+    pagination: {
+      page,
+      limit,
+      total: timeline.total,
+      totalPages: Math.ceil(timeline.total / limit),
+    },
   })
 })
 
@@ -898,12 +980,12 @@ aiRouter.get('/filtered-feed', async (c) => {
 // In-memory report generation tracking
 interface ReportProgress {
   startedAt: Date
-  tweetCount: number
+  itemCount: number
   status: string
   content: string
   done: boolean
   error?: string
-  tweets: Array<{ id: string; [key: string]: any }>
+  items: TimelineItem[]
   subscribers: Set<(event: string) => void>
 }
 const reportGenerating = new Map<string, ReportProgress>()
@@ -915,7 +997,7 @@ aiRouter.get('/report-status', async (c) => {
   return c.json({
     generating: !!progress && !progress.done && !progress.error,
     startedAt: progress?.startedAt || null,
-    tweetCount: progress?.tweetCount || 0,
+    itemCount: progress?.itemCount || 0,
     status: progress?.status || null,
     error: progress?.error || null,
   })
@@ -929,8 +1011,8 @@ export async function generateReportForUser(userId: string, feedId?: string | nu
 
   // Register progress immediately so /report-stream can find it before async work completes
   const progress: ReportProgress = {
-    startedAt: new Date(), tweetCount: 0, status: 'Preparing...',
-    content: '', done: false, tweets: [], subscribers: new Set(),
+    startedAt: new Date(), itemCount: 0, status: 'Preparing...',
+    content: '', done: false, items: [], subscribers: new Set(),
   }
   reportGenerating.set(progressKey, progress)
 
@@ -943,36 +1025,50 @@ export async function generateReportForUser(userId: string, feedId?: string | nu
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
   const minScore = feed.minScore
+  const scope = feedInputsScope(userId, feed.id)
 
   await scoreUnscoredTweets(userId, feed.id)
 
-  // Use all scored tweets from the AI-filtered feed (score >= minScore) in the last 24h
-  let tweetList = await db.select({ tweet: tweets })
-    .from(tweets)
-    .innerJoin(userTweets, eq(userTweets.tweetId, tweets.id))
-    .innerJoin(tweetScores, and(eq(tweetScores.tweetId, tweets.id), eq(tweetScores.userId, userId), eq(tweetScores.feedId, feed.id)))
-    .where(and(eq(userTweets.userId, userId), gte(tweets.publishedAt, since), gte(tweetScores.score, minScore)))
-    .orderBy(desc(tweets.publishedAt))
-    .then((rows) => rows.map((r) => r.tweet))
+  const itemRows = await db
+    .select({
+      contentItem: contentItems,
+      xPost: xPosts,
+      redditPost: redditPosts,
+      score: itemScores.score,
+    })
+    .from(contentItems)
+    .leftJoin(xPosts, eq(xPosts.contentItemId, contentItems.id))
+    .leftJoin(redditPosts, eq(redditPosts.contentItemId, contentItems.id))
+    .innerJoin(itemScores, and(
+      eq(itemScores.contentItemId, contentItems.id),
+      eq(itemScores.userId, userId),
+      eq(itemScores.feedId, feed.id),
+    ))
+    .where(and(scope, gte(contentItems.publishedAt, since), gte(itemScores.score, minScore)))
+    .orderBy(desc(contentItems.publishedAt))
 
-  if (tweetList.length === 0) {
-    // Update lastAutoReportAt to prevent retry every 5 minutes (only for auto)
+  const aiItems = itemRows
+    .map(({ score: _score, ...row }) => mapRowToAiItem(row))
+    .filter((item): item is ItemForAI => !!item)
+  const timelineItems = serializeTimelineItems(itemRows)
+
+  if (aiItems.length === 0) {
     if (isAuto) await db.update(aiScoringFeeds).set({ lastAutoReportAt: new Date(), updatedAt: new Date() }).where(eq(aiScoringFeeds.id, feed.id))
     reportGenerating.delete(progressKey)
     return null
   }
 
-  progress.tweetCount = tweetList.length
-  progress.tweets = tweetList
+  progress.itemCount = aiItems.length
+  progress.items = timelineItems
 
   try {
-    setStatus(`Analyzing ${tweetList.length} posts...`)
+    setStatus(`Analyzing ${aiItems.length} posts...`)
 
     const systemPrompt = `${feed.systemPrompt || DEFAULT_SYSTEM_PROMPT}\n\n${REPORT_SYSTEM_PROMPT}`
-    const tweetText = formatTweetsForAI(tweetList)
-    const userContent = `Here are ${tweetList.length} posts from the last 24 hours (pre-filtered by relevance). Analyze and create a report:\n\n${tweetText}`
+    const itemText = formatItemsForAI(aiItems)
+    const userContent = `Here are ${aiItems.length} posts from the last 24 hours (pre-filtered by relevance). Analyze and create a report:\n\n${itemText}`
 
-    setStatus(`Waiting for AI response (${tweetList.length} posts)...`)
+    setStatus(`Waiting for AI response (${aiItems.length} posts)...`)
 
     // Stream content from AI provider
     let firstChunk = true
@@ -984,16 +1080,16 @@ export async function generateReportForUser(userId: string, feedId?: string | nu
 
     setStatus('Saving report...')
     const content = progress.content
-    const refMatches = [...content.matchAll(/\[\[tweet:([^\]]+)\]\]/g)]
-    const tweetRefIds = refMatches.map((m) => m[1])
+    const refMatches = [...content.matchAll(/\[\[(?:item|tweet):([^\]]+)\]\]/g)]
+    const itemRefIds = refMatches.map((m) => m[1])
 
     const [report] = await db.insert(aiReports).values({
       userId,
       feedId: feed.id,
       content,
       model: ai.settings.model,
-      tweetCount: tweetList.length,
-      tweetRefs: tweetRefIds.length > 0 ? JSON.stringify(tweetRefIds) : null,
+      itemCount: aiItems.length,
+      itemRefs: itemRefIds.length > 0 ? JSON.stringify(itemRefIds) : null,
     }).returning()
 
     if (isAuto) await db.update(aiScoringFeeds).set({ lastAutoReportAt: new Date(), updatedAt: new Date() }).where(eq(aiScoringFeeds.id, feed.id))
@@ -1001,7 +1097,7 @@ export async function generateReportForUser(userId: string, feedId?: string | nu
     progress.done = true
     for (const sub of progress.subscribers) sub('[DONE]')
     reportGenerating.delete(progressKey)
-    console.log(`[ai] Generated report for user ${userId}, feed ${feed.id} (${tweetList.length} tweets)`)
+    console.log(`[ai] Generated report for user ${userId}, feed ${feed.id} (${aiItems.length} items)`)
     return report
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err)
@@ -1080,7 +1176,7 @@ aiRouter.get('/report-stream', async (c) => {
           return
         }
 
-        if (progress.tweets.length > 0) send(JSON.stringify({ tweets: progress.tweets }))
+        if (progress.items.length > 0) send(JSON.stringify({ items: progress.items }))
         if (progress.status) send(JSON.stringify({ status: progress.status }))
         if (progress.content) send(JSON.stringify({ content: progress.content }))
 
@@ -1139,7 +1235,7 @@ aiRouter.get('/reports', async (c) => {
   const reports = await db.select({
     id: aiReports.id,
     model: aiReports.model,
-    tweetCount: aiReports.tweetCount,
+    itemCount: aiReports.itemCount,
     createdAt: aiReports.createdAt,
     feedId: aiReports.feedId,
   }).from(aiReports)

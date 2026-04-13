@@ -1,0 +1,17 @@
+apiVersion: 1
+
+providers:
+  - name: Omens Public
+    folder: Omens Public
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards/public
+  - name: Omens Admin
+    folder: Omens Admin
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards/admin

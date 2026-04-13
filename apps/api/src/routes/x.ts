@@ -1,10 +1,22 @@
 import { zValidator } from '@hono/zod-validator'
-import { articles, getDb, nudges, promptChanges, tweetScores, userTweets, xSessions } from '@omens/db'
+import {
+  articles,
+  getDb,
+  inputs,
+  nudges,
+  promptChanges,
+  sourceAccounts,
+  tweetScores,
+  userTweets,
+  xAccounts,
+  xSessions,
+} from '@omens/db'
 import { xLoginSchema } from '@omens/shared'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import env from '../env'
 import { encrypt } from '../helpers/crypto'
+import { ensureLegacyXInputForUser, ensureXAccountInput } from '../helpers/inputs'
 import type { AuthUser } from '../middleware/auth'
 import { xLogin } from '../x/auth'
 import { fetchForUser } from '../x/fetcher'
@@ -12,6 +24,37 @@ import { decrypt } from '../helpers/crypto'
 import { getArticleContent, getHomeTimeline, getTweetConversation, getTweetReplies, getTweetThread } from '../x/graphql'
 
 const xRouter = new Hono<{ Variables: { user: AuthUser } }>()
+
+async function getAnyXAccountForUser(userId: string) {
+  const db = getDb(env.DATABASE_URL)
+  const [account] = await db
+    .select({
+      username: xAccounts.username,
+      authToken: xAccounts.authToken,
+      ct0: xAccounts.ct0,
+      createdAt: sourceAccounts.createdAt,
+    })
+    .from(sourceAccounts)
+    .innerJoin(xAccounts, eq(xAccounts.sourceAccountId, sourceAccounts.id))
+    .where(and(eq(sourceAccounts.userId, userId), eq(sourceAccounts.provider, 'x')))
+    .limit(1)
+
+  if (account) return account
+
+  await ensureLegacyXInputForUser(userId)
+  const [legacy] = await db
+    .select({
+      username: xSessions.username,
+      authToken: xSessions.authToken,
+      ct0: xSessions.ct0,
+      createdAt: xSessions.createdAt,
+    })
+    .from(xSessions)
+    .where(eq(xSessions.userId, userId))
+    .limit(1)
+
+  return legacy || null
+}
 
 xRouter.post('/login', zValidator('json', xLoginSchema), async (c) => {
   const user = c.get('user')
@@ -63,6 +106,14 @@ xRouter.post('/login', zValidator('json', xLoginSchema), async (c) => {
       })
     }
 
+    await ensureXAccountInput({
+      userId: user.id,
+      xId: session.xId,
+      username: session.username,
+      authToken: encAuthToken,
+      ct0: encCt0,
+    })
+
     const isReconnect = existing.length > 0
     if (!isReconnect) {
       // Only wipe tweet links on first connection, not reconnect
@@ -98,16 +149,7 @@ xRouter.post('/login', zValidator('json', xLoginSchema), async (c) => {
 
 xRouter.get('/session', async (c) => {
   const user = c.get('user')
-  const db = getDb(env.DATABASE_URL)
-
-  const [session] = await db
-    .select({
-      username: xSessions.username,
-      createdAt: xSessions.createdAt,
-    })
-    .from(xSessions)
-    .where(eq(xSessions.userId, user.id))
-    .limit(1)
+  const session = await getAnyXAccountForUser(user.id)
 
   if (!session) {
     return c.json({ connected: false })
@@ -128,6 +170,8 @@ xRouter.delete('/session', async (c) => {
   await db.delete(tweetScores).where(eq(tweetScores.userId, user.id))
   await db.delete(promptChanges).where(eq(promptChanges.userId, user.id))
   await db.delete(userTweets).where(eq(userTweets.userId, user.id))
+  await db.delete(inputs).where(and(eq(inputs.userId, user.id), eq(inputs.provider, 'x')))
+  await db.delete(sourceAccounts).where(and(eq(sourceAccounts.userId, user.id), eq(sourceAccounts.provider, 'x')))
   await db.delete(xSessions).where(eq(xSessions.userId, user.id))
 
   console.log(`[x] User ${user.id} disconnected X`)
@@ -156,13 +200,7 @@ xRouter.get('/thread/:tweetId', async (c) => {
   if (!/^\d+$/.test(tweetId)) {
     return c.json({ error: 'Invalid tweet ID' }, 400)
   }
-  const db = getDb(env.DATABASE_URL)
-
-  const [session] = await db
-    .select()
-    .from(xSessions)
-    .where(eq(xSessions.userId, user.id))
-    .limit(1)
+  const session = await getAnyXAccountForUser(user.id)
 
   if (!session) {
     return c.json({ error: 'X not connected' }, 400)
@@ -185,13 +223,7 @@ xRouter.get('/conversation/:tweetId', async (c) => {
   if (!/^\d+$/.test(tweetId)) {
     return c.json({ error: 'Invalid tweet ID' }, 400)
   }
-  const db = getDb(env.DATABASE_URL)
-
-  const [session] = await db
-    .select()
-    .from(xSessions)
-    .where(eq(xSessions.userId, user.id))
-    .limit(1)
+  const session = await getAnyXAccountForUser(user.id)
 
   if (!session) {
     return c.json({ error: 'X not connected' }, 400)
@@ -214,13 +246,7 @@ xRouter.get('/replies/:tweetId', async (c) => {
   if (!/^\d+$/.test(tweetId)) {
     return c.json({ error: 'Invalid tweet ID' }, 400)
   }
-  const db = getDb(env.DATABASE_URL)
-
-  const [session] = await db
-    .select()
-    .from(xSessions)
-    .where(eq(xSessions.userId, user.id))
-    .limit(1)
+  const session = await getAnyXAccountForUser(user.id)
 
   if (!session) {
     return c.json({ error: 'X not connected' }, 400)
@@ -245,12 +271,7 @@ xRouter.get('/article/:tweetId', async (c) => {
     return c.json({ error: 'Invalid tweet ID' }, 400)
   }
   const db = getDb(env.DATABASE_URL)
-
-  const [session] = await db
-    .select()
-    .from(xSessions)
-    .where(eq(xSessions.userId, user.id))
-    .limit(1)
+  const session = await getAnyXAccountForUser(user.id)
 
   if (!session) {
     return c.json({ error: 'X not connected' }, 400)
@@ -304,8 +325,7 @@ xRouter.get('/article-debug/:tweetId', async (c) => {
   if (!/^\d+$/.test(tweetId)) {
     return c.json({ error: 'Invalid tweet ID' }, 400)
   }
-  const db = getDb(env.DATABASE_URL)
-  const [session] = await db.select().from(xSessions).where(eq(xSessions.userId, user.id)).limit(1)
+  const session = await getAnyXAccountForUser(user.id)
   if (!session) return c.json({ error: 'X not connected' }, 400)
 
   try {

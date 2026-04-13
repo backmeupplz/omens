@@ -428,70 +428,9 @@ body {
   animation: share-burst-float 520ms ease-out forwards;
 }
 
-.app-shell {
-  min-height: 100vh;
-  background: var(--np-bg);
-  color: var(--np-text);
-}
-
-.app-nav {
-  border-bottom: 1px solid var(--np-border-light);
-  background: var(--np-nav-bg);
-  backdrop-filter: blur(10px);
-}
-
-.app-brand {
-  color: var(--np-text);
-  font-family: "Didot", "Bodoni 72", "Hoefler Text", "Iowan Old Style", "Palatino Linotype", serif;
-  font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  text-decoration: none;
-}
-
-.app-brand:hover,
-.app-brand:focus-visible {
-  color: var(--np-text);
-}
-
-.app-nav-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.4rem;
-  border: 1px solid transparent;
-  color: var(--np-text-muted);
-  border-radius: 9999px;
-  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
-}
-
-.app-nav-button:hover,
-.app-nav-button:focus-visible {
-  color: var(--np-text);
-  background: var(--np-nav-hover);
-  border-color: var(--np-border);
-}
-
-.app-nav-button-active {
-  color: var(--np-text);
-  background: var(--np-nav-hover);
-  border-color: var(--np-border);
-}
-
-.app-nav-link {
-  color: var(--np-text-muted);
-  font-size: 0.9rem;
-  text-decoration: none;
-  transition: color 160ms ease;
-}
-
-.app-nav-link:hover,
-.app-nav-link:focus-visible {
-  color: var(--np-text);
-}
-
 .np-scroll-top {
+  appearance: none;
+  -webkit-appearance: none;
   border: 1px solid var(--np-border);
   background: var(--np-panel-bg-strong);
   color: var(--np-text-muted);
@@ -594,6 +533,8 @@ body {
 }
 
 .np-button {
+  appearance: none;
+  -webkit-appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1100,10 +1041,6 @@ html.newspaper-active main {
   padding-bottom: 0 !important;
   padding-left: 0 !important;
   padding-right: 0 !important;
-}
-
-html.newspaper-active .app-nav {
-  display: none;
 }
 
 html.newspaper-active,
@@ -1975,12 +1912,13 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
   justify-content: center;
   border-radius: 9999px;
   border: 1px solid var(--np-rule);
-  background: var(--np-panel-bg);
+  background: var(--np-overlay-panel-bg);
   color: var(--np-text);
   padding: 0.45rem 1rem;
   font-size: 0.76rem;
   letter-spacing: 0.04em;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(6px);
 }
 
 .np-status-panel {
@@ -2226,96 +2164,259 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
   max-width: 50rem;
   margin: 0 auto;
   color: var(--np-text-secondary);
+}
+
+.np-settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(100%, 36rem);
+  margin-inline: auto;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 0.92rem;
-  line-height: 1.55;
 }
 
-.np-settings-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 23rem), 1fr));
-  gap: 0.9rem 0.8rem;
-  align-items: start;
+.np-settings-page :where(h1, h2, h3, h4, h5, h6, p, span, label, button, input, select, textarea, code, pre) {
+  font-family: inherit;
 }
 
-.np-settings-card-wide {
-  grid-column: span 2;
+.np-settings-flow,
+.np-settings-section-block,
+.np-settings-section,
+.np-settings-section-items,
+.np-settings-item,
+.np-settings-item-head,
+.np-settings-item-main,
+.np-settings-item-body,
+.np-settings-fields,
+.np-settings-feed-panel,
+.np-settings-feed-box,
+.np-settings-feed-sections,
+.np-settings-form-grid,
+.np-settings-subsection {
+  display: flex;
+  flex-direction: column;
 }
 
-.np-settings-card h3 {
-  font-family: "Didot", "Bodoni 72", "Hoefler Text", "Iowan Old Style", "Palatino Linotype", serif;
-  font-size: clamp(1rem, 1.1vw, 1.18rem);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+.np-settings-flow {
+  gap: 0.5rem;
+}
+
+.np-settings-section-block {
+  gap: 0.35rem;
+}
+
+.np-settings-section {
+  gap: 1rem;
+  margin-block: 0.15rem;
+  padding: 1rem;
+  border: 1px solid var(--np-border);
+  background: color-mix(in srgb, var(--np-inline-card-bg) 92%, transparent);
+}
+
+.np-settings-status-section {
+  gap: 0.75rem;
+}
+
+.np-settings-section-title,
+.np-settings-item-title {
+  margin: 0;
   color: var(--np-text);
-  padding-bottom: 0.38rem;
-  margin-bottom: 0.7rem;
-  border-bottom: 1px solid var(--np-rule);
+  font-weight: 600;
 }
 
-.np-settings-card p,
-.np-settings-card span,
-.np-settings-card li,
-.np-settings-card code,
-.np-settings-card pre {
+.np-settings-section-title {
+  font-size: 1rem;
+}
+
+.np-settings-item-title {
+  font-size: 0.95rem;
+}
+
+.np-settings-section-items {
+  gap: 0;
+}
+
+.np-settings-section-items > * + * {
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid color-mix(in srgb, var(--np-rule) 55%, transparent);
+}
+
+.np-settings-item,
+.np-settings-item-body,
+.np-settings-fields,
+.np-settings-form-grid,
+.np-settings-feed-panel,
+.np-settings-feed-box {
+  gap: 0.75rem;
+}
+
+.np-settings-item-row,
+.np-settings-item-actions,
+.np-settings-inline,
+.np-settings-feed-header,
+.np-settings-feed-inline,
+.np-settings-feed-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.np-settings-item-row,
+.np-settings-feed-header {
+  align-items: stretch;
+  justify-content: space-between;
+}
+
+.np-settings-item-head {
+  gap: 0.2rem;
+}
+
+.np-settings-item-main {
+  gap: 0.2rem;
+  justify-content: center;
+  min-width: 0;
+  flex: 1 1 14rem;
+}
+
+.np-settings-item-copy,
+.np-settings-subsection-copy {
+  margin: 0;
   color: var(--np-text-secondary);
+  font-size: 0.84rem;
 }
 
-.np-settings-card .text-zinc-500,
-.np-settings-card .text-zinc-600,
-.np-settings-card .text-zinc-700 {
-  color: var(--np-text-muted) !important;
+.np-settings-item-copy-inline {
+  color: var(--np-text-secondary);
+  font-size: 0.84rem;
+  font-weight: 400;
 }
 
-.np-settings-card .text-zinc-100,
-.np-settings-card .text-zinc-200 {
-  color: var(--np-text) !important;
+.np-settings-item-actions {
+  align-self: flex-start;
+  justify-content: flex-end;
 }
 
-.np-settings-card .text-emerald-400 {
-  color: var(--np-alert-success-text) !important;
+.np-settings-inline,
+.np-settings-feed-inline {
+  align-items: center;
 }
 
-.np-settings-card .text-red-400 {
-  color: var(--np-alert-error-text) !important;
+.np-settings-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.8rem;
+  border: 1px solid var(--np-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--np-inline-card-bg) 90%, transparent);
+  color: var(--np-text);
+  font-size: 0.88rem;
 }
 
-.np-settings-card .bg-zinc-900,
-.np-settings-card .bg-zinc-900\/20,
-.np-settings-card .bg-zinc-900\/50,
-.np-settings-card .bg-zinc-800 {
-  background: var(--np-bg-alt) !important;
+.np-settings-status-badge.is-done {
+  border-color: var(--np-setup-done-border);
+  background: var(--np-setup-done-bg);
+  color: var(--np-setup-done-text);
 }
 
-.np-settings-card .border-zinc-800,
-.np-settings-card .border-zinc-700,
-.np-settings-card .border-emerald-800 {
-  border-color: var(--np-border) !important;
+.np-settings-status-badge.is-live {
+  border-color: var(--np-setup-active-border);
+  background: var(--np-setup-active-bg);
+  color: var(--np-setup-active-text);
 }
 
-.np-settings-card label {
-  display: block;
-  margin-bottom: 0.3rem;
-  color: var(--np-text-muted) !important;
-  font-size: 0.68rem !important;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.np-settings-card input[type="text"],
-.np-settings-card input[type="password"],
-.np-settings-card select,
-.np-settings-card textarea {
-  width: 100%;
-  border: 1px solid var(--np-border) !important;
-  background: var(--np-control-bg) !important;
-  color: var(--np-text) !important;
-  border-radius: 0.7rem;
-}
-
-.np-settings-card input::placeholder,
-.np-settings-card textarea::placeholder {
+.np-settings-status-badge.is-later {
+  background: var(--np-setup-pending-bg);
   color: var(--np-text-muted);
+}
+
+.np-settings-feed-sections {
+  gap: 0;
+}
+
+.np-settings-feed-sections > * + * {
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid color-mix(in srgb, var(--np-rule) 55%, transparent);
+}
+
+.np-settings-truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.np-settings-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.np-settings-inline-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  cursor: pointer;
+}
+
+.np-settings-inline-select {
+  width: auto !important;
+  min-width: 0;
+  padding: 0.65rem 2.55rem 0.65rem 0.9rem !important;
+  background-image: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.np-settings-inline-select-indicator {
+  pointer-events: none;
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  border-left: 1px solid var(--np-border);
+  color: var(--np-text-muted);
+  border-top-right-radius: 1rem;
+  border-bottom-right-radius: 1rem;
+}
+
+.np-settings-inline-select-indicator svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.np-settings-form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.np-settings-form-grid > * {
+  min-width: 0;
+}
+
+.np-settings-form-grid-feed {
+  flex-direction: column;
+}
+
+.np-settings-page :where(label, input, select, textarea) {
+  font-size: 0.9rem;
+}
+
+.np-settings-page .np-button {
+  font-size: 0.88rem;
+}
+
+.np-settings-page .np-button-small {
+  font-size: 0.84rem;
 }
 
 .np-settings-card input[type="range"] {
@@ -2535,8 +2636,16 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
     text-align: left;
   }
 
-  .np-settings-card-wide {
-    grid-column: auto;
+  .np-settings-card {
+    padding: 0.6rem 0.65rem 0.7rem;
+  }
+
+  .np-settings-page {
+    width: 100%;
+  }
+
+  .np-settings-section-title {
+    padding-inline: 0.35rem;
   }
 
   .np-share-promo-layout {

@@ -107,7 +107,7 @@ demoRouter.get('/reports', async (c) => {
   const limit = 10
   const offset = (page - 1) * limit
 
-  const reports = await db.select({ id: aiReports.id, model: aiReports.model, tweetCount: aiReports.tweetCount, createdAt: aiReports.createdAt })
+  const reports = await db.select({ id: aiReports.id, model: aiReports.model, itemCount: aiReports.itemCount, createdAt: aiReports.createdAt })
     .from(aiReports).where(eq(aiReports.userId, userId))
     .orderBy(desc(aiReports.createdAt)).limit(limit).offset(offset)
 

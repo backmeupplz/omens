@@ -10,6 +10,9 @@ import aiRouter from './routes/ai'
 import apiKeysRouter from './routes/apikeys'
 import authRoutes from './routes/auth'
 import feedRouter from './routes/feed'
+import inputsRouter from './routes/inputs'
+import timelineRouter from './routes/timeline'
+import redditRouter from './routes/reddit'
 import xRouter from './routes/x'
 import demoRouter from './routes/demo'
 import shareRouter, { shareDataRouter } from './routes/share'
@@ -68,11 +71,23 @@ export function createApp() {
   apiApp.route('/auth', authRoutes)
 
   // Protected routes
+  apiApp.use('/feed', authMiddleware)
   apiApp.use('/feed/*', authMiddleware)
+  apiApp.use('/inputs', authMiddleware)
+  apiApp.use('/inputs/*', authMiddleware)
+  apiApp.use('/timeline', authMiddleware)
+  apiApp.use('/timeline/*', authMiddleware)
+  apiApp.use('/x', authMiddleware)
   apiApp.use('/x/*', authMiddleware)
+  apiApp.use('/reddit', authMiddleware)
+  apiApp.use('/reddit/*', authMiddleware)
+  apiApp.use('/api-keys', authMiddleware)
   apiApp.use('/api-keys/*', authMiddleware)
+  apiApp.use('/ai', authMiddleware)
   apiApp.use('/ai/*', authMiddleware)
+  apiApp.use('/og', authMiddleware)
   apiApp.use('/og/*', authMiddleware)
+  apiApp.use('/media', authMiddleware)
   apiApp.use('/media/*', authMiddleware)
 
   // Rate limit AI endpoints
@@ -186,7 +201,10 @@ export function createApp() {
   })
 
   apiApp.route('/feed', feedRouter)
+  apiApp.route('/inputs', inputsRouter)
+  apiApp.route('/timeline', timelineRouter)
   apiApp.route('/x', xRouter)
+  apiApp.route('/reddit', redditRouter)
   apiApp.route('/api-keys', apiKeysRouter)
   apiApp.route('/ai', aiRouter)
 

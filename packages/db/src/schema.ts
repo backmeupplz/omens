@@ -33,6 +33,190 @@ export const xSessions = pgTable('x_sessions', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+export const sourceAccounts = pgTable(
+  'source_accounts',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(), // 'x' | 'reddit' | future providers
+    externalAccountId: text('external_account_id'),
+    label: text('label').notNull(),
+    status: text('status').notNull().default('active'),
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('source_accounts_user_provider_external_idx').on(
+      table.userId,
+      table.provider,
+      table.externalAccountId,
+    ),
+  ],
+)
+
+export const xAccounts = pgTable('x_accounts', {
+  sourceAccountId: text('source_account_id')
+    .primaryKey()
+    .references(() => sourceAccounts.id, { onDelete: 'cascade' }),
+  xId: text('x_id').notNull(),
+  username: text('username').notNull(),
+  authToken: text('auth_token').notNull(),
+  ct0: text('ct0').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const redditAccounts = pgTable('reddit_accounts', {
+  sourceAccountId: text('source_account_id')
+    .primaryKey()
+    .references(() => sourceAccounts.id, { onDelete: 'cascade' }),
+  redditUserId: text('reddit_user_id').notNull(),
+  username: text('username').notNull(),
+  refreshToken: text('refresh_token').notNull(),
+  accessToken: text('access_token'),
+  accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+  scope: text('scope'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const inputs = pgTable('inputs', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  sourceAccountId: text('source_account_id')
+    .references(() => sourceAccounts.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull(),
+  kind: text('kind').notNull(),
+  name: text('name').notNull(),
+  enabled: boolean('enabled').notNull().default(true),
+  pollIntervalMinutes: integer('poll_interval_minutes').notNull().default(15),
+  lastFetchedAt: timestamp('last_fetched_at', { withTimezone: true }),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const xInputs = pgTable('x_inputs', {
+  inputId: text('input_id')
+    .primaryKey()
+    .references(() => inputs.id, { onDelete: 'cascade' }),
+  timelineType: text('timeline_type').notNull().default('home'),
+})
+
+export const redditInputs = pgTable('reddit_inputs', {
+  inputId: text('input_id')
+    .primaryKey()
+    .references(() => inputs.id, { onDelete: 'cascade' }),
+  listingType: text('listing_type').notNull().default('best'),
+})
+
+export const contentItems = pgTable(
+  'content_items',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    provider: text('provider').notNull(),
+    entityType: text('entity_type').notNull(),
+    externalId: text('external_id').notNull(),
+    url: text('url').notNull(),
+    authorName: text('author_name'),
+    authorHandle: text('author_handle'),
+    textPreview: text('text_preview'),
+    mediaCount: integer('media_count').notNull().default(0),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('content_items_provider_entity_external_idx').on(
+      table.provider,
+      table.entityType,
+      table.externalId,
+    ),
+  ],
+)
+
+export const xPosts = pgTable('x_posts', {
+  contentItemId: text('content_item_id')
+    .primaryKey()
+    .references(() => contentItems.id, { onDelete: 'cascade' }),
+  xPostId: text('x_post_id').notNull().unique(),
+  authorId: text('author_id').notNull(),
+  authorName: text('author_name').notNull(),
+  authorHandle: text('author_handle').notNull(),
+  authorAvatar: text('author_avatar'),
+  authorFollowers: integer('author_followers').notNull().default(0),
+  authorBio: text('author_bio'),
+  content: text('content').notNull(),
+  mediaUrls: text('media_urls'),
+  isRetweet: text('is_retweet'),
+  quotedTweet: text('quoted_tweet'),
+  card: text('card'),
+  replyToHandle: text('reply_to_handle'),
+  replyToXPostId: text('reply_to_x_post_id'),
+  likes: integer('likes').notNull().default(0),
+  retweets: integer('retweets').notNull().default(0),
+  replies: integer('replies').notNull().default(0),
+  views: integer('views').notNull().default(0),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const redditPosts = pgTable('reddit_posts', {
+  contentItemId: text('content_item_id')
+    .primaryKey()
+    .references(() => contentItems.id, { onDelete: 'cascade' }),
+  redditPostId: text('reddit_post_id').notNull().unique(),
+  fullname: text('fullname').notNull(),
+  subreddit: text('subreddit').notNull(),
+  authorName: text('author_name'),
+  title: text('title').notNull(),
+  body: text('body'),
+  thumbnailUrl: text('thumbnail_url'),
+  previewUrl: text('preview_url'),
+  media: text('media'), // JSON object
+  domain: text('domain'),
+  permalink: text('permalink').notNull(),
+  score: integer('score').notNull().default(0),
+  commentCount: integer('comment_count').notNull().default(0),
+  over18: boolean('over_18').notNull().default(false),
+  spoiler: boolean('spoiler').notNull().default(false),
+  isSelf: boolean('is_self').notNull().default(false),
+  linkFlairText: text('link_flair_text'),
+  postHint: text('post_hint'),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const inputItems = pgTable(
+  'input_items',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    inputId: text('input_id')
+      .notNull()
+      .references(() => inputs.id, { onDelete: 'cascade' }),
+    contentItemId: text('content_item_id')
+      .notNull()
+      .references(() => contentItems.id, { onDelete: 'cascade' }),
+    seenAt: timestamp('seen_at', { withTimezone: true }).notNull().defaultNow(),
+    rank: integer('rank'),
+    rawCursor: text('raw_cursor'),
+  },
+  (table) => [
+    uniqueIndex('input_items_input_content_idx').on(table.inputId, table.contentItemId),
+  ],
+)
+
 export const tweets = pgTable(
   'tweets',
   {
@@ -142,6 +326,77 @@ export const aiScoringFeeds = pgTable(
   ],
 )
 
+export const aiScoringFeedInputs = pgTable(
+  'ai_scoring_feed_inputs',
+  {
+    feedId: text('feed_id')
+      .notNull()
+      .references(() => aiScoringFeeds.id, { onDelete: 'cascade' }),
+    inputId: text('input_id')
+      .notNull()
+      .references(() => inputs.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('ai_scoring_feed_inputs_idx').on(table.feedId, table.inputId),
+  ],
+)
+
+export const itemNudges = pgTable(
+  'item_nudges',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    feedId: text('feed_id')
+      .notNull()
+      .references(() => aiScoringFeeds.id, { onDelete: 'cascade' }),
+    contentItemId: text('content_item_id')
+      .notNull()
+      .references(() => contentItems.id, { onDelete: 'cascade' }),
+    direction: text('direction').notNull(),
+    consumed: boolean('consumed').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('item_nudges_user_feed_content_idx').on(
+      table.userId,
+      table.feedId,
+      table.contentItemId,
+    ),
+  ],
+)
+
+export const itemScores = pgTable(
+  'item_scores',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    feedId: text('feed_id')
+      .notNull()
+      .references(() => aiScoringFeeds.id, { onDelete: 'cascade' }),
+    contentItemId: text('content_item_id')
+      .notNull()
+      .references(() => contentItems.id, { onDelete: 'cascade' }),
+    score: integer('score').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('item_scores_user_feed_content_idx').on(
+      table.userId,
+      table.feedId,
+      table.contentItemId,
+    ),
+  ],
+)
+
 export const aiReports = pgTable('ai_reports', {
   id: text('id')
     .primaryKey()
@@ -154,8 +409,8 @@ export const aiReports = pgTable('ai_reports', {
     .references(() => aiScoringFeeds.id, { onDelete: 'cascade' }),
   content: text('content').notNull(),
   model: text('model').notNull(),
-  tweetCount: integer('tweet_count').notNull(),
-  tweetRefs: text('tweet_refs'), // JSON array of tweet DB ids referenced in the report
+  itemCount: integer('item_count').notNull(),
+  itemRefs: text('item_refs'), // JSON array of content_item ids referenced in the report
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
