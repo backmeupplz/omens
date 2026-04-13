@@ -1020,10 +1020,7 @@ body {
   --np-column-width: 22rem;
   --np-column-gap: clamp(1rem, 1.8vw, 1.75rem);
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "URW Palladio L", Georgia, serif;
-  background: var(--np-bg);
-  background-image:
-    radial-gradient(circle at top center, var(--np-page-radial), transparent 55%),
-    linear-gradient(180deg, var(--np-page-linear), transparent 24rem);
+  background: transparent;
   color: var(--np-text);
   border-radius: 0;
   border: none;
@@ -1043,15 +1040,28 @@ html.newspaper-active main {
   padding-right: 0 !important;
 }
 
+html.newspaper-active {
+  background: var(--np-bg) !important;
+  background-color: var(--np-bg) !important;
+  background-image:
+    radial-gradient(ellipse 160% 72% at 50% 0%, var(--np-page-radial), transparent 72%),
+    linear-gradient(180deg, var(--np-page-linear), transparent 24rem) !important;
+}
+
 html.newspaper-active,
 html.newspaper-active body,
 html.newspaper-active #root,
 html.newspaper-active #root > div {
-  background: var(--np-bg) !important;
-  background-color: var(--np-bg) !important;
-  background-image:
-    radial-gradient(circle at top center, var(--np-page-radial), transparent 55%),
-    linear-gradient(180deg, var(--np-page-linear), transparent 24rem) !important;
+  min-height: 100%;
+}
+
+html.newspaper-active body,
+html.newspaper-active #root,
+html.newspaper-active #root > div,
+html.newspaper-active .newspaper {
+  background: transparent !important;
+  background-image: none !important;
+  background-color: transparent !important;
 }
 
 /* Newspaper outer container */
