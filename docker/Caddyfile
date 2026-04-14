@@ -4,6 +4,6 @@
 
 {$GRAFANA_DOMAIN:grafana-disabled.invalid} {
 	@root path /
-	rewrite @root /public-dashboards/{$GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN:omens-public-overview}
+	rewrite @root /public-dashboards/{$GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN:9f8e7d6c5b4a39281716151413121110}
 	reverse_proxy grafana:3000
 }

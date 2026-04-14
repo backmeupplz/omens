@@ -426,6 +426,20 @@ function RedditSection({ onSourcesChange, compact = false }: { onSourcesChange: 
     }
   }
 
+  const toggleInput = async (input: InputSummary) => {
+    setError('')
+    try {
+      await api(`/inputs/${input.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled: !input.enabled }),
+      })
+      await refetch()
+      onSourcesChange()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Could not ${input.enabled ? 'pause' : 'enable'} subreddit`)
+    }
+  }
+
   if (inputsLoading) return <Spinner class={compact ? 'py-2' : undefined} />
 
   if (compact) {

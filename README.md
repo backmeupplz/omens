@@ -131,7 +131,7 @@ If `DOMAIN` is blank, Caddy stays off and Omens is only exposed on `PORT`.
 | `GRAFANA_DB_PASSWORD` | Yes | Generate a strong password | Used for the read-only `grafana_ro` PostgreSQL role |
 | `GRAFANA_ADMIN_USER` | No | Set manually | Defaults to `admin` |
 | `GRAFANA_SHARED_DASHBOARD_UID` | No | Set manually | Stable UID for the shared dashboard |
-| `GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN` | No | Set manually | Public token used by the Caddy rewrite |
+| `GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN` | No | Set manually | Public token used by the Caddy rewrite; use a valid opaque token such as 32 hex chars |
 
 If `GRAFANA_DOMAIN`, `GRAFANA_ADMIN_PASSWORD`, and `GRAFANA_DB_PASSWORD` are all set, `deploy-prod.sh` enables the Grafana profile.  
 If any of them are missing, the entire Grafana stack stays disabled.

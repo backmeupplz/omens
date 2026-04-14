@@ -106,7 +106,7 @@ services:
       GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me-grafana-admin-password}
       GRAFANA_PUBLIC_DASHBOARD_UID: omens-public-overview
       GRAFANA_SHARED_DASHBOARD_UID: ${GRAFANA_SHARED_DASHBOARD_UID:-omens-public-share}
-      GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN: ${GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN:-omens-public-overview}
+      GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN: ${GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN:-9f8e7d6c5b4a39281716151413121110}
     volumes:
       - ./grafana:/scripts:ro
     command: ["sh", "/scripts/bootstrap-public-dashboard.sh"]
@@ -121,7 +121,7 @@ services:
     environment:
       DOMAIN: ${DOMAIN:-localhost}
       GRAFANA_DOMAIN: ${GRAFANA_DOMAIN:-grafana-disabled.invalid}
-      GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN: ${GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN:-omens-public-overview}
+      GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN: ${GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN:-9f8e7d6c5b4a39281716151413121110}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

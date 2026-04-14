@@ -14,15 +14,13 @@ psql \
   -h postgres \
   -U omens \
   -d omens <<'SQL'
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'grafana_ro') THEN
-    EXECUTE format('CREATE ROLE grafana_ro LOGIN PASSWORD %L', :'grafana_password');
+SELECT CASE
+  WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'grafana_ro') THEN
+    format('ALTER ROLE grafana_ro WITH LOGIN PASSWORD %L', :'grafana_password')
   ELSE
-    EXECUTE format('ALTER ROLE grafana_ro WITH LOGIN PASSWORD %L', :'grafana_password');
-  END IF;
+    format('CREATE ROLE grafana_ro LOGIN PASSWORD %L', :'grafana_password')
 END
-$$;
+\gexec
 
 GRANT CONNECT ON DATABASE omens TO grafana_ro;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
