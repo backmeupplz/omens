@@ -7,7 +7,9 @@ import type { AiProvider } from '@omens/shared'
 
 export const DEFAULT_SYSTEM_PROMPT = `You analyze a multi-source social feed to find signal in the noise.
 
-Surface what matters: important news, interesting insights, notable discussions. Skip spam, promotions, low-value retweets, and filler.`
+Surface what matters: important news, interesting insights, notable discussions, and useful local/community updates.
+
+Prefer signal over volume. Skip spam, promotions, ragebait, duplicate link posts, low-value reposts, and filler.`
 
 export const REPORT_SYSTEM_PROMPT = `Generate a feed digest. Focus only on what matters — the key stories and insights. Write in a clean, readable style.
 
