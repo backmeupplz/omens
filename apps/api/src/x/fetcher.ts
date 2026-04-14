@@ -64,6 +64,7 @@ async function prefetchOgForTweets(
 }
 
 type ParsedTweet = Awaited<ReturnType<typeof getHomeTimeline>>['tweets'][number]
+type UniversalRssInputRow = Awaited<ReturnType<typeof listUniversalRssInputs>>[number]
 
 async function upsertUniversalXData(userId: string, inputId: string, parsedTweets: ParsedTweet[]) {
   await ensureLegacyXInputForUser(userId)
@@ -155,8 +156,9 @@ async function upsertUniversalXData(userId: string, inputId: string, parsedTweet
   }
 }
 
-async function upsertUniversalRedditData(inputId: string, posts: RedditPostRecord[]) {
+async function upsertUniversalRedditData(inputIds: string | string[], posts: RedditPostRecord[]) {
   const db = getDb(env.DATABASE_URL)
+  const targetInputIds = [...new Set(Array.isArray(inputIds) ? inputIds : [inputIds])]
 
   for (const post of posts) {
     const [contentItem] = await db
@@ -234,13 +236,17 @@ async function upsertUniversalRedditData(inputId: string, posts: RedditPostRecor
         },
       })
 
-    await db
-      .insert(inputItems)
-      .values({
-        inputId,
-        contentItemId: contentItem.id,
-      })
-      .onConflictDoNothing()
+    await Promise.all(
+      targetInputIds.map((inputId) =>
+        db
+          .insert(inputItems)
+          .values({
+            inputId,
+            contentItemId: contentItem.id,
+          })
+          .onConflictDoNothing(),
+      ),
+    )
   }
 }
 
@@ -372,8 +378,12 @@ async function getValidRedditAccessToken(row: {
   return refreshed.access_token
 }
 
-async function getAnyRedditAccountForUser(userId: string) {
+async function getAnyRedditAccountForUsers(userIds: string[]) {
   const db = getDb(env.DATABASE_URL)
+  const uniqueUserIds = [...new Set(userIds)]
+
+  if (uniqueUserIds.length === 0) return null
+
   const [row] = await db
     .select({
       sourceAccountId: redditAccounts.sourceAccountId,
@@ -384,7 +394,7 @@ async function getAnyRedditAccountForUser(userId: string) {
     .from(sourceAccounts)
     .innerJoin(redditAccounts, eq(redditAccounts.sourceAccountId, sourceAccounts.id))
     .where(and(
-      eq(sourceAccounts.userId, userId),
+      inArray(sourceAccounts.userId, uniqueUserIds),
       eq(sourceAccounts.provider, 'reddit'),
     ))
     .limit(1)
@@ -392,7 +402,7 @@ async function getAnyRedditAccountForUser(userId: string) {
   return row || null
 }
 
-async function enrichRedditRssGalleryPosts(userId: string, posts: RedditPostRecord[]) {
+async function enrichRedditRssGalleryPosts(userIds: string[], posts: RedditPostRecord[]) {
   const getMediaUrlCount = (media: string | null) => {
     if (!media) return 0
     try {
@@ -411,7 +421,7 @@ async function enrichRedditRssGalleryPosts(userId: string, posts: RedditPostReco
 
   if (galleryPosts.length === 0) return posts
 
-  const redditAccount = await getAnyRedditAccountForUser(userId)
+  const redditAccount = await getAnyRedditAccountForUsers(userIds)
   let accessToken: string | null = null
   if (redditAccount) {
     try {
@@ -686,7 +696,7 @@ async function fetchRssInput(row: {
 
   if (row.sourceProvider === 'reddit') {
     const parsedPosts = parseRedditRssFeed(fetched.body, row.sourceKey || undefined)
-    const posts = await enrichRedditRssGalleryPosts(row.userId, parsedPosts)
+    const posts = await enrichRedditRssGalleryPosts([row.userId], parsedPosts)
     const incomingIds = posts.map((post) => post.redditPostId)
     const existingItems = incomingIds.length > 0
       ? await db
@@ -700,7 +710,7 @@ async function fetchRssInput(row: {
       : []
     const existingSet = new Set(existingItems.map((item) => item.externalId))
 
-    await upsertUniversalRedditData(row.inputId, posts)
+    await upsertUniversalRedditData([row.inputId], posts)
     newCount = posts.filter((post) => !existingSet.has(post.redditPostId)).length
   } else {
     throw new Error(`Unsupported RSS provider: ${row.sourceProvider}`)
@@ -728,6 +738,120 @@ async function fetchRssInput(row: {
     console.log(`[fetcher] Inserted ${newCount} new rss posts for user ${row.userId}`)
     void scoreUnscoredTweetsForAllFeeds(row.userId).catch((err) =>
       console.error(`[fetcher] Scoring error for user ${row.userId}:`, err instanceof Error ? err.message : err),
+    )
+  }
+
+  return newCount
+}
+
+function buildRssFetchGroupKey(row: UniversalRssInputRow) {
+  return [
+    row.sourceProvider,
+    row.feedUrl,
+    row.sourceKey || '',
+    row.listingType || '',
+    row.timeRange || '',
+  ].join('::')
+}
+
+function getNextFetchAt(lastFetchedAt: Date | null, intervalMinutes: number) {
+  const lastFetch = lastFetchedAt?.getTime() || 0
+  return lastFetch + intervalMinutes * 60_000
+}
+
+function pickRssValidatorRow(rows: UniversalRssInputRow[]) {
+  return rows.reduce((best, row) => {
+    const bestScore = (best.etag ? 1 : 0) + (best.lastModified ? 1 : 0)
+    const rowScore = (row.etag ? 1 : 0) + (row.lastModified ? 1 : 0)
+
+    if (rowScore !== bestScore) {
+      return rowScore > bestScore ? row : best
+    }
+
+    const bestFetchedAt = best.lastFetchedAt?.getTime() || 0
+    const rowFetchedAt = row.lastFetchedAt?.getTime() || 0
+    return rowFetchedAt > bestFetchedAt ? row : best
+  }, rows[0]!)
+}
+
+async function updateFetchedStateForRssInputs(
+  rows: UniversalRssInputRow[],
+  now: Date,
+  etag: string | null | undefined,
+  lastModified: string | null | undefined,
+) {
+  const db = getDb(env.DATABASE_URL)
+  const inputIds = rows.map((row) => row.inputId)
+  const validatorRow = pickRssValidatorRow(rows)
+
+  await db
+    .update(rssInputs)
+    .set({
+      etag: etag || validatorRow.etag || null,
+      lastModified: lastModified || validatorRow.lastModified || null,
+      lastCheckedAt: now,
+    })
+    .where(inArray(rssInputs.inputId, inputIds))
+
+  await db
+    .update(inputs)
+    .set({
+      lastFetchedAt: now,
+      lastError: null,
+      updatedAt: now,
+    })
+    .where(inArray(inputs.id, inputIds))
+}
+
+async function fetchSharedRssInputGroup(rows: UniversalRssInputRow[]) {
+  if (rows.length === 0) return 0
+
+  const db = getDb(env.DATABASE_URL)
+  const validatorRow = pickRssValidatorRow(rows)
+  const fetched = await fetchRssFeed(rows[0]!.feedUrl, validatorRow.etag, validatorRow.lastModified)
+  const now = new Date()
+
+  if (fetched.status === 'not_modified') {
+    await updateFetchedStateForRssInputs(rows, now, fetched.etag, fetched.lastModified)
+    return 0
+  }
+
+  let newCount = 0
+
+  if (rows[0]!.sourceProvider === 'reddit') {
+    const parsedPosts = parseRedditRssFeed(fetched.body, rows[0]!.sourceKey || undefined)
+    const posts = await enrichRedditRssGalleryPosts(rows.map((row) => row.userId), parsedPosts)
+    const incomingIds = posts.map((post) => post.redditPostId)
+    const existingItems = incomingIds.length > 0
+      ? await db
+        .select({ externalId: contentItems.externalId })
+        .from(contentItems)
+        .where(and(
+          eq(contentItems.provider, 'reddit'),
+          eq(contentItems.entityType, 'reddit_post'),
+          inArray(contentItems.externalId, incomingIds),
+        ))
+      : []
+    const existingSet = new Set(existingItems.map((item) => item.externalId))
+
+    await upsertUniversalRedditData(rows.map((row) => row.inputId), posts)
+    newCount = posts.filter((post) => !existingSet.has(post.redditPostId)).length
+  } else {
+    throw new Error(`Unsupported RSS provider: ${rows[0]!.sourceProvider}`)
+  }
+
+  await updateFetchedStateForRssInputs(rows, now, fetched.etag, fetched.lastModified)
+
+  if (newCount > 0) {
+    const watcherIds = [...new Set(rows.map((row) => row.userId))]
+    const watcherCount = watcherIds.length
+    console.log(`[fetcher] Inserted ${newCount} new rss posts shared across ${watcherCount} watcher(s)`)
+    await Promise.all(
+      watcherIds.map((userId) =>
+        scoreUnscoredTweetsForAllFeeds(userId).catch((err) =>
+          console.error(`[fetcher] Scoring error for user ${userId}:`, err instanceof Error ? err.message : err),
+        ),
+      ),
     )
   }
 
@@ -777,15 +901,13 @@ async function pollAll() {
     ),
   )
 
-  const syncRows = [
-    ...await listUniversalXInputs(),
-    ...await listUniversalRedditInputs(),
-    ...await listUniversalRssInputs(),
-  ]
+  const xRows = await listUniversalXInputs()
+  const redditRows = await listUniversalRedditInputs()
+  const rssRows = await listUniversalRssInputs()
 
   const tasks: Promise<void>[] = []
 
-  for (const row of syncRows) {
+  for (const row of [...xRows, ...redditRows]) {
     const userId = row.userId
     // Skip if already fetching for this user
     const key = `${userId}:${row.inputId}`
@@ -807,6 +929,38 @@ async function pollAll() {
           : fetchRssInput(row))
         .then(() => {})
         .catch((err) => console.error(`[fetcher] Error for input ${row.inputId}:`, err))
+        .finally(() => activeFetches.delete(key)),
+    )
+  }
+
+  const rssGroups = new Map<string, UniversalRssInputRow[]>()
+  for (const row of rssRows) {
+    const interval = row.pollIntervalMinutes ?? 15
+    if (interval === 0) continue
+
+    const groupKey = buildRssFetchGroupKey(row)
+    const group = rssGroups.get(groupKey)
+    if (group) {
+      group.push(row)
+    } else {
+      rssGroups.set(groupKey, [row])
+    }
+  }
+
+  for (const [groupKey, groupRows] of rssGroups) {
+    const nextFetchAt = Math.min(
+      ...groupRows.map((row) => getNextFetchAt(row.lastFetchedAt, row.pollIntervalMinutes ?? 15)),
+    )
+    if (Date.now() < nextFetchAt) continue
+
+    const key = `rss:${groupKey}`
+    if (activeFetches.has(key)) continue
+
+    activeFetches.add(key)
+    tasks.push(
+      fetchSharedRssInputGroup(groupRows)
+        .then(() => {})
+        .catch((err) => console.error(`[fetcher] Error for rss group ${groupKey}:`, err))
         .finally(() => activeFetches.delete(key)),
     )
   }
