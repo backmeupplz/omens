@@ -117,13 +117,23 @@ function parseEntryContent(contentHtml: string) {
   const bodyHtml = decoded.match(/<div class="md">([\s\S]*?)<\/div>/i)?.[1] || null
   const body = stripHtml(bodyHtml)
   const mediaUrls = new Set<string>()
+  const remaining = decoded.replace(/<a\b[^>]*href="([^"]+)"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"[\s\S]*?<\/a>/gi, (_match, href, src) => {
+    const linkedMediaUrl = isDirectMediaUrl(href)
+    const embeddedMediaUrl = isDirectMediaUrl(src)
+    if (linkedMediaUrl) {
+      mediaUrls.add(linkedMediaUrl)
+    } else if (embeddedMediaUrl) {
+      mediaUrls.add(embeddedMediaUrl)
+    }
+    return ''
+  })
 
-  for (const match of decoded.matchAll(/<img[^>]+src="([^"]+)"/gi)) {
+  for (const match of remaining.matchAll(/<img[^>]+src="([^"]+)"/gi)) {
     const url = isDirectMediaUrl(match[1])
     if (url) mediaUrls.add(url)
   }
 
-  for (const match of decoded.matchAll(/<a href="([^"]+)"/gi)) {
+  for (const match of remaining.matchAll(/<a href="([^"]+)"/gi)) {
     const url = isDirectMediaUrl(match[1])
     if (url) mediaUrls.add(url)
   }
@@ -186,10 +196,12 @@ export function parseRedditRssFeed(xml: string, fallbackSubreddit?: string): Red
       const outboundMediaUrl = isDirectMediaUrl(outboundUrl)
       const isGalleryPost = isRedditGalleryUrl(outboundUrl)
       const shouldUseContentMedia = !outboundUrl || !!outboundMediaUrl || isGalleryPost
-      const mediaUrls = [
-        ...(shouldUseContentMedia ? content.mediaUrls : []),
-        ...(thumbnailFromEntry ? [thumbnailFromEntry] : []),
-      ].filter((url, index, arr) => arr.indexOf(url) === index)
+      const mediaUrls = outboundMediaUrl
+        ? [outboundMediaUrl]
+        : shouldUseContentMedia
+          ? [...content.mediaUrls]
+          : []
+      if (mediaUrls.length === 0 && thumbnailFromEntry) mediaUrls.push(thumbnailFromEntry)
       const url = outboundUrl || permalink
       if (!fullname || !title || !subreddit || !permalink || !url) return null
 

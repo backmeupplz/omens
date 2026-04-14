@@ -14,6 +14,35 @@ type TimelineXRow = {
   score: number | null
 }
 
+type TimelineParentRow = {
+  contentItem: typeof contentItems.$inferSelect
+  xPost: typeof xPosts.$inferSelect
+}
+
+export interface TimelineTweetPayload {
+  id: string
+  tweetId: string
+  authorName: string
+  authorHandle: string
+  authorAvatar: string | null
+  authorFollowers: number
+  authorBio: string | null
+  content: string
+  mediaUrls: string | null
+  isRetweet: string | null
+  card: string | null
+  quotedTweet: string | null
+  replyToHandle: string | null
+  replyToTweetId: string | null
+  parentTweet: TimelineTweetPayload | null
+  url: string
+  likes: number
+  retweets: number
+  replies: number
+  views: number
+  publishedAt: Date | null
+}
+
 export type TimelineItem =
   | {
       id: string
@@ -21,28 +50,7 @@ export type TimelineItem =
       entityType: 'x_post'
       score: number | null
       publishedAt: Date | null
-      payload: {
-        id: string
-        tweetId: string
-        authorName: string
-        authorHandle: string
-        authorAvatar: string | null
-        authorFollowers: number
-        authorBio: string | null
-        content: string
-        mediaUrls: string | null
-        isRetweet: string | null
-        card: string | null
-        quotedTweet: string | null
-        replyToHandle: string | null
-        replyToTweetId: string | null
-        url: string
-        likes: number
-        retweets: number
-        replies: number
-        views: number
-        publishedAt: Date | null
-      }
+      payload: TimelineTweetPayload
     }
   | {
       id: string
@@ -99,7 +107,84 @@ export function feedInputsScope(userId: string, feedId: string) {
   )`
 }
 
-export function serializeTimelineItems(rows: TimelineXRow[]): TimelineItem[] {
+function uniqueXPostIds(ids: Array<string | null | undefined>) {
+  return [...new Set(ids.filter((id): id is string => !!id))]
+}
+
+async function resolveParentXPosts(rows: TimelineXRow[]) {
+  const pendingBase = rows.flatMap((row) => (row.xPost ? [row.xPost.replyToXPostId] : []))
+  if (pendingBase.length === 0) return new Map<string, TimelineParentRow>()
+
+  const db = getDb()
+  const parentMap = new Map<string, TimelineParentRow>()
+  const seen = new Set<string>()
+  let pending = uniqueXPostIds(pendingBase)
+
+  while (pending.length > 0) {
+    const batch = pending.filter((id) => !seen.has(id))
+    if (batch.length === 0) break
+    batch.forEach((id) => seen.add(id))
+
+    const parents = await db
+      .select({
+        contentItem: contentItems,
+        xPost: xPosts,
+      })
+      .from(xPosts)
+      .innerJoin(contentItems, eq(contentItems.id, xPosts.contentItemId))
+      .where(inArray(xPosts.xPostId, batch))
+
+    for (const parent of parents) {
+      if (!parentMap.has(parent.xPost.xPostId)) {
+        parentMap.set(parent.xPost.xPostId, parent)
+      }
+    }
+
+    pending = uniqueXPostIds(parents.map((parent) => parent.xPost.replyToXPostId))
+  }
+
+  return parentMap
+}
+
+function serializeTweetPayload(
+  row: TimelineParentRow,
+  parentMap: Map<string, TimelineParentRow>,
+  cache: Map<string, TimelineTweetPayload>,
+): TimelineTweetPayload {
+  const cached = cache.get(row.xPost.xPostId)
+  if (cached) return cached
+
+  const parent = row.xPost.replyToXPostId ? parentMap.get(row.xPost.replyToXPostId) ?? null : null
+  const payload: TimelineTweetPayload = {
+    id: row.contentItem.id,
+    tweetId: row.xPost.xPostId,
+    authorName: row.xPost.authorName,
+    authorHandle: row.xPost.authorHandle,
+    authorAvatar: row.xPost.authorAvatar,
+    authorFollowers: row.xPost.authorFollowers,
+    authorBio: row.xPost.authorBio,
+    content: row.xPost.content,
+    mediaUrls: row.xPost.mediaUrls,
+    isRetweet: row.xPost.isRetweet,
+    card: row.xPost.card,
+    quotedTweet: row.xPost.quotedTweet,
+    replyToHandle: row.xPost.replyToHandle,
+    replyToTweetId: row.xPost.replyToXPostId,
+    parentTweet: parent ? serializeTweetPayload(parent, parentMap, cache) : null,
+    url: row.contentItem.url,
+    likes: row.xPost.likes,
+    retweets: row.xPost.retweets,
+    replies: row.xPost.replies,
+    views: row.xPost.views,
+    publishedAt: row.contentItem.publishedAt,
+  }
+  cache.set(row.xPost.xPostId, payload)
+  return payload
+}
+
+export async function serializeTimelineItems(rows: TimelineXRow[]): Promise<TimelineItem[]> {
+  const parentMap = await resolveParentXPosts(rows)
+  const tweetCache = new Map<string, TimelineTweetPayload>()
   const items: TimelineItem[] = []
   for (const row of rows) {
     if (row.contentItem.provider === 'x' && row.xPost) {
@@ -109,28 +194,7 @@ export function serializeTimelineItems(rows: TimelineXRow[]): TimelineItem[] {
         entityType: 'x_post' as const,
         score: row.score,
         publishedAt: row.contentItem.publishedAt,
-        payload: {
-          id: row.contentItem.id,
-          tweetId: row.xPost.xPostId,
-          authorName: row.xPost.authorName,
-          authorHandle: row.xPost.authorHandle,
-          authorAvatar: row.xPost.authorAvatar,
-          authorFollowers: row.xPost.authorFollowers,
-          authorBio: row.xPost.authorBio,
-          content: row.xPost.content,
-          mediaUrls: row.xPost.mediaUrls,
-          isRetweet: row.xPost.isRetweet,
-          card: row.xPost.card,
-          quotedTweet: row.xPost.quotedTweet,
-          replyToHandle: row.xPost.replyToHandle,
-          replyToTweetId: row.xPost.replyToXPostId,
-          url: row.contentItem.url,
-          likes: row.xPost.likes,
-          retweets: row.xPost.retweets,
-          replies: row.xPost.replies,
-          views: row.xPost.views,
-          publishedAt: row.contentItem.publishedAt,
-        },
+        payload: serializeTweetPayload({ contentItem: row.contentItem, xPost: row.xPost }, parentMap, tweetCache),
       })
       continue
     }
@@ -215,7 +279,7 @@ export async function getTimelinePage(params: {
     .where(sql`${scope} ${scoreFilter}`)
 
   return {
-    items: serializeTimelineItems(rows),
+    items: await serializeTimelineItems(rows),
     total: Number(count),
   }
 }
@@ -248,6 +312,6 @@ export async function getTimelineItemsByIds(ids: string[]) {
     .leftJoin(redditPosts, eq(redditPosts.contentItemId, contentItems.id))
     .where(inArray(contentItems.id, ids))
 
-  const byId = new Map(serializeTimelineItems(rows).map((item) => [item.id, item] as const))
+  const byId = new Map((await serializeTimelineItems(rows)).map((item) => [item.id, item] as const))
   return ids.map((id) => byId.get(id)).filter((item): item is TimelineItem => !!item)
 }

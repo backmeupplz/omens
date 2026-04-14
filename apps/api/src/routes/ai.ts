@@ -1050,7 +1050,7 @@ export async function generateReportForUser(userId: string, feedId?: string | nu
   const aiItems = itemRows
     .map(({ score: _score, ...row }) => mapRowToAiItem(row))
     .filter((item): item is ItemForAI => !!item)
-  const timelineItems = serializeTimelineItems(itemRows)
+  const timelineItems = await serializeTimelineItems(itemRows)
 
   if (aiItems.length === 0) {
     if (isAuto) await db.update(aiScoringFeeds).set({ lastAutoReportAt: new Date(), updatedAt: new Date() }).where(eq(aiScoringFeeds.id, feed.id))

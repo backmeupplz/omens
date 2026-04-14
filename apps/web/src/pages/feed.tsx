@@ -1753,6 +1753,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
   const [lightbox, setLightbox] = useState<number | null>(null)
   const [showReplies, setShowReplies] = useState(false)
   const [showThread, setShowThread] = useState(false)
+  const [showReplyContextDetail, setShowReplyContextDetail] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
   const [showDetailExpanded, setShowDetailExpanded] = useState(false)
   const [ogLoaded, setOgLoaded] = useState(false)
@@ -1761,8 +1762,10 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
   const contextTweets = selfThreadAncestors.length > 0
     ? selfThreadAncestors
     : (tweet.parentTweet ? [tweet.parentTweet] : [])
+  const contextRepliesHandler = selfThreadAncestors.length > 0 ? () => setShowReplies(true) : undefined
   const replyTarget = selfThreadAncestors[0] ?? tweet
   const replyCount = replyTarget.replies
+  const replyContextTweetId = extractTweetIdFromUrl(tweet.url) || tweet.tweetId
   const threadTargetTweetId = threadTweetId || extractTweetIdFromUrl(tweet.url) || tweet.tweetId
   const showThreadButton = !!threadTargetTweetId && (forceShowThreadButton || isSelfThread)
   const onOgLoaded = useCallback(() => setOgLoaded(true), [])
@@ -1824,11 +1827,17 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
           onClose={() => setShowThread(false)}
         />
       )}
+      {showReplyContextDetail && replyContextTweetId && (
+        <RemoteTweetDetailModal
+          tweetId={replyContextTweetId}
+          onClose={() => setShowReplyContextDetail(false)}
+        />
+      )}
       {contextTweets.map((contextTweet, index) => (
         <ConversationContextTweet
           key={contextTweet.tweetId}
           tweet={contextTweet}
-          onShowReplies={index === 0 ? () => setShowReplies(true) : undefined}
+          onShowReplies={index === 0 ? contextRepliesHandler : undefined}
           forceExpandedText={forceExpandedText}
           onExpandRequest={onExpandRequest}
         />
@@ -1890,7 +1899,19 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
 
       {/* Reply context */}
       {tweet.replyToHandle && !tweet.parentTweet && (
-        <p class="np-post-reply-context mb-1 text-xs">Replying to <span class="np-post-reply-handle">@{tweet.replyToHandle}</span></p>
+        <div class="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          <p class="np-post-reply-context">Replying to <span class="np-post-reply-handle">@{tweet.replyToHandle}</span></p>
+          <button
+            type="button"
+            class="np-link-accent"
+            onClick={(e) => {
+              e.stopPropagation()
+              setShowReplyContextDetail(true)
+            }}
+          >
+            View context
+          </button>
+        </div>
       )}
 
       {/* Content — full width, no indent */}
@@ -2024,9 +2045,19 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
 
 function parseRedditMedia(media: string | null, previewUrl: string | null, thumbnailUrl: string | null): MediaItem[] {
   const items: MediaItem[] = []
-  const seen = new Set<string>()
+  const itemIndexByKey = new Map<string, number>()
   const parsed = safeParse<any>(media)
-  const directUrls = Array.isArray(parsed?.urls) ? parsed.urls : []
+  const rawDirectUrls = Array.isArray(parsed?.urls) ? parsed.urls : []
+  const hasOriginalRedditImage = rawDirectUrls.some((url) => getUrlHostname(url) === 'i.redd.it')
+  const hasNonPreviewDirectMedia = rawDirectUrls.some((url) => {
+    const hostname = getUrlHostname(url)
+    return !!hostname && hostname !== 'preview.redd.it' && hostname !== 'external-preview.redd.it'
+  })
+  const directUrls = hasOriginalRedditImage
+    ? rawDirectUrls.filter((url) => getUrlHostname(url) !== 'preview.redd.it')
+    : hasNonPreviewDirectMedia
+      ? rawDirectUrls.filter((url) => getUrlHostname(url) !== 'external-preview.redd.it')
+    : rawDirectUrls
   const galleryItems = Array.isArray(parsed?.galleryItems) ? parsed.galleryItems : []
   const galleryUrls = Array.isArray(parsed?.galleryUrls) ? parsed.galleryUrls : []
   const galleryEntries = parsed?.mediaMetadata && typeof parsed.mediaMetadata === 'object'
@@ -2035,10 +2066,17 @@ function parseRedditMedia(media: string | null, previewUrl: string | null, thumb
 
   const pushItem = (item: MediaItem | null) => {
     if (!item) return
-    const key = `${item.type}:${item.url}`
-    if (seen.has(key)) return
-    seen.add(key)
-    items.push(item)
+    const key = getComparableMediaKey(item)
+    const existingIndex = itemIndexByKey.get(key)
+    if (existingIndex == null) {
+      itemIndexByKey.set(key, items.length)
+      items.push(item)
+      return
+    }
+
+    if (getMediaQualityScore(item) > getMediaQualityScore(items[existingIndex])) {
+      items[existingIndex] = item
+    }
   }
 
   for (const directUrl of directUrls) {
@@ -2097,6 +2135,49 @@ function getDirectRedditMedia(url: string | null | undefined): MediaItem | null 
   } catch {}
 
   return null
+}
+
+function getComparableMediaKey(item: MediaItem): string {
+  const normalizedUrl = normalizeComparableUrl(item.url)
+  if (!normalizedUrl) return `${item.type}:${item.url}`
+
+  try {
+    const parsed = new URL(normalizedUrl)
+    const hostname = parsed.hostname.toLowerCase()
+    if (hostname === 'i.redd.it' || hostname === 'preview.redd.it') {
+      return `${item.type}:reddit:${parsed.pathname.toLowerCase()}`
+    }
+    return `${item.type}:${normalizedUrl}`
+  } catch {
+    return `${item.type}:${normalizedUrl}`
+  }
+}
+
+function getMediaQualityScore(item: MediaItem): number {
+  try {
+    const parsed = new URL(item.url)
+    const hostname = parsed.hostname.toLowerCase()
+    const width = Number(parsed.searchParams.get('width') || 0)
+    const height = Number(parsed.searchParams.get('height') || 0)
+    let score = Math.max(width, 0) * 10 + Math.max(height, 0)
+
+    if (!parsed.search) score += 100_000
+    if (hostname === 'preview.redd.it') score += 1_000_000
+    if (hostname === 'i.redd.it') score += 2_000_000
+
+    return score
+  } catch {
+    return 0
+  }
+}
+
+function getUrlHostname(url: string | null | undefined): string | null {
+  if (!url) return null
+  try {
+    return new URL(url).hostname.toLowerCase()
+  } catch {
+    return null
+  }
 }
 
 function normalizeComparableUrl(url: string | null | undefined): string | null {
