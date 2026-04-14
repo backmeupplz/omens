@@ -2342,27 +2342,18 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
   opacity: 0.6;
 }
 
-.np-settings-pill-label,
+.np-settings-pill-label {
+  padding: 0.45rem 0.75rem;
+  color: inherit;
+  white-space: nowrap;
+}
+
 .np-settings-pill-remove {
   appearance: none;
   -webkit-appearance: none;
   border: 0;
   background: transparent;
   color: inherit;
-}
-
-.np-settings-pill-label {
-  padding: 0.45rem 0.75rem;
-  font: inherit;
-  white-space: nowrap;
-}
-
-.np-settings-pill-label:hover,
-.np-settings-pill-label:focus-visible {
-  color: var(--np-text);
-}
-
-.np-settings-pill-remove {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2370,6 +2361,7 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
   border-left: 1px solid color-mix(in srgb, var(--np-border) 78%, transparent);
   font-size: 1rem;
   line-height: 1;
+  cursor: pointer;
 }
 
 .np-settings-pill-remove:hover,

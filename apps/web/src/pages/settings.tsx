@@ -415,20 +415,6 @@ function RedditSection({ onSourcesChange, compact = false }: { onSourcesChange: 
     }
   }
 
-  const toggleInput = async (input: InputSummary) => {
-    setError('')
-    try {
-      await api(`/inputs/${input.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ enabled: !input.enabled }),
-      })
-      await refetch()
-      onSourcesChange()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not update input')
-    }
-  }
-
   const removeInput = async (id: string) => {
     setError('')
     try {
@@ -455,13 +441,9 @@ function RedditSection({ onSourcesChange, compact = false }: { onSourcesChange: 
               class={`np-settings-pill${input.enabled ? '' : ' is-disabled'}`}
               title={formatRedditInputLabel(input)}
             >
-              <button
-                type="button"
-                onClick={() => toggleInput(input)}
-                class="np-settings-pill-label"
-              >
+              <span class="np-settings-pill-label">
                 {formatRedditInputLabel(input)}
-              </button>
+              </span>
               <button
                 type="button"
                 onClick={() => removeInput(input.id)}
