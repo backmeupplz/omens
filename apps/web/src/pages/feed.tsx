@@ -2891,15 +2891,15 @@ function estimateArticleTileWeight(tile: ArticleTile) {
   return Math.max(2, paragraphWeight + listWeight + (tile.lead ? 1 : 0))
 }
 
-function distributeArticleTiles(tiles: ArticleTile[], columnCount: number) {
-  const columns = Array.from({ length: columnCount }, () => ({ tiles: [] as ArticleTile[], weight: 0 }))
-  for (const tile of tiles) {
+function distributeArticleTiles(tiles: ArticleTile[], columnCount: number, measuredHeights: Map<number, number>) {
+  const columns = Array.from({ length: columnCount }, () => ({ tiles: [] as Array<{ tile: ArticleTile; index: number }>, weight: 0 }))
+  for (const [index, tile] of tiles.entries()) {
     let target = 0
     for (let index = 1; index < columns.length; index++) {
       if (columns[index].weight < columns[target].weight) target = index
     }
-    columns[target].tiles.push(tile)
-    columns[target].weight += estimateArticleTileWeight(tile)
+    columns[target].tiles.push({ tile, index })
+    columns[target].weight += measuredHeights.get(index) ?? estimateArticleTileWeight(tile) * 56
   }
   return columns.map((column) => column.tiles)
 }
@@ -2939,6 +2939,8 @@ function renderTextTileFragments(fragments: TextFragment[], lead: boolean, prefi
 function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefix: string }) {
   const gridRef = useRef<HTMLDivElement>(null)
   const [columnCount, setColumnCount] = useState(1)
+  const tileHeightsRef = useRef(new Map<number, number>())
+  const [measuredVersion, setMeasuredVersion] = useState(0)
   const tiles = useMemo(() => arrangeArticleTiles(buildArticleTiles(items)), [items])
 
   useLayoutEffect(() => {
@@ -2970,25 +2972,65 @@ function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefi
     }
   }, [])
 
-  const columns = useMemo(() => distributeArticleTiles(tiles, columnCount), [tiles, columnCount])
+  useLayoutEffect(() => {
+    const node = gridRef.current
+    if (!node) return
 
-  const renderTile = (tile: ArticleTile, key: string) => {
+    tileHeightsRef.current = new Map(
+      [...tileHeightsRef.current].filter(([index]) => index < tiles.length),
+    )
+
+    let frame = 0
+    const observer = new ResizeObserver((entries) => {
+      let changed = false
+      for (const entry of entries) {
+        const target = entry.target as HTMLElement
+        const tileIndex = Number.parseInt(target.dataset.tileIndex || '', 10)
+        if (!Number.isFinite(tileIndex)) continue
+        const nextHeight = Math.ceil(entry.contentRect.height)
+        const prevHeight = tileHeightsRef.current.get(tileIndex)
+        if (prevHeight === nextHeight) continue
+        tileHeightsRef.current.set(tileIndex, nextHeight)
+        changed = true
+      }
+      if (!changed || frame) return
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        setMeasuredVersion((prev) => prev + 1)
+      })
+    })
+
+    const tileNodes = node.querySelectorAll<HTMLElement>('[data-tile-index]')
+    tileNodes.forEach((tileNode) => observer.observe(tileNode))
+
+    return () => {
+      observer.disconnect()
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [tiles, columnCount])
+
+  const columns = useMemo(
+    () => distributeArticleTiles(tiles, columnCount, tileHeightsRef.current),
+    [tiles, columnCount, measuredVersion],
+  )
+
+  const renderTile = (tile: ArticleTile, key: string, tileIndex: number) => {
     if (tile.type === 'item') {
       return tile.item ? (
-        <div key={key} class="np-grid-tile np-grid-tile-tweet">
+        <div key={key} class="np-grid-tile np-grid-tile-tweet" data-tile-index={tileIndex}>
           {tile.item.provider === 'x'
             ? <TweetCard tweet={tile.item.payload} expandBehavior="detail" />
             : <RedditCard item={tile.item} />}
         </div>
       ) : (
-        <div key={key} class="np-grid-tile np-grid-tile-fallback">
+        <div key={key} class="np-grid-tile np-grid-tile-fallback" data-tile-index={tileIndex}>
           <div class="np-tweet">Referenced post is no longer available</div>
         </div>
       )
     }
 
     return (
-      <div key={key} class="np-grid-tile np-grid-tile-text">
+      <div key={key} class="np-grid-tile np-grid-tile-text" data-tile-index={tileIndex}>
         <div class="np-text-tile">
           {renderTextTileFragments(tile.fragments, tile.lead, `${key}-`)}
         </div>
@@ -3000,7 +3042,7 @@ function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefi
     <div ref={gridRef} class="np-article-grid" style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}>
       {columns.map((column, columnIndex) => (
         <div key={`${prefix}c-${columnIndex}`} class="np-article-grid-column">
-          {column.map((tile, tileIndex) => renderTile(tile, `${prefix}${columnIndex}-${tileIndex}`))}
+          {column.map(({ tile, index }) => renderTile(tile, `${prefix}${index}`, index))}
         </div>
       ))}
     </div>
