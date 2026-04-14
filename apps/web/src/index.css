@@ -644,6 +644,92 @@ body {
   color: var(--np-text-muted);
 }
 
+.np-first-report-card {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.np-first-report-hero {
+  display: grid;
+  gap: 0.9rem;
+  padding-bottom: 1.35rem;
+  border-bottom: 1px solid var(--np-border);
+}
+
+.np-first-report-kicker {
+  color: var(--np-text-muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.np-first-report-title {
+  margin: 0;
+  max-width: 12ch;
+  color: var(--np-text);
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 0.96;
+  text-wrap: balance;
+}
+
+.np-first-report-copy {
+  max-width: 44rem;
+  margin: 0;
+  color: var(--np-text-secondary);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.np-first-report-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--np-border);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--np-inline-card-bg) 92%, transparent), transparent 68%),
+    var(--np-inline-card-bg);
+}
+
+.np-first-report-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.np-first-report-step {
+  display: grid;
+  align-content: start;
+  gap: 0.6rem;
+  min-height: 100%;
+  padding: 1rem 1rem 1.1rem;
+  border: 1px solid var(--np-border);
+  background: color-mix(in srgb, var(--np-inline-card-bg) 88%, transparent);
+}
+
+.np-first-report-step-number {
+  color: var(--np-accent);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.np-first-report-step h2 {
+  margin: 0;
+  color: var(--np-text);
+  font-size: 1rem;
+  line-height: 1.15;
+}
+
+.np-first-report-step p {
+  margin: 0;
+  color: var(--np-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
 .np-setup-state {
   display: grid;
   gap: 1rem;
@@ -2712,6 +2798,14 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
 
   .np-status-head {
     flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .np-first-report-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .np-first-report-status {
     align-items: flex-start;
   }
 

@@ -733,14 +733,17 @@ function ThemeSection({ compact = false }: { compact?: boolean } = {}) {
 
 function VersionSection({ compact = false }: { compact?: boolean } = {}) {
   const { data: versionData } = useApi<{ version: string }>('/version')
+  const versionLabel = versionData?.version && /^\d/.test(versionData.version)
+    ? `v${versionData.version}`
+    : versionData?.version
 
-  if (!versionData?.version) return null
+  if (!versionLabel) return null
 
   if (compact) {
     return (
       <SettingsItem
         title="Build"
-        actions={<p class="np-settings-item-copy">v{versionData.version}</p>}
+        actions={<p class="np-settings-item-copy">{versionLabel}</p>}
       />
     )
   }
@@ -749,7 +752,7 @@ function VersionSection({ compact = false }: { compact?: boolean } = {}) {
     <div class="np-inline-card">
       <>
         <p class="np-copy-subtle">Build version</p>
-        <p class="np-copy-muted mt-1">Running Docker build v{versionData.version}</p>
+        <p class="np-copy-muted mt-1">Running Docker build {versionLabel}</p>
       </>
     </div>
   )

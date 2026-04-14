@@ -3177,6 +3177,87 @@ export function NewspaperReportPage({
   )
 }
 
+function FirstReportPlaceholder({
+  feedName,
+  issueNumber,
+  genStatus,
+  genStartedAt,
+  leftControls,
+  rightControls,
+  reportTabs,
+  error,
+}: {
+  feedName: string
+  issueNumber: number
+  genStatus: string
+  genStartedAt: number
+  leftControls?: preact.ComponentChildren
+  rightControls?: preact.ComponentChildren
+  reportTabs?: preact.ComponentChildren
+  error?: string | null
+}) {
+  const now = new Date()
+  const metaRow = (
+    <div class="np-masthead-meta">
+      <span>{now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+      <span>No. {issueNumber}</span>
+      <span>First edition in progress</span>
+    </div>
+  )
+
+  return (
+    <NewspaperShell
+      leftControls={leftControls}
+      rightControls={rightControls}
+      metaRow={metaRow}
+      subtitle={getBriefingLabel(now)}
+    >
+      {reportTabs}
+      {error && <p class="np-alert np-alert-error text-center mb-3">{error}</p>}
+      <div class="np-page-grid">
+        <article class="np-article np-article-lead np-first-report-card">
+          <div class="np-first-report-hero">
+            <div class="np-first-report-kicker">First Edition In Progress</div>
+            <h1 class="np-first-report-title">The presses are warming up for {feedName}</h1>
+            <p class="np-first-report-copy">
+              Omens is reviewing the latest posts, pulling out the strongest signals, and laying out a front page that reads like a finished briefing instead of a raw feed.
+            </p>
+            <div class="np-first-report-status">
+              <div class="np-status-title">
+                <span class="np-status-indicator" aria-hidden="true" />
+                <span class="np-status-label">{genStatus}</span>
+              </div>
+              {genStartedAt > 0 && (
+                <div class="np-status-meta">
+                  <ElapsedTime since={genStartedAt} />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div class="np-first-report-steps">
+            <section class="np-first-report-step">
+              <div class="np-first-report-step-number">01</div>
+              <h2>Sort the signal</h2>
+              <p>Fresh posts are grouped, deduped, and ranked so the edition starts with what matters instead of what is merely loud.</p>
+            </section>
+            <section class="np-first-report-step">
+              <div class="np-first-report-step-number">02</div>
+              <h2>Find the shape</h2>
+              <p>Omens clusters related items into storylines, tension points, and conversation shifts that are worth carrying into the report.</p>
+            </section>
+            <section class="np-first-report-step">
+              <div class="np-first-report-step-number">03</div>
+              <h2>Set the front page</h2>
+              <p>The issue is drafted into a readable briefing with headlines, context, and citations back to the underlying posts.</p>
+            </section>
+          </div>
+        </article>
+      </div>
+    </NewspaperShell>
+  )
+}
+
 function AiSetupLead({
   title,
   intro,
@@ -3603,16 +3684,16 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     }
 
     return (
-      <NewspaperShell
+      <FirstReportPlaceholder
+        feedName={selectedFeed?.name || 'this feed'}
+        issueNumber={(pastData?.reports.length || 0) + 1}
+        genStatus={genStatus}
+        genStartedAt={genStartedAt}
         leftControls={newspaperLeftControls}
         rightControls={newspaperControls}
-        showMeta={false}
-        subtitle={getBriefingLabel(new Date())}
-      >
-        {reportTabs}
-        {error && <p class="np-alert np-alert-error text-center mb-3">{error}</p>}
-        {renderGenerationPanel()}
-      </NewspaperShell>
+        reportTabs={reportTabs}
+        error={error}
+      />
     )
   }
 

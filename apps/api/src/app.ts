@@ -1,4 +1,7 @@
 import type { Context, Next } from 'hono'
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Hono } from 'hono'
 import { serveStatic } from 'hono/bun'
 import { cors } from 'hono/cors'
@@ -16,6 +19,24 @@ import xRouter from './routes/x'
 import demoRouter from './routes/demo'
 import shareRouter, { shareDataRouter } from './routes/share'
 import { fetchOg } from './x/og'
+
+const currentDir = dirname(fileURLToPath(import.meta.url))
+const VERSION_PATH_CANDIDATES = [
+  '/app/package.json',
+  resolve(currentDir, '../package.json'),
+  resolve(currentDir, '../../../package.json'),
+]
+
+function getAppVersion() {
+  for (const path of VERSION_PATH_CANDIDATES) {
+    try {
+      const pkg = JSON.parse(readFileSync(path, 'utf8')) as { version?: string }
+      if (typeof pkg.version === 'string' && pkg.version.trim()) return pkg.version.trim()
+    } catch {}
+  }
+
+  return process.env.APP_VERSION || 'dev'
+}
 
 async function securityHeaders(c: Context, next: Next) {
   await next()
@@ -43,8 +64,7 @@ export function createApp() {
     }),
   )
 
-  let appVersion = process.env.APP_VERSION || 'dev'
-  if (appVersion === 'dev') { try { appVersion = require('/app/package.json').version || 'dev' } catch { try { appVersion = require('../../package.json').version || 'dev' } catch {} } }
+  const appVersion = getAppVersion()
   app.get('/health', (c) => c.json({ ok: true, version: appVersion }))
   app.get('/api/health', (c) => c.json({ ok: true, version: appVersion }))
   app.get('/api/version', (c) => c.json({ version: appVersion }))
