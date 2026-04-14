@@ -31,7 +31,7 @@
 ```bash
 git clone https://github.com/backmeupplz/omens.git
 cd omens
-cp docker/.env .env
+cp docker/.env.sample .env
 # Edit .env — at minimum set JWT_SECRET, ENCRYPTION_KEY, POSTGRES_PASSWORD
 ./docker/deploy-prod.sh
 ```
@@ -69,7 +69,7 @@ Omens uses one real env file at the repo root: `.env`.
 This repo ships two starter templates:
 
 - [`.env.sample`](.env.sample): app-focused example for local/non-Docker runs
-- [`docker/.env`](docker/.env): Docker/prod-flavored example that includes optional infra vars like `DOMAIN` and `GRAFANA_*`
+- [`docker/.env.sample`](docker/.env.sample): Docker/prod-flavored example that includes optional infra vars like `DOMAIN` and `GRAFANA_*`
 
 The overlapping app vars are intentionally the same in both. `./docker/deploy-prod.sh` prefers the repo-root `.env`, so the distinction is just which starter template is more convenient for your setup.
 
@@ -95,7 +95,7 @@ Use this when running Omens directly with `pnpm dev` or a custom process manager
 For Docker, the intended flow is:
 
 ```bash
-cp docker/.env .env
+cp docker/.env.sample .env
 ```
 
 Then edit the repo-root `.env` before running [`./docker/deploy-prod.sh`](docker/deploy-prod.sh).
