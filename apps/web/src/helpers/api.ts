@@ -5,7 +5,7 @@ let _demoMode = false
 export function setDemoMode(v: boolean) { _demoMode = v }
 
 // Paths where 401 is expected and should NOT trigger a redirect
-const SILENT_401 = ['/auth/', '/x/session', '/reddit/session', '/demo/']
+const SILENT_401 = ['/auth/', '/x/session', '/demo/']
 
 const STATUS_MESSAGES: Record<number, string> = {
   400: 'Invalid request',

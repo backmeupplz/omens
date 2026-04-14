@@ -15,20 +15,51 @@ export interface OgData {
   url: string
 }
 
+type OgCacheRow = typeof ogCache.$inferSelect
+
+function decodeEntities(value: string | null | undefined): string | null {
+  if (!value) return null
+  return value.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, entity: string) => {
+    if (entity[0] === '#') {
+      const isHex = entity[1]?.toLowerCase() === 'x'
+      const codePoint = Number.parseInt(entity.slice(isHex ? 2 : 1), isHex ? 16 : 10)
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match
+    }
+
+    switch (entity) {
+      case 'amp': return '&'
+      case 'lt': return '<'
+      case 'gt': return '>'
+      case 'quot': return '"'
+      case 'apos': return '\''
+      case 'nbsp': return ' '
+      default: return match
+    }
+  })
+}
+
+function cacheRowToOgData(cached: OgCacheRow): OgData {
+  return {
+    title: decodeEntities(cached.title),
+    description: decodeEntities(cached.description),
+    thumbnail: decodeEntities(cached.thumbnail),
+    domain: cached.domain,
+    url: cached.url,
+  }
+}
+
 function extractOgTags(html: string): Partial<OgData> {
   const get = (property: string): string | null => {
-    const re = new RegExp(
-      `<meta\\s+(?:property|name)=["']${property}["']\\s+content=["']([^"']*?)["']`,
-      'i',
-    )
-    const m = html.match(re)
-    if (m) return m[1]
-    const re2 = new RegExp(
-      `<meta\\s+content=["']([^"']*?)["']\\s+(?:property|name)=["']${property}["']`,
-      'i',
-    )
-    const m2 = html.match(re2)
-    return m2 ? m2[1] : null
+    const expected = property.toLowerCase()
+    for (const tag of html.matchAll(/<meta\b[^>]*>/gi)) {
+      const attrs: Record<string, string> = {}
+      for (const attr of tag[0].matchAll(/([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) {
+        attrs[attr[1].toLowerCase()] = attr[2] || attr[3] || attr[4] || ''
+      }
+      const key = attrs.property?.toLowerCase() || attrs.name?.toLowerCase()
+      if (key === expected) return attrs.content || null
+    }
+    return null
   }
 
   const title =
@@ -53,14 +84,7 @@ export async function fetchOg(requestUrl: string): Promise<OgData | null> {
     .limit(1)
 
   if (cached) {
-    if (!cached.title) return null // Previously checked, no OG data
-    return {
-      title: cached.title,
-      description: cached.description,
-      thumbnail: cached.thumbnail,
-      domain: cached.domain,
-      url: cached.url,
-    }
+    if (cached.title && cached.thumbnail) return cacheRowToOgData(cached)
   }
 
   // Also check by resolved URL (in case same destination was cached from different short URL)
@@ -75,11 +99,17 @@ export async function fetchOg(requestUrl: string): Promise<OgData | null> {
     })
 
     if (!res.ok) {
-      // Cache the miss
+      if (cached) {
+        await db.update(ogCache)
+          .set({ fetchedAt: new Date() })
+          .where(eq(ogCache.originalUrl, requestUrl))
+        return cached.title ? cacheRowToOgData(cached) : null
+      }
       await db.insert(ogCache).values({
         url: requestUrl,
         originalUrl: requestUrl,
         domain: '',
+        fetchedAt: new Date(),
       }).onConflictDoNothing()
       return null
     }
@@ -102,35 +132,58 @@ export async function fetchOg(requestUrl: string): Promise<OgData | null> {
     reader.cancel()
 
     const og = extractOgTags(html)
+    const normalizedTitle = decodeEntities(og.title)
+    const normalizedDescription = decodeEntities(og.description)
+    const normalizedThumbnail = decodeEntities(og.thumbnail)
 
     // Cache result
-    await db
-      .insert(ogCache)
-      .values({
-        url: finalUrl,
-        originalUrl: requestUrl,
-        title: og.title || null,
-        description: og.description || null,
-        thumbnail: og.thumbnail || null,
-        domain,
-      })
-      .onConflictDoNothing()
+    if (cached) {
+      await db.update(ogCache)
+        .set({
+          url: finalUrl,
+          title: normalizedTitle,
+          description: normalizedDescription,
+          thumbnail: normalizedThumbnail,
+          domain,
+          fetchedAt: new Date(),
+        })
+        .where(eq(ogCache.originalUrl, requestUrl))
+    } else {
+      await db
+        .insert(ogCache)
+        .values({
+          url: finalUrl,
+          originalUrl: requestUrl,
+          title: normalizedTitle,
+          description: normalizedDescription,
+          thumbnail: normalizedThumbnail,
+          domain,
+          fetchedAt: new Date(),
+        })
+        .onConflictDoNothing()
+    }
 
-    if (!og.title) return null
+    if (!normalizedTitle) return cached?.title ? cacheRowToOgData(cached) : null
 
     return {
-      title: og.title,
-      description: og.description || null,
-      thumbnail: og.thumbnail || null,
+      title: normalizedTitle,
+      description: normalizedDescription,
+      thumbnail: normalizedThumbnail,
       domain,
       url: finalUrl,
     }
   } catch {
-    // Cache the failure
+    if (cached) {
+      await db.update(ogCache)
+        .set({ fetchedAt: new Date() })
+        .where(eq(ogCache.originalUrl, requestUrl))
+      return cached.title ? cacheRowToOgData(cached) : null
+    }
     await db.insert(ogCache).values({
       url: requestUrl,
       originalUrl: requestUrl,
       domain: '',
+      fetchedAt: new Date(),
     }).onConflictDoNothing()
     return null
   }

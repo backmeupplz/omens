@@ -338,122 +338,330 @@ function XSection({ onXChange, compact = false }: { onXChange: () => void; compa
   )
 }
 
-// === AI Provider Section ===
+// === Reddit RSS Section ===
+
+type InputSummary = {
+  id: string
+  provider: string
+  kind: string
+  name: string
+  enabled: boolean
+  pollIntervalMinutes: number
+  lastFetchedAt: string | null
+  lastError: string | null
+  config?: {
+    type?: string
+    sourceProvider?: string | null
+    sourceKey?: string | null
+    sourceLabel?: string | null
+    listingType?: string | null
+    timeRange?: string | null
+    feedUrl?: string | null
+  } | null
+}
+
+function formatInputTimestamp(value: string | null | undefined) {
+  if (!value) return 'Not synced yet'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return 'Not synced yet'
+  return `Last synced ${parsed.toLocaleString()}`
+}
+
+function formatRedditInputLabel(input: InputSummary) {
+  const baseLabel = input.config?.sourceLabel || input.name
+  const listingType = input.config?.listingType
+  if (!listingType) return baseLabel
+
+  const listingLabel = listingType === 'top'
+    ? `Top${input.config?.timeRange ? ` (${input.config.timeRange})` : ''}`
+    : listingType[0].toUpperCase() + listingType.slice(1)
+
+  return `${baseLabel} · ${listingLabel}`
+}
 
 function RedditSection({ onSourcesChange, compact = false }: { onSourcesChange: () => void; compact?: boolean }) {
-  const [, navigate] = useLocation()
-  const { data: session, loading: sessionLoading, error: sessionError, refetch } = useApi<{
-    connected: boolean
-    username?: string
-    connectedAt?: string
-  }>('/reddit/session')
+  const { data, loading: inputsLoading, error: inputsError, refetch } = useApi<{ inputs: InputSummary[] }>('/inputs')
+  const [subreddit, setSubreddit] = useState('')
+  const [listingType, setListingType] = useState<'hot' | 'new' | 'top'>('new')
+  const [timeRange, setTimeRange] = useState<'day' | 'week' | 'month' | 'year' | 'all'>('week')
+  const [showAddForm, setShowAddForm] = useState(false)
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const connectError = params.get('reddit_error')
-    if (connectError) {
-      setError(connectError.replace(/_/g, ' '))
-      params.delete('reddit_error')
-      const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`
-      window.history.replaceState({}, '', next)
-    }
-    if (params.get('reddit_connected')) {
-      params.delete('reddit_connected')
-      const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`
-      window.history.replaceState({}, '', next)
-      refetch()
-      onSourcesChange()
-    }
-  }, [onSourcesChange, refetch])
+  const redditInputs = (data?.inputs || []).filter(
+    (input) => input.provider === 'rss' && input.kind === 'reddit_subreddit' && input.config?.sourceProvider === 'reddit',
+  )
 
-  const connect = () => {
-    window.location.href = `${API_BASE}/reddit/connect`
-  }
-
-  const disconnect = async () => {
+  const addSubreddit = async () => {
+    setError('')
+    setSaving(true)
     try {
-      await api('/reddit/session', { method: 'DELETE' })
-      refetch()
+      await api('/inputs/rss/reddit', {
+        method: 'POST',
+        body: JSON.stringify({
+          subreddit,
+          listingType,
+          ...(listingType === 'top' ? { timeRange } : {}),
+        }),
+      })
+      setSubreddit('')
+      setShowAddForm(false)
+      await refetch()
       onSourcesChange()
-      navigate('/settings')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to disconnect')
+      setError(e instanceof Error ? e.message : 'Could not add subreddit')
+    } finally {
+      setSaving(false)
     }
   }
 
-  if (sessionLoading) return <Spinner class={compact ? 'py-2' : undefined} />
-
-  if (session?.connected) {
-    return (
-      <div class={compact ? 'np-settings-item' : 'np-settings-subsection'}>
-        {!compact && <h3>Reddit Account</h3>}
-        {error && <p class="np-alert np-alert-error">{error}</p>}
-        {compact ? (
-          <SettingsItem
-            title={<>Reddit <span class="np-settings-item-copy-inline">(u/{session.username})</span></>}
-            actions={(
-              <button
-                type="button"
-                onClick={disconnect}
-                class="np-button np-button-danger np-button-small whitespace-nowrap"
-              >
-                Disconnect
-              </button>
-            )}
-          />
-        ) : (
-          <div class="np-inline-card np-inline-card-row">
-            <div class="min-w-0">
-              <p class="np-copy-subtle">
-                Connected as <span class="np-copy-strong">u/{session.username}</span>
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={disconnect}
-              class="np-button np-button-danger np-button-small whitespace-nowrap"
-            >
-              Disconnect
-            </button>
-          </div>
-        )}
-      </div>
-    )
+  const toggleInput = async (input: InputSummary) => {
+    setError('')
+    try {
+      await api(`/inputs/${input.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled: !input.enabled }),
+      })
+      await refetch()
+      onSourcesChange()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update input')
+    }
   }
+
+  const removeInput = async (id: string) => {
+    setError('')
+    try {
+      await api(`/inputs/${id}`, { method: 'DELETE' })
+      await refetch()
+      onSourcesChange()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not remove subreddit')
+    }
+  }
+
+  if (inputsLoading) return <Spinner class={compact ? 'py-2' : undefined} />
 
   if (compact) {
     return (
-      <SettingsItem
-        title="Reddit"
-        actions={(
+      <SettingsItem title="Reddit Subreddits">
+        {inputsError && <p class="np-alert np-alert-error">Couldn&apos;t load your current inputs.</p>}
+        {error && <p class="np-alert np-alert-error">{error}</p>}
+
+        <div class="np-settings-pill-row">
+          {redditInputs.map((input) => (
+            <div
+              key={input.id}
+              class={`np-settings-pill${input.enabled ? '' : ' is-disabled'}`}
+              title={formatRedditInputLabel(input)}
+            >
+              <button
+                type="button"
+                onClick={() => toggleInput(input)}
+                class="np-settings-pill-label"
+              >
+                {formatRedditInputLabel(input)}
+              </button>
+              <button
+                type="button"
+                onClick={() => removeInput(input.id)}
+                class="np-settings-pill-remove"
+                aria-label={`Remove ${input.config?.sourceLabel || input.name}`}
+                title="Remove subreddit"
+              >
+                ×
+              </button>
+            </div>
+          ))}
           <button
             type="button"
-            onClick={connect}
-            class="np-button np-button-primary np-button-small"
+            onClick={() => setShowAddForm((value) => !value)}
+            class="np-settings-pill np-settings-pill-add"
           >
-            Connect
+            + Add subreddit
           </button>
+        </div>
+
+        {showAddForm && (
+          <div class="np-settings-fields">
+            <div class="np-settings-pill-form-row">
+              <input
+                type="text"
+                class="np-control flex-1"
+                placeholder="Subreddit, e.g. programming"
+                value={subreddit}
+                onInput={(e) => setSubreddit((e.target as HTMLInputElement).value)}
+              />
+              <div class="np-settings-inline-select-wrap">
+                <select
+                  class="np-control np-control-select select-styled np-settings-inline-select"
+                  value={listingType}
+                  onChange={(e) => setListingType((e.target as HTMLSelectElement).value as 'hot' | 'new' | 'top')}
+                  aria-label="Subreddit listing"
+                >
+                  <option value="new">New</option>
+                  <option value="hot">Hot</option>
+                  <option value="top">Top</option>
+                </select>
+                <span class="np-settings-inline-select-indicator" aria-hidden="true">
+                  <svg viewBox="0 0 20 20" fill="none">
+                    <path d="M6 8l4 4 4-4" />
+                  </svg>
+                </span>
+              </div>
+            </div>
+            {listingType === 'top' && (
+              <div class="np-settings-inline">
+                <span class="np-settings-item-copy">Top window</span>
+                <div class="np-settings-inline-select-wrap">
+                  <select
+                    class="np-control np-control-select select-styled np-settings-inline-select"
+                    value={timeRange}
+                    onChange={(e) => setTimeRange((e.target as HTMLSelectElement).value as 'day' | 'week' | 'month' | 'year' | 'all')}
+                    aria-label="Top time range"
+                  >
+                    <option value="day">Day</option>
+                    <option value="week">Week</option>
+                    <option value="month">Month</option>
+                    <option value="year">Year</option>
+                    <option value="all">All time</option>
+                  </select>
+                  <span class="np-settings-inline-select-indicator" aria-hidden="true">
+                    <svg viewBox="0 0 20 20" fill="none">
+                      <path d="M6 8l4 4 4-4" />
+                    </svg>
+                  </span>
+                </div>
+              </div>
+            )}
+            <div class="np-settings-inline">
+              <button
+                type="button"
+                onClick={addSubreddit}
+                disabled={saving || !subreddit.trim()}
+                class="np-button np-button-primary disabled:opacity-50"
+              >
+                {saving ? 'Adding…' : 'Add subreddit'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddForm(false)}
+                class="np-button np-button-secondary"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         )}
-      />
+
+        {!showAddForm && redditInputs.length === 0 && (
+          <p class="np-settings-item-copy">No subreddit feeds yet.</p>
+        )}
+      </SettingsItem>
     )
   }
+
+  const form = (
+    <>
+      {inputsError && <p class="np-alert np-alert-error">Couldn&apos;t load your current inputs.</p>}
+      {error && <p class="np-alert np-alert-error">{error}</p>}
+
+      <div class={compact ? 'np-settings-fields' : 'np-settings-subsection'}>
+        <input
+          type="text"
+          class="np-control"
+          placeholder="Subreddit, e.g. programming"
+          value={subreddit}
+          onInput={(e) => setSubreddit((e.target as HTMLInputElement).value)}
+        />
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="np-settings-field">
+            <span class="np-settings-item-copy">Listing</span>
+            <select
+              class="np-control"
+              value={listingType}
+              onChange={(e) => setListingType((e.target as HTMLSelectElement).value as 'hot' | 'new' | 'top')}
+            >
+              <option value="new">New</option>
+              <option value="hot">Hot</option>
+              <option value="top">Top</option>
+            </select>
+          </label>
+          {listingType === 'top' && (
+            <label class="np-settings-field">
+              <span class="np-settings-item-copy">Top window</span>
+              <select
+                class="np-control"
+                value={timeRange}
+                onChange={(e) => setTimeRange((e.target as HTMLSelectElement).value as 'day' | 'week' | 'month' | 'year' | 'all')}
+              >
+                <option value="day">Day</option>
+                <option value="week">Week</option>
+                <option value="month">Month</option>
+                <option value="year">Year</option>
+                <option value="all">All time</option>
+              </select>
+            </label>
+          )}
+        </div>
+      </div>
+
+      <div class="np-settings-inline">
+        <button
+          type="button"
+          onClick={addSubreddit}
+          disabled={saving || !subreddit.trim()}
+          class="np-button np-button-primary disabled:opacity-50"
+        >
+          {saving ? 'Adding…' : 'Add subreddit'}
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        {redditInputs.length === 0 ? (
+          <p class="np-copy-muted">No subreddit feeds yet. Add one above to pull public Reddit posts over RSS.</p>
+        ) : redditInputs.map((input) => (
+          <div class="np-inline-card np-inline-card-row" key={input.id}>
+            <div class="min-w-0">
+              <p class="np-copy-strong">
+                {input.config?.sourceLabel || input.name}
+                {input.config?.listingType && (
+                  <span class="np-copy-subtle"> · {input.config.listingType}{input.config.timeRange ? ` (${input.config.timeRange})` : ''}</span>
+                )}
+              </p>
+              <p class="np-copy-muted">{formatInputTimestamp(input.lastFetchedAt)}</p>
+              {input.lastError && <p class="np-alert np-alert-error mt-2">{input.lastError}</p>}
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => toggleInput(input)}
+                class="np-button np-button-secondary np-button-small whitespace-nowrap"
+              >
+                {input.enabled ? 'Pause' : 'Enable'}
+              </button>
+              <button
+                type="button"
+                onClick={() => removeInput(input.id)}
+                class="np-button np-button-danger np-button-small whitespace-nowrap"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  )
 
   return (
     <div class="np-settings-subsection">
       <SettingsBlockIntro
-        title="Reddit"
+        title="Reddit Subreddits"
+        description="Add public subreddits as RSS-backed inputs. Omens stores them as Reddit posts, but the ingestion path is generic RSS so non-Reddit feeds can fit next."
         compact={compact}
       />
-      {sessionError && <p class="np-alert np-alert-error">Couldn&apos;t verify your saved Reddit session. Reconnect below.</p>}
-      {error && <p class="np-alert np-alert-error">{error}</p>}
-      <button
-        type="button"
-        onClick={connect}
-        class="np-button np-button-primary"
-      >
-        Connect Reddit
-      </button>
+      {form}
     </div>
   )
 }
@@ -1698,7 +1906,6 @@ function SessionSection({ onLogout, compact = false }: { onLogout: () => void; c
 export function Settings({
   onSourcesChange,
   xChecked,
-  redditChecked,
   sourcesChecked,
   sourceConnected,
   singleUser,
@@ -1706,7 +1913,6 @@ export function Settings({
 }: {
   onSourcesChange: () => void
   xChecked: boolean
-  redditChecked: boolean
   sourcesChecked: boolean
   sourceConnected: boolean
   singleUser: boolean
@@ -1714,7 +1920,7 @@ export function Settings({
 }) {
   useNewspaperActive()
 
-  if (!xChecked || !redditChecked || !sourcesChecked) {
+  if (!xChecked || !sourcesChecked) {
     return (
       <NewspaperShell leftControls={<NewspaperRouteControls current="settings" />} showMeta={false}>
         <div class="np-settings-page">
@@ -1726,7 +1932,7 @@ export function Settings({
               steps={[
                 {
                   label: 'Resolve source sessions',
-                  detail: 'Verifying X, Reddit, and feed availability.',
+                  detail: 'Verifying X access and checking configured inputs.',
                   state: 'active',
                 },
                 {

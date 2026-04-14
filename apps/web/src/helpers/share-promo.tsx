@@ -7,11 +7,11 @@ export function SharePromoArticle() {
       <div class="np-share-promo-layout">
         <div>
           <h2 class="np-section-header np-section-header-md np-share-promo-title">
-            Bring your own AI to filter your own X feed.
+            Bring your own AI to filter your own sources.
           </h2>
           <div class="np-body np-share-promo-body">
             <p>
-              Omens turns the accounts you already follow on X into a daily newspaper, using your own AI
+              Omens turns the accounts and communities you already follow into a daily newspaper, using your own AI
               provider, model, and API key.
             </p>
           </div>
@@ -21,7 +21,7 @@ export function SharePromoArticle() {
           <div class="np-share-promo-facts">
             <div class="np-share-promo-fact">
               <span class="np-share-promo-fact-label">Source</span>
-              Your own X follows and timeline
+              Your X timeline and chosen subreddit feeds
             </div>
             <div class="np-share-promo-fact">
               <span class="np-share-promo-fact-label">Model</span>

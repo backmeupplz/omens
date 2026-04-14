@@ -432,13 +432,14 @@ body {
   appearance: none;
   -webkit-appearance: none;
   border: 1px solid var(--np-border);
-  background: var(--np-panel-bg-strong);
-  color: var(--np-text-muted);
+  background: color-mix(in srgb, var(--np-bg-alt) 90%, var(--np-bg) 10%);
+  color: color-mix(in srgb, var(--np-text-secondary) 82%, var(--np-text) 18%);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
 }
 
 .np-scroll-top:hover,
 .np-scroll-top:focus-visible {
+  background: color-mix(in srgb, var(--np-bg-alt) 82%, var(--np-bg) 18%);
   color: var(--np-text);
   border-color: var(--np-rule);
 }
@@ -2306,6 +2307,90 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
 .np-settings-item-actions {
   align-self: flex-start;
   justify-content: flex-end;
+}
+
+.np-settings-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.np-settings-pill-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.np-settings-pill-form-row > .np-control {
+  min-width: 0;
+  flex: 1 1 14rem;
+}
+
+.np-settings-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  border: 1px solid var(--np-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--np-inline-card-bg) 88%, transparent);
+  color: var(--np-text-secondary);
+  overflow: hidden;
+}
+
+.np-settings-pill.is-disabled {
+  opacity: 0.6;
+}
+
+.np-settings-pill-label,
+.np-settings-pill-remove {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.np-settings-pill-label {
+  padding: 0.45rem 0.75rem;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.np-settings-pill-label:hover,
+.np-settings-pill-label:focus-visible {
+  color: var(--np-text);
+}
+
+.np-settings-pill-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  border-left: 1px solid color-mix(in srgb, var(--np-border) 78%, transparent);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.np-settings-pill-remove:hover,
+.np-settings-pill-remove:focus-visible {
+  color: var(--np-copy-danger);
+}
+
+.np-settings-pill-add {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0.45rem 0.8rem;
+  background: color-mix(in srgb, var(--np-inline-card-bg) 88%, transparent);
+  color: var(--np-text-secondary);
+  font: inherit;
+  white-space: nowrap;
+}
+
+.np-settings-pill-add:hover,
+.np-settings-pill-add:focus-visible {
+  color: var(--np-text);
+  border-color: var(--np-rule);
 }
 
 .np-settings-inline,

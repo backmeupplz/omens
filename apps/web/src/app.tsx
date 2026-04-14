@@ -16,8 +16,6 @@ interface AuthState {
   demoMode: boolean
   xChecked: boolean
   xConnected: boolean
-  redditChecked: boolean
-  redditConnected: boolean
   sourcesChecked: boolean
   sourcesConnected: boolean
 }
@@ -32,8 +30,6 @@ function useAuth(): AuthState & { logout: () => void; recheckSources: () => void
     demoMode: false,
     xChecked: false,
     xConnected: false,
-    redditChecked: false,
-    redditConnected: false,
     sourcesChecked: false,
     sourcesConnected: false,
   })
@@ -44,12 +40,6 @@ function useAuth(): AuthState & { logout: () => void; recheckSources: () => void
         setState((prev) => ({ ...prev, xChecked: true, xConnected: s.connected })),
       )
       .catch(() => setState((prev) => ({ ...prev, xChecked: true })))
-
-    api<{ connected: boolean }>('/reddit/session')
-      .then((s) =>
-        setState((prev) => ({ ...prev, redditChecked: true, redditConnected: s.connected })),
-      )
-      .catch(() => setState((prev) => ({ ...prev, redditChecked: true })))
 
     api<{ inputs: Array<{ enabled: boolean }> }>('/inputs')
       .then((s) =>
@@ -91,7 +81,6 @@ function useAuth(): AuthState & { logout: () => void; recheckSources: () => void
               singleUser: false,
               demoMode,
               xChecked: true,
-              redditChecked: true,
               sourcesChecked: true,
             })),
           )
@@ -103,7 +92,6 @@ function useAuth(): AuthState & { logout: () => void; recheckSources: () => void
           loggedIn: false,
           singleUser: false,
           xChecked: true,
-          redditChecked: true,
           sourcesChecked: true,
         })),
       )
@@ -267,7 +255,6 @@ export function App() {
             <Settings
               onSourcesChange={auth.recheckSources}
               xChecked={auth.xChecked}
-              redditChecked={auth.redditChecked}
               sourcesChecked={auth.sourcesChecked}
               sourceConnected={auth.sourcesConnected}
               singleUser={auth.singleUser}

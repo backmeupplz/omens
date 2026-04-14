@@ -12,7 +12,6 @@ import authRoutes from './routes/auth'
 import feedRouter from './routes/feed'
 import inputsRouter from './routes/inputs'
 import timelineRouter from './routes/timeline'
-import redditRouter from './routes/reddit'
 import xRouter from './routes/x'
 import demoRouter from './routes/demo'
 import shareRouter, { shareDataRouter } from './routes/share'
@@ -79,8 +78,6 @@ export function createApp() {
   apiApp.use('/timeline/*', authMiddleware)
   apiApp.use('/x', authMiddleware)
   apiApp.use('/x/*', authMiddleware)
-  apiApp.use('/reddit', authMiddleware)
-  apiApp.use('/reddit/*', authMiddleware)
   apiApp.use('/api-keys', authMiddleware)
   apiApp.use('/api-keys/*', authMiddleware)
   apiApp.use('/ai', authMiddleware)
@@ -204,7 +201,6 @@ export function createApp() {
   apiApp.route('/inputs', inputsRouter)
   apiApp.route('/timeline', timelineRouter)
   apiApp.route('/x', xRouter)
-  apiApp.route('/reddit', redditRouter)
   apiApp.route('/api-keys', apiKeysRouter)
   apiApp.route('/ai', aiRouter)
 

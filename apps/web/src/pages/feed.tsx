@@ -4,7 +4,7 @@ import { Link } from 'wouter-preact'
 import { api, API_BASE } from '../helpers/api'
 import { FeedTabs } from '../helpers/components'
 import { FeedLeadArticle, NewspaperFeedShell } from '../helpers/feed-shell'
-import { fmt, safeParse, timeAgo } from '../helpers/format'
+import { decodeEntities, fmt, safeParse, timeAgo } from '../helpers/format'
 import { useApi, useScoringFeeds } from '../helpers/hooks'
 import { NewspaperRouteControls, NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
 import { SetupStateBlock } from '../helpers/setup-state'
@@ -21,6 +21,32 @@ function imgProxy(url: string | null): string | undefined {
   if (!url) return undefined
   if (url.includes('pbs.twimg.com')) return `${API_BASE}/avatar?url=${encodeURIComponent(url)}`
   return url
+}
+
+function lightboxImageUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname === 'pbs.twimg.com') {
+      parsed.searchParams.set('name', 'large')
+      return imgProxy(parsed.toString()) || parsed.toString()
+    }
+    return imgProxy(url) || url
+  } catch {
+    return imgProxy(url) || url
+  }
+}
+
+function mediaThumbnailUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname === 'pbs.twimg.com') {
+      parsed.searchParams.set('name', 'medium')
+      return imgProxy(parsed.toString()) || parsed.toString()
+    }
+    return imgProxy(url) || url
+  } catch {
+    return imgProxy(url) || url
+  }
 }
 
 function withFeedId(path: string, feedId?: string | null) {
@@ -100,7 +126,7 @@ function Lightbox({
         />
       ) : (
         <img
-          src={imgProxy(`${item.url}?name=large`)}
+          src={lightboxImageUrl(item.url)}
           alt=""
           class={`max-h-[90vh] max-w-[90vw] rounded-lg object-contain transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
           onClick={(e) => e.stopPropagation()}
@@ -542,18 +568,18 @@ function QuotedTweetPreview({
           }
         }}
       >
-        <div class="mb-1 flex items-center gap-2">
+        <div class="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
           {quoted.authorAvatar && (
             <img
               src={imgProxy(quoted.authorAvatar)}
               alt=""
-              class={compact ? 'h-4 w-4 rounded-full' : 'h-5 w-5 rounded-full'}
+              class={compact ? 'h-4 w-4 rounded-full shrink-0' : 'h-5 w-5 rounded-full shrink-0'}
             />
           )}
-          <span class={compact ? 'np-copy-subtle text-xs font-semibold' : 'np-copy-strong text-sm font-semibold'}>
+          <span class={`${compact ? 'np-copy-subtle text-xs font-semibold' : 'np-copy-strong text-sm font-semibold'} break-all`}>
             {quoted.authorName}
           </span>
-          <span class={compact ? 'np-copy-muted text-xs' : 'np-copy-muted text-xs'}>
+          <span class={`${compact ? 'np-copy-muted text-xs' : 'np-copy-muted text-xs'} break-all`}>
             @{quoted.authorHandle}
           </span>
         </div>
@@ -1072,6 +1098,10 @@ function ArticleModal({
 function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl?: string; tweetUrl?: string }) {
   const url = data.url || fallbackUrl || '#'
   const [showArticle, setShowArticle] = useState(false)
+  const [hideThumbnail, setHideThumbnail] = useState(false)
+  const title = decodeEntities(data.title)
+  const description = data.description ? decodeEntities(data.description) : null
+  const thumbnail = data.thumbnail ? decodeEntities(data.thumbnail) : null
 
   // Detect X article cards
   const isXArticle = data.domain === 'x.com' || data.domain === 'twitter.com'
@@ -1093,15 +1123,21 @@ function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl
           class="np-post-link-card mt-2 block w-full overflow-hidden rounded-xl text-left transition-colors"
           onClick={(e) => { e.stopPropagation(); setShowArticle(true) }}
         >
-          {data.thumbnail && (
+          {thumbnail && !hideThumbnail && (
             <div class="np-link-thumb">
-              <img src={imgProxy(data.thumbnail!)} alt="" class="w-full h-full object-cover rounded-t-xl" loading="lazy" />
+              <img
+                src={imgProxy(thumbnail)}
+                alt=""
+                class="w-full h-full object-cover rounded-t-xl"
+                loading="lazy"
+                onError={() => setHideThumbnail(true)}
+              />
             </div>
           )}
           <div class="p-2.5">
-            <p class="np-link-card-title line-clamp-2 text-sm font-medium">{data.title}</p>
-            {data.description && (
-              <p class="np-link-card-body mt-0.5 line-clamp-2 text-xs">{data.description}</p>
+            <p class="np-link-card-title line-clamp-2 text-sm font-medium">{title}</p>
+            {description && (
+              <p class="np-link-card-body mt-0.5 line-clamp-2 text-xs">{description}</p>
             )}
             <p class="np-link-card-domain mt-0.5 text-xs">{data.domain}</p>
           </div>
@@ -1118,15 +1154,21 @@ function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl
       class="np-post-link-card mt-2 block overflow-hidden rounded-xl transition-colors"
       onClick={(e) => e.stopPropagation()}
     >
-      {data.thumbnail && (
+      {thumbnail && !hideThumbnail && (
         <div class="np-link-thumb">
-          <img src={imgProxy(data.thumbnail!)} alt="" class="w-full h-full object-cover rounded-t-xl" loading="lazy" />
+          <img
+            src={imgProxy(thumbnail)}
+            alt=""
+            class="w-full h-full object-cover rounded-t-xl"
+            loading="lazy"
+            onError={() => setHideThumbnail(true)}
+          />
         </div>
       )}
       <div class="p-2.5">
-        <p class="np-link-card-title line-clamp-2 text-sm font-medium">{data.title}</p>
-        {data.description && (
-          <p class="np-link-card-body mt-0.5 line-clamp-2 text-xs">{data.description}</p>
+        <p class="np-link-card-title line-clamp-2 text-sm font-medium">{title}</p>
+        {description && (
+          <p class="np-link-card-body mt-0.5 line-clamp-2 text-xs">{description}</p>
         )}
         <p class="np-link-card-domain mt-0.5 text-xs">{data.domain}</p>
       </div>
@@ -1136,20 +1178,24 @@ function LinkCard({ data, fallbackUrl, tweetUrl }: { data: CardData; fallbackUrl
 
 function OgEmbed({
   text,
+  url,
   onLoaded,
+  onResolved,
 }: {
   text: string
+  url?: string
   onLoaded: () => void
+  onResolved?: (found: boolean) => void
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const [card, setCard] = useState<CardData | null>(null)
   const [attempted, setAttempted] = useState(false)
   const [visible, setVisible] = useState(false)
+  const targetUrl = url || text.match(/https?:\/\/[^\s]+/)?.[0] || null
 
   useEffect(() => {
     const node = rootRef.current
-    const match = text.match(/https?:\/\/[^\s]+/)
-    if (!node || !match) return
+    if (!node || !targetUrl) return
 
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) {
@@ -1163,18 +1209,20 @@ function OgEmbed({
   }, [text])
 
   useEffect(() => {
-    const match = text.match(/https?:\/\/[^\s]+/)
-    if (!match || !visible) return
+    if (!targetUrl || !visible) return
     setAttempted(true)
-    api<CardData | null>(`/og?url=${encodeURIComponent(match[0])}`)
+    api<CardData | null>(`/og?url=${encodeURIComponent(targetUrl)}`)
       .then((data) => {
         if (data) {
           setCard(data)
           onLoaded()
+          onResolved?.(true)
+        } else {
+          onResolved?.(false)
         }
       })
-      .catch(() => {})
-  }, [text, onLoaded])
+      .catch(() => onResolved?.(false))
+  }, [targetUrl, visible, onLoaded, onResolved])
 
   if (!card) {
     return attempted ? (
@@ -1198,7 +1246,7 @@ function InlineVideo({ item, frameClass, fit }: { item: MediaItem; frameClass: s
   const [playing, setPlaying] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const posterUrl = imgProxy(`${item.thumbnail}?name=medium`)
+  const posterUrl = mediaThumbnailUrl(item.thumbnail)
 
   useEffect(() => {
     const v = videoRef.current
@@ -1282,22 +1330,54 @@ function MediaGrid({
         item.type !== 'photo' ? (
           <InlineVideo key={item.thumbnail} item={item} frameClass={frameClass} fit={fit} />
         ) : (
-          <button
-            key={item.thumbnail}
-            type="button"
-            class={`np-media-frame relative overflow-hidden rounded-lg border transition-colors ${frameClass}`}
-            onClick={(e) => { e.stopPropagation(); onPhotoClick?.(i) }}
-          >
-            <img
-              src={imgProxy(`${item.thumbnail}?name=medium`)}
-              alt=""
-              class={`${fit} absolute inset-0 h-full w-full`}
-              loading="lazy"
-            />
-          </button>
+          <MediaPhotoTile
+            key={item.url}
+            item={item}
+            frameClass={frameClass}
+            fit={fit}
+            onClick={() => onPhotoClick?.(i)}
+          />
         ),
       )}
     </div>
+  )
+}
+
+function MediaPhotoTile({
+  item,
+  frameClass,
+  fit,
+  onClick,
+}: {
+  item: MediaItem
+  frameClass: string
+  fit: string
+  onClick?: () => void
+}) {
+  const thumbnailSrc = mediaThumbnailUrl(item.thumbnail)
+  const fullSrc = lightboxImageUrl(item.url)
+  const [src, setSrc] = useState(thumbnailSrc)
+
+  useEffect(() => {
+    setSrc(thumbnailSrc)
+  }, [thumbnailSrc])
+
+  return (
+    <button
+      type="button"
+      class={`np-media-frame relative overflow-hidden rounded-lg border transition-colors ${frameClass}`}
+      onClick={(e) => { e.stopPropagation(); onClick?.() }}
+    >
+      <img
+        src={src}
+        alt=""
+        class={`${fit} absolute inset-0 h-full w-full`}
+        loading="lazy"
+        onError={() => {
+          if (src !== fullSrc) setSrc(fullSrc)
+        }}
+      />
+    </button>
   )
 }
 
@@ -1754,8 +1834,18 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
         />
       ))}
 
-      {/* Author row: avatar + repost label + name */}
-      <div class={`np-post-author flex gap-2.5 mb-1 group/author relative ${tweet.isRetweet ? '' : 'items-center'}`}>
+      {tweet.isRetweet && (
+        <div class="np-copy-muted mb-1 flex items-center gap-1 text-xs">
+          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
+            <path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
+          </svg>
+          @{tweet.isRetweet} reposted
+        </div>
+      )}
+
+      {/* Author row: avatar + name */}
+      <div class="np-post-author flex items-center gap-2.5 mb-1 group/author relative">
         {tweet.authorAvatar ? (
           <img
             src={imgProxy(tweet.authorAvatar)}
@@ -1769,15 +1859,6 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
           </div>
         )}
         <div class="min-w-0">
-          {tweet.isRetweet && (
-            <div class="np-copy-muted mb-0.5 flex items-center gap-1 text-xs">
-              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                <path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
-              </svg>
-              @{tweet.isRetweet} reposted
-            </div>
-          )}
           <div class="overflow-hidden">
             <div class="flex items-baseline gap-1 flex-wrap">
               <span class="np-copy-strong max-w-[70%] truncate text-sm font-semibold">
@@ -1943,26 +2024,93 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
 
 function parseRedditMedia(media: string | null, previewUrl: string | null, thumbnailUrl: string | null): MediaItem[] {
   const items: MediaItem[] = []
+  const seen = new Set<string>()
   const parsed = safeParse<any>(media)
+  const directUrls = Array.isArray(parsed?.urls) ? parsed.urls : []
+  const galleryItems = Array.isArray(parsed?.galleryItems) ? parsed.galleryItems : []
+  const galleryUrls = Array.isArray(parsed?.galleryUrls) ? parsed.galleryUrls : []
   const galleryEntries = parsed?.mediaMetadata && typeof parsed.mediaMetadata === 'object'
     ? Object.values(parsed.mediaMetadata)
     : []
 
+  const pushItem = (item: MediaItem | null) => {
+    if (!item) return
+    const key = `${item.type}:${item.url}`
+    if (seen.has(key)) return
+    seen.add(key)
+    items.push(item)
+  }
+
+  for (const directUrl of directUrls) {
+    pushItem(getDirectRedditMedia(directUrl))
+  }
+
+  for (const galleryItem of galleryItems) {
+    const url = typeof galleryItem?.url === 'string' ? galleryItem.url : null
+    const thumbnail = typeof galleryItem?.thumbnail === 'string' ? galleryItem.thumbnail : url
+    if (url && thumbnail) {
+      pushItem({ type: 'photo', url, thumbnail })
+    }
+  }
+
+  for (const galleryUrl of galleryUrls) {
+    pushItem(getDirectRedditMedia(galleryUrl))
+  }
+
   for (const entry of galleryEntries) {
     const source = decodeURIComponent((entry as any)?.s?.u || '')
     if (source && /^https?:\/\//.test(source)) {
-      items.push({ type: 'photo', url: source, thumbnail: source })
+      pushItem({ type: 'photo', url: source, thumbnail: source })
     }
   }
 
   const videoUrl = (parsed?.secureMedia as any)?.reddit_video?.fallback_url
   if (videoUrl && /^https?:\/\//.test(videoUrl)) {
-    items.push({ type: 'video', url: videoUrl, thumbnail: previewUrl || thumbnailUrl || videoUrl })
+    pushItem({ type: 'video', url: videoUrl, thumbnail: previewUrl || thumbnailUrl || videoUrl })
   }
 
-  if (items.length === 0 && previewUrl) items.push({ type: 'photo', url: previewUrl, thumbnail: previewUrl })
-  if (items.length === 0 && thumbnailUrl) items.push({ type: 'photo', url: thumbnailUrl, thumbnail: thumbnailUrl })
+  if (items.length === 0 && previewUrl) pushItem({ type: 'photo', url: previewUrl, thumbnail: previewUrl })
+  if (items.length === 0 && thumbnailUrl) pushItem({ type: 'photo', url: thumbnailUrl, thumbnail: thumbnailUrl })
   return items
+}
+
+function getDirectRedditMedia(url: string | null | undefined): MediaItem | null {
+  if (!url) return null
+
+  try {
+    const parsed = new URL(url)
+    const nestedUrl = parsed.hostname.endsWith('reddit.com') && parsed.pathname === '/media'
+      ? parsed.searchParams.get('url')
+      : null
+    if (nestedUrl) return getDirectRedditMedia(nestedUrl)
+
+    const pathname = parsed.pathname.toLowerCase()
+    const mediaUrl = parsed.toString()
+
+    if (/\.(png|jpe?g|gif|webp)$/i.test(pathname) || parsed.hostname === 'i.redd.it' || parsed.hostname === 'preview.redd.it') {
+      return { type: 'photo', url: mediaUrl, thumbnail: mediaUrl }
+    }
+
+    if (/\.(mp4|webm|mov)$/i.test(pathname)) {
+      return { type: 'video', url: mediaUrl, thumbnail: mediaUrl }
+    }
+  } catch {}
+
+  return null
+}
+
+function normalizeComparableUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  try {
+    const parsed = new URL(decodeEntities(url))
+    parsed.hash = ''
+    if ((parsed.hostname === 'i.redd.it' || parsed.hostname === 'preview.redd.it') && parsed.searchParams.has('width')) {
+      parsed.searchParams.delete('width')
+    }
+    return parsed.toString()
+  } catch {
+    return decodeEntities(url)
+  }
 }
 
 function RedditCard({
@@ -1980,71 +2128,118 @@ function RedditCard({
 }) {
   const post = item.payload
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
-  const mediaItems = useMemo(() => parseRedditMedia(post.media, post.previewUrl, post.thumbnailUrl), [post.media, post.previewUrl, post.thumbnailUrl])
+  const [bodyExpanded, setBodyExpanded] = useState(false)
+  const [ogResolved, setOgResolved] = useState(false)
+  const [ogAvailable, setOgAvailable] = useState(false)
+  const mediaItems = useMemo(() => {
+    const parsed = parseRedditMedia(post.media, post.previewUrl, post.thumbnailUrl)
+    if (parsed.length > 0) return parsed
+    const directMedia = getDirectRedditMedia(post.url)
+    return directMedia ? [directMedia] : parsed
+  }, [post.media, post.previewUrl, post.thumbnailUrl, post.url])
+  const hasDirectMediaUrl = !!getDirectRedditMedia(post.url)
+  const isRedditGalleryPost = post.postHint === 'gallery' || /:\/\/(?:www\.)?reddit\.com\/gallery\//i.test(post.url)
+  const linkCardData = !post.isSelf && post.domain && !hasDirectMediaUrl && !isRedditGalleryPost
+    ? {
+        title: post.title,
+        description: post.body || null,
+        thumbnail: post.previewUrl || post.thumbnailUrl || mediaItems[0]?.thumbnail || null,
+        domain: post.domain,
+        url: post.url,
+      }
+    : null
+  const linkThumbnail = normalizeComparableUrl(linkCardData?.thumbnail || null)
+  const dedupedMediaItems = linkThumbnail
+    ? mediaItems.filter((mediaItem) => {
+        const mediaUrl = normalizeComparableUrl(mediaItem.url)
+        const mediaThumb = normalizeComparableUrl(mediaItem.thumbnail)
+        return mediaUrl !== linkThumbnail && mediaThumb !== linkThumbnail
+      })
+    : mediaItems
+  const bodyLines = (post.body || '').split('\n')
+  const bodyNeedsTruncation = !!post.body && (bodyLines.length > 10 || post.body.length > MAX_CHARS)
+  let visibleBody = post.body || ''
+  if (bodyNeedsTruncation && !bodyExpanded) {
+    if (bodyLines.length > 10) visibleBody = bodyLines.slice(0, 10).join('\n')
+    if (visibleBody.length > MAX_CHARS) visibleBody = visibleBody.slice(0, MAX_CHARS)
+    visibleBody = `${visibleBody.trimEnd()}...`
+  }
+  const bodyParagraphs = visibleBody
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
 
   return (
     <article class="np-tweet relative overflow-hidden">
       <div class="space-y-3">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2 text-xs">
-              <span class="np-chip px-2 py-0.5 font-semibold">r/{post.subreddit}</span>
-              <span class="np-copy-muted">u/{post.authorName || '[deleted]'}</span>
-              {post.linkFlairText && <span class="np-chip px-2 py-0.5">{post.linkFlairText}</span>}
-              {post.over18 && <span class="np-chip px-2 py-0.5 text-red-700">NSFW</span>}
-              {post.spoiler && <span class="np-chip px-2 py-0.5">Spoiler</span>}
-              {post.publishedAt && <span class="np-copy-muted">{timeAgo(post.publishedAt)}</span>}
-            </div>
-            <h3 class="mt-2 text-[1.02rem] font-semibold leading-snug np-copy-strong">{post.title}</h3>
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-1.5 text-xs">
+            <span class="np-copy-strong font-semibold">r/{post.subreddit}</span>
+            <span class="np-copy-muted">u/{post.authorName || '[deleted]'}</span>
+            {post.publishedAt && <span class="np-copy-muted">{timeAgo(post.publishedAt)}</span>}
+            {post.linkFlairText && <span class="np-chip px-2 py-0.5">{post.linkFlairText}</span>}
+            {post.over18 && <span class="np-chip px-2 py-0.5 text-red-700">NSFW</span>}
+            {post.spoiler && <span class="np-chip px-2 py-0.5">Spoiler</span>}
           </div>
-          {score != null && (
-            <span class={`np-post-score rounded-sm px-1 py-0.5 text-[10px] font-medium ${minScore != null && score < minScore ? 'np-score-low' : score >= 70 ? 'np-score-high' : score >= 50 ? 'np-score-mid' : 'np-score-cutoff'}`}>
-              {score}
-            </span>
-          )}
+          <h3 class="mt-1.5 text-[1.02rem] font-semibold leading-snug np-copy-strong">{post.title}</h3>
         </div>
 
         {post.body && (
-          <p class="np-copy-subtle whitespace-pre-wrap break-words text-[0.95rem] leading-relaxed">
-            {post.body.length > 420 ? `${post.body.slice(0, 420)}…` : post.body}
-          </p>
-        )}
-
-        {mediaItems.length > 0 && (
-          <div class={`grid gap-2 ${mediaItems.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            {mediaItems.slice(0, 4).map((mediaItem, index) => (
+          <div>
+            <div class="np-copy-subtle break-words text-[0.95rem] leading-relaxed">
+              {bodyParagraphs.map((paragraph, index) => (
+                <p key={index} class={index === bodyParagraphs.length - 1 ? '' : 'mb-3'}>
+                  {textWithBreaks(paragraph)}
+                </p>
+              ))}
+            </div>
+            {bodyNeedsTruncation && (
               <button
-                key={`${mediaItem.url}-${index}`}
                 type="button"
-                class="overflow-hidden rounded-xl border border-black/10"
-                onClick={() => setLightboxIndex(index)}
+                onClick={() => setBodyExpanded((value) => !value)}
+                class="np-link-accent mt-1 text-sm"
               >
-                {mediaItem.type === 'photo' ? (
-                  <img src={imgProxy(mediaItem.thumbnail)} alt="" class="h-full max-h-80 w-full object-cover" />
-                ) : (
-                  <video src={videoProxyUrl(mediaItem.url)} class="h-full max-h-80 w-full object-cover" muted />
-                )}
+                {bodyExpanded ? 'Show less' : 'Show full post'}
               </button>
-            ))}
+            )}
           </div>
         )}
 
-        {!post.isSelf && post.domain && (
-          <a
-            href={post.url}
-            target="_blank"
-            rel="noopener"
-            class="block rounded-xl border border-black/10 p-3 transition-colors hover:bg-black/[0.03]"
-          >
-            <div class="text-xs uppercase tracking-[0.12em] np-copy-muted">{post.domain}</div>
-            <div class="mt-1 text-sm np-copy-strong">{post.title}</div>
-          </a>
+        {dedupedMediaItems.length > 0 && (
+          <MediaGrid media={dedupedMediaItems} onPhotoClick={setLightboxIndex} />
         )}
 
-        <div class="flex items-center justify-between gap-3 text-xs np-copy-muted">
+        {post.url && dedupedMediaItems.length === 0 && !post.isSelf && !hasDirectMediaUrl && (
+          <OgEmbed
+            text=""
+            url={post.url}
+            onLoaded={() => setOgAvailable(true)}
+            onResolved={(found) => {
+              setOgResolved(true)
+              setOgAvailable(found)
+            }}
+          />
+        )}
+        {ogResolved && !ogAvailable && linkCardData && <LinkCard data={linkCardData} fallbackUrl={post.url} />}
+
+        <div class="np-post-actions flex flex-wrap items-center justify-between gap-y-1 text-xs">
           <span class="flex items-center gap-3">
-            <span>{fmt(post.score)} points</span>
-            <span>{fmt(post.commentCount)} comments</span>
+            {post.score > 0 && (
+              <span class="flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M12 19V5m0 0l-6 6m6-6l6 6" />
+                </svg>
+                {fmt(post.score)}
+              </span>
+            )}
+            {post.commentCount > 0 && (
+              <span class="flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                </svg>
+                {fmt(post.commentCount)}
+              </span>
+            )}
           </span>
           <span class="flex items-center gap-2">
             {onNudge && (
@@ -2071,14 +2266,31 @@ function RedditCard({
                 </button>
               </span>
             )}
+            {score != null && (
+              <span class={`np-post-score rounded-sm px-1 py-0.5 text-[10px] font-medium ${minScore != null && score < minScore ? 'np-score-low' : score >= 70 ? 'np-score-high' : score >= 50 ? 'np-score-mid' : 'np-score-cutoff'}`}>
+                {score}
+              </span>
+            )}
             <CopyShareButton url={post.url} iconOnly />
-            <a href={post.url} target="_blank" rel="noopener" class="np-action-strong">Open</a>
+            <a
+              href={post.permalink}
+              target="_blank"
+              rel="noopener"
+              class="np-action-strong flex items-center gap-1 whitespace-nowrap"
+              title="View on Reddit"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </a>
           </span>
         </div>
       </div>
 
       {lightboxIndex != null && (
-        <Lightbox items={mediaItems} index={lightboxIndex} onClose={() => setLightboxIndex(null)} />
+        <Lightbox items={dedupedMediaItems} index={lightboxIndex} onClose={() => setLightboxIndex(null)} />
       )}
     </article>
   )

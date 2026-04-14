@@ -6,13 +6,19 @@ import {
   inputs,
   redditAccounts,
   redditInputs,
+  rssInputs,
   sourceAccounts,
   xAccounts,
   xInputs,
   xSessions,
 } from '@omens/db'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import env from '../env'
+import {
+  buildRedditSubredditFeedConfig,
+  type RedditRssListingType,
+  type RedditRssTimeRange,
+} from '../rss/reddit'
 
 async function syncInputToFeeds(userId: string, inputId: string) {
   const db = getDb(env.DATABASE_URL)
@@ -273,4 +279,93 @@ export async function ensureLegacyXInputForUser(userId: string) {
   })
 
   return created.inputId
+}
+
+export async function ensureRedditSubredditRssInput(params: {
+  userId: string
+  subreddit: string
+  listingType: RedditRssListingType
+  timeRange?: RedditRssTimeRange | null
+}) {
+  const db = getDb(env.DATABASE_URL)
+  const [settings] = await db
+    .select({ fetchIntervalMinutes: aiSettings.fetchIntervalMinutes })
+    .from(aiSettings)
+    .where(eq(aiSettings.userId, params.userId))
+    .limit(1)
+
+  const config = buildRedditSubredditFeedConfig(params)
+
+  const [existing] = await db
+    .select({
+      inputId: inputs.id,
+    })
+    .from(inputs)
+    .innerJoin(rssInputs, eq(rssInputs.inputId, inputs.id))
+    .where(and(
+      eq(inputs.userId, params.userId),
+      eq(inputs.provider, 'rss'),
+      eq(inputs.kind, 'reddit_subreddit'),
+      eq(rssInputs.sourceProvider, 'reddit'),
+      eq(rssInputs.sourceKey, config.subreddit.toLowerCase()),
+      eq(rssInputs.listingType, config.listingType),
+      config.timeRange
+        ? eq(rssInputs.timeRange, config.timeRange)
+        : isNull(rssInputs.timeRange),
+    ))
+    .limit(1)
+
+  let inputId = existing?.inputId || null
+
+  if (!inputId) {
+    const [createdInput] = await db
+      .insert(inputs)
+      .values({
+        userId: params.userId,
+        provider: 'rss',
+        kind: 'reddit_subreddit',
+        name: config.inputName,
+        pollIntervalMinutes: settings?.fetchIntervalMinutes ?? 15,
+      })
+      .returning({ id: inputs.id })
+
+    inputId = createdInput.id
+    await db.insert(rssInputs).values({
+      inputId,
+      feedUrl: config.feedUrl,
+      siteUrl: config.siteUrl,
+      title: config.inputName,
+      sourceProvider: 'reddit',
+      sourceKey: config.subreddit.toLowerCase(),
+      sourceLabel: config.sourceLabel,
+      listingType: config.listingType,
+      timeRange: config.timeRange,
+    })
+  } else {
+    await db
+      .update(inputs)
+      .set({
+        name: config.inputName,
+        updatedAt: new Date(),
+      })
+      .where(eq(inputs.id, inputId))
+
+    await db
+      .update(rssInputs)
+      .set({
+        feedUrl: config.feedUrl,
+        siteUrl: config.siteUrl,
+        title: config.inputName,
+        sourceProvider: 'reddit',
+        sourceKey: config.subreddit.toLowerCase(),
+        sourceLabel: config.sourceLabel,
+        listingType: config.listingType,
+        timeRange: config.timeRange,
+      })
+      .where(eq(rssInputs.inputId, inputId))
+  }
+
+  await syncInputToFeeds(params.userId, inputId)
+
+  return { inputId }
 }

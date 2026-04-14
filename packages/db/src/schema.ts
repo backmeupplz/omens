@@ -42,7 +42,7 @@ export const sourceAccounts = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    provider: text('provider').notNull(), // 'x' | 'reddit' | future providers
+    provider: text('provider').notNull(), // 'x' | future auth-backed providers
     externalAccountId: text('external_account_id'),
     label: text('label').notNull(),
     status: text('status').notNull().default('active'),
@@ -117,6 +117,24 @@ export const redditInputs = pgTable('reddit_inputs', {
     .primaryKey()
     .references(() => inputs.id, { onDelete: 'cascade' }),
   listingType: text('listing_type').notNull().default('best'),
+})
+
+export const rssInputs = pgTable('rss_inputs', {
+  inputId: text('input_id')
+    .primaryKey()
+    .references(() => inputs.id, { onDelete: 'cascade' }),
+  feedUrl: text('feed_url').notNull(),
+  siteUrl: text('site_url'),
+  title: text('title'),
+  description: text('description'),
+  sourceProvider: text('source_provider').notNull().default('rss'),
+  sourceKey: text('source_key'),
+  sourceLabel: text('source_label'),
+  listingType: text('listing_type'),
+  timeRange: text('time_range'),
+  etag: text('etag'),
+  lastModified: text('last_modified'),
+  lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
 })
 
 export const contentItems = pgTable(

@@ -69,3 +69,12 @@ export const scoringFeedUpdateSchema = z.object({
   reportIntervalHours: z.number().int().min(0).max(168),
   reportAtHour: z.number().int().min(0).max(23),
 })
+
+export const redditRssListingTypes = ['hot', 'new', 'top'] as const
+export const redditRssTimeRanges = ['day', 'week', 'month', 'year', 'all'] as const
+
+export const redditRssInputCreateSchema = z.object({
+  subreddit: z.string().trim().min(2).max(64),
+  listingType: z.enum(redditRssListingTypes).default('new'),
+  timeRange: z.enum(redditRssTimeRanges).optional().default('week'),
+})
