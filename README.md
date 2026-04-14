@@ -6,7 +6,7 @@
 
 ## What it does
 
-1. **Connect your sources** — Log in with X and/or authorize Reddit
+1. **Connect your sources** — Log in with X and/or add subreddit RSS feeds
 2. **Choose an AI provider** — OpenAI, Anthropic, Google Gemini, Groq, xAI, Fireworks, OpenRouter, Ollama, or any OpenAI-compatible endpoint
 3. **Get signal** — Omens fetches your home timeline, scores every post 0-100 for relevance, and shows you only what matters
 
@@ -14,7 +14,8 @@
 
 - **AI-filtered feed** — Every post scored by your AI provider, filtered to your configured threshold
 - **AI reports** — Daily digest reports summarizing your feed's highlights
-- **Reddit OAuth** — Connect a Reddit developer app once and fetch your personalized Reddit home feed
+- **Reddit via RSS** — Add public subreddits as RSS-backed inputs
+- **Generic input model** — RSS is the first generic non-X input path; more feed types can reuse it
 - **Prompt tuning** — Thumbs up/down on posts + text instructions to refine your filter
 - **Auto-fetch** — Configurable polling interval (5min to 1hr)
 - **Shareable posts** — Public share pages with OG metadata for link previews
@@ -29,13 +30,15 @@
 
 ```bash
 git clone https://github.com/backmeupplz/omens.git
-cd omens/docker
-cp .env .env.local
-# Edit .env.local — set JWT_SECRET, ENCRYPTION_KEY, CORS_ORIGIN
-docker compose up -d
+cd omens
+cp docker/.env .env
+# Edit .env — at minimum set JWT_SECRET, ENCRYPTION_KEY, POSTGRES_PASSWORD
+./docker/deploy-prod.sh
 ```
 
-Open `http://localhost:3000`. Set `SINGLE_USER_MODE=true` for personal use.
+If `DOMAIN` is blank, Caddy stays disabled and Omens is served directly on `http://localhost:3000` or `http://SERVER_IP:${PORT}`.
+
+Set `SINGLE_USER_MODE=true` for personal use.
 
 ### Development
 
@@ -61,45 +64,89 @@ packages/
 
 ## Environment variables
 
-### App runtime
+Omens uses one real env file at the repo root: `.env`.
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `JWT_SECRET` | Yes | Secret for JWT signing (generate: `openssl rand -hex 32`) |
-| `ENCRYPTION_KEY` | Yes | Secret for API key encryption (generate: `openssl rand -hex 32`) |
-| `CORS_ORIGIN` | Production | Your domain (e.g. `https://omens.example.com`) |
-| `SINGLE_USER_MODE` | No | `true` to skip registration (default: `false`) |
-| `PORT` | No | Server port (default: `3000`) |
+This repo ships two starter templates:
 
-AI provider credentials are configured per-user through the web UI settings page.
+- [`.env.sample`](.env.sample): app-focused example for local/non-Docker runs
+- [`docker/.env`](docker/.env): Docker/prod-flavored example that includes optional infra vars like `DOMAIN` and `GRAFANA_*`
 
-### Docker / Grafana deployment
+The overlapping app vars are intentionally the same in both. `./docker/deploy-prod.sh` prefers the repo-root `.env`, so the distinction is just which starter template is more convenient for your setup.
 
-The production compose file also expects these values in [`docker/.env`](docker/.env):
+AI provider API keys are not server env vars. Each user enters them in the Omens settings UI.
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DOMAIN` | Production | Main Omens hostname served by Caddy |
-| `POSTGRES_PASSWORD` | Production | PostgreSQL superuser/app password |
-| `GRAFANA_DOMAIN` | Production | Grafana hostname, e.g. `dash.omens.online` |
-| `GRAFANA_ADMIN_USER` | No | Grafana admin username (default `admin`) |
-| `GRAFANA_ADMIN_PASSWORD` | Production | Grafana admin password |
-| `GRAFANA_DB_PASSWORD` | Production | Password for the read-only `grafana_ro` PostgreSQL role |
-| `GRAFANA_SHARED_DASHBOARD_UID` | No | Stable UID for the externally shared public dashboard |
-| `GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN` | No | Stable public token Caddy rewrites `/` to |
+### Local app runtime
 
-Deploy production from the repo checkout with:
+Use this when running Omens directly with `pnpm dev` or a custom process manager.
+
+| Variable | Required | Where to get it | Notes |
+|----------|----------|-----------------|-------|
+| `DATABASE_URL` | Yes | Your PostgreSQL instance | Example local value: `postgres://omens:omens@localhost:5432/omens` |
+| `JWT_SECRET` | Yes | Generate with `openssl rand -hex 32` | Used for session JWT signing |
+| `ENCRYPTION_KEY` | Yes | Generate with `openssl rand -hex 32` | Used for encrypting saved provider/API credentials |
+| `PORT` | No | Choose locally | Defaults to `3000` |
+| `SINGLE_USER_MODE` | No | Set manually | `true` skips registration for personal self-hosting |
+| `POLL_INTERVAL_MINUTES` | No | Set manually | Global fetch loop cadence, default `5` |
+| `CORS_ORIGIN` | Only if web and API are on different origins | Your frontend URL | Example: `https://omens.example.com` |
+| `DEMO_USER_EMAIL` | Optional | One of your Omens user emails | Enables the logged-out demo feed |
+
+### Docker deployment
+
+For Docker, the intended flow is:
 
 ```bash
-./docker/deploy-prod.sh
+cp docker/.env .env
 ```
 
-That script uses the versioned [`docker/docker-compose.prod.yml`](docker/docker-compose.prod.yml) and [`docker/Caddyfile`](docker/Caddyfile), while reading secrets/domains from the repo root `.env`. This is the intended "same checkout" deployment path.
+Then edit the repo-root `.env` before running [`./docker/deploy-prod.sh`](docker/deploy-prod.sh).
+
+#### Required for Omens
+
+| Variable | Required | Where to get it | Notes |
+|----------|----------|-----------------|-------|
+| `JWT_SECRET` | Yes | Generate with `openssl rand -hex 32` | Must be unique per deployment |
+| `ENCRYPTION_KEY` | Yes | Generate with `openssl rand -hex 32` | Must be different from `JWT_SECRET` |
+| `POSTGRES_PASSWORD` | Yes | Choose/generate a strong password | Docker compose uses this to build the app `DATABASE_URL` |
+| `PORT` | No | Choose locally/on server | Host port for Omens when running without Caddy; defaults to `3000` |
+| `SINGLE_USER_MODE` | No | Set manually | `true` for one-user self-hosting |
+| `POLL_INTERVAL_MINUTES` | No | Set manually | Global fetch cadence |
+| `CORS_ORIGIN` | Only if served from another origin | Your frontend URL | Leave blank when browsing Omens directly on the same host/port |
+| `DEMO_USER_EMAIL` | Optional | One of your Omens user emails | Enables logged-out demo mode |
+
+#### Optional: Caddy / HTTPS
+
+| Variable | Required to enable feature | Where to get it | Notes |
+|----------|----------------------------|-----------------|-------|
+| `DOMAIN` | Yes | Your DNS provider | Point an A/AAAA record for this hostname at your server |
+
+If `DOMAIN` is set, `deploy-prod.sh` enables the `caddy` profile and serves Omens on `https://DOMAIN`.  
+If `DOMAIN` is blank, Caddy stays off and Omens is only exposed on `PORT`.
+
+#### Optional: Grafana
+
+| Variable | Required to enable feature | Where to get it | Notes |
+|----------|----------------------------|-----------------|-------|
+| `GRAFANA_DOMAIN` | Yes | Your DNS provider | Example: `dash.omens.example.com` pointed at the same server |
+| `GRAFANA_ADMIN_PASSWORD` | Yes | Generate a strong password | Used for the Grafana admin login |
+| `GRAFANA_DB_PASSWORD` | Yes | Generate a strong password | Used for the read-only `grafana_ro` PostgreSQL role |
+| `GRAFANA_ADMIN_USER` | No | Set manually | Defaults to `admin` |
+| `GRAFANA_SHARED_DASHBOARD_UID` | No | Set manually | Stable UID for the shared dashboard |
+| `GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN` | No | Set manually | Public token used by the Caddy rewrite |
+
+If `GRAFANA_DOMAIN`, `GRAFANA_ADMIN_PASSWORD`, and `GRAFANA_DB_PASSWORD` are all set, `deploy-prod.sh` enables the Grafana profile.  
+If any of them are missing, the entire Grafana stack stays disabled.
+
+### Deployment behavior
+
+`./docker/deploy-prod.sh` now auto-enables optional services based on env:
+
+- `DOMAIN` set: enables `caddy`
+- `GRAFANA_DOMAIN` + `GRAFANA_ADMIN_PASSWORD` + `GRAFANA_DB_PASSWORD` set: enables `grafana`
+- missing optional vars: those services are skipped instead of starting half-configured
 
 ## Grafana dashboards
 
-Production compose now provisions Grafana 12.4.2 behind Caddy at `https://dash.omens.online` by default.
+When enabled, production compose provisions Grafana 12.4.2 behind Caddy at `https://GRAFANA_DOMAIN`.
 
 - `/` is rewritten to a public externally shared dashboard with high-level aggregate metrics only.
 - `/login` and the normal Grafana UI stay authenticated for private admin dashboards and Explore-based SQL against curated `grafana.*` views.

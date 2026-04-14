@@ -15,6 +15,7 @@ services:
       retries: 5
 
   postgres-grafana-setup:
+    profiles: ["grafana"]
     image: postgres:17-alpine
     depends_on:
       postgres:
@@ -28,11 +29,11 @@ services:
     restart: "no"
 
   omens:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    expose:
-      - '3000'
+    image: ${OMENS_IMAGE:-ghcr.io/backmeupplz/omens:latest}
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+    ports:
+      - '${PORT:-3000}:3000'
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,12 +49,24 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-}
       DEMO_USER_EMAIL: ${DEMO_USER_EMAIL:-}
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3000/health || exit 1"]
+      test: ["CMD-SHELL", "bun -e \"fetch('http://127.0.0.1:3000/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 30s
       timeout: 5s
       retries: 3
 
+  watchtower:
+    image: containrrr/watchtower:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_POLL_INTERVAL: "300"
+      DOCKER_API_VERSION: "1.40"
+      WATCHTOWER_LABEL_ENABLE: "true"
+    restart: unless-stopped
+
   grafana:
+    profiles: ["grafana"]
     image: grafana/grafana:12.4.2
     expose:
       - '3000'
@@ -65,7 +78,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me-grafana-admin-password}
-      GF_SERVER_ROOT_URL: https://${GRAFANA_DOMAIN:-dash.omens.online}
+      GF_SERVER_ROOT_URL: https://${GRAFANA_DOMAIN:-grafana-disabled.invalid}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_PUBLIC_DASHBOARDS_ENABLED: "true"
@@ -82,6 +95,7 @@ services:
     restart: unless-stopped
 
   grafana-public-dashboard:
+    profiles: ["grafana"]
     image: curlimages/curl:8.13.0
     depends_on:
       grafana:
@@ -99,13 +113,14 @@ services:
     restart: "no"
 
   caddy:
+    profiles: ["caddy"]
     image: caddy:2-alpine
     ports:
       - '80:80'
       - '443:443'
     environment:
       DOMAIN: ${DOMAIN:-localhost}
-      GRAFANA_DOMAIN: ${GRAFANA_DOMAIN:-dash.omens.online}
+      GRAFANA_DOMAIN: ${GRAFANA_DOMAIN:-grafana-disabled.invalid}
       GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN: ${GRAFANA_SHARED_DASHBOARD_ACCESS_TOKEN:-omens-public-overview}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
