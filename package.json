@@ -1,6 +1,6 @@
 {
   "name": "omens",
-  "version": "0.5.0",
+  "version": "0.5.11",
   "private": true,
   "scripts": {
     "dev": "turbo dev",
