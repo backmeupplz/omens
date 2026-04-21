@@ -80,6 +80,10 @@ function getRequestedFeedId(c: any) {
   return c.req.query('feedId') || null
 }
 
+function normalizeReportRefId(value: string) {
+  return value.trim()
+}
+
 async function listScoringFeeds(userId: string) {
   const db = getDb(env.DATABASE_URL)
   return db.select()
@@ -1081,7 +1085,9 @@ export async function generateReportForUser(userId: string, feedId?: string | nu
     setStatus('Saving report...')
     const content = progress.content
     const refMatches = [...content.matchAll(/\[\[(?:item|tweet):([^\]]+)\]\]/g)]
-    const itemRefIds = refMatches.map((m) => m[1])
+    const itemRefIds = refMatches
+      .map((m) => normalizeReportRefId(m[1]))
+      .filter(Boolean)
 
     const [report] = await db.insert(aiReports).values({
       userId,

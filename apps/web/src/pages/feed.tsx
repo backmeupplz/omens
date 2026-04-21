@@ -2632,6 +2632,7 @@ function parseReportSections(text: string, refItems: Map<string, TimelineItem>):
   const sections: ParsedReportSection[] = []
   let current: ParsedReportSection = { header: null, headerLevel: 0, items: [] }
   const slugCounts = new Map<string, number>()
+  const normalizeItemRefId = (value: string) => value.trim()
 
   for (const line of lines) {
     const h1 = line.match(/^# (.+)/)
@@ -2652,7 +2653,13 @@ function parseReportSections(text: string, refItems: Map<string, TimelineItem>):
       continue
     }
     const itemMatch = line.match(/\[\[(?:item|tweet):([^\]]+)\]\]/)
-    if (itemMatch) current.items.push({ type: 'item', line, item: refItems.get(itemMatch[1]) || undefined })
+    if (itemMatch) {
+      current.items.push({
+        type: 'item',
+        line,
+        item: refItems.get(normalizeItemRefId(itemMatch[1])) || undefined,
+      })
+    }
     else current.items.push({ type: 'text', line })
   }
 

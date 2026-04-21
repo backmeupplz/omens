@@ -1,18 +1,25 @@
 import { type Db, aiReports } from '@omens/db'
 import { getTimelineItemsByIds } from './timeline'
 
+function normalizeItemRefId(value: string) {
+  return value.trim()
+}
+
 function parseItemRefs(itemRefs: string | null): string[] {
   if (!itemRefs) return []
 
   try {
     const parsed = JSON.parse(itemRefs)
     return Array.isArray(parsed)
-      ? parsed.filter((value): value is string => typeof value === 'string' && value.length > 0)
+      ? parsed
+        .filter((value): value is string => typeof value === 'string')
+        .map(normalizeItemRefId)
+        .filter(Boolean)
       : []
   } catch {
     return itemRefs
       .split(',')
-      .map((value) => value.trim())
+      .map(normalizeItemRefId)
       .filter(Boolean)
   }
 }
