@@ -669,6 +669,33 @@ interface RedditFeedPayload {
   publishedAt: string | null
 }
 
+interface TelegramMediaPayload {
+  items?: MediaItem[]
+  files?: Array<{
+    url: string
+    fileName: string
+    fileSizeLabel: string | null
+  }>
+}
+
+interface TelegramFeedPayload {
+  id: string
+  telegramPostId: string
+  channelUsername: string
+  channelTitle: string | null
+  messageId: number
+  content: string | null
+  media: string | null
+  previewUrl: string | null
+  thumbnailUrl: string | null
+  domain: string | null
+  linkUrl: string | null
+  permalink: string
+  viewCount: number
+  postType: string | null
+  publishedAt: string | null
+}
+
 export type TimelineItem =
   | {
       id: string
@@ -685,6 +712,14 @@ export type TimelineItem =
       score: number | null
       publishedAt: string | null
       payload: RedditFeedPayload
+    }
+  | {
+      id: string
+      provider: 'telegram'
+      entityType: 'telegram_post'
+      score: number | null
+      publishedAt: string | null
+      payload: TelegramFeedPayload
     }
 
 interface FeedResponse<T> {
@@ -2118,6 +2153,19 @@ function parseRedditMedia(media: string | null, previewUrl: string | null, thumb
   return items
 }
 
+function parseTelegramMedia(media: string | null, previewUrl: string | null, thumbnailUrl: string | null): TelegramMediaPayload {
+  const parsed = safeParse<TelegramMediaPayload>(media) || {}
+  const items = Array.isArray(parsed.items) ? parsed.items.filter((item) => !!item?.url && !!item?.thumbnail) : []
+  const files = Array.isArray(parsed.files) ? parsed.files.filter((file) => !!file?.url && !!file?.fileName) : []
+
+  if (items.length === 0) {
+    const fallback = previewUrl || thumbnailUrl
+    if (fallback) items.push({ type: 'photo', url: fallback, thumbnail: fallback })
+  }
+
+  return { items, files }
+}
+
 function getDirectRedditMedia(url: string | null | undefined): MediaItem | null {
   if (!url) return null
 
@@ -2380,6 +2428,200 @@ function RedditCard({
 
       {lightboxIndex != null && (
         <Lightbox items={dedupedMediaItems} index={lightboxIndex} onClose={() => setLightboxIndex(null)} />
+      )}
+    </article>
+  )
+}
+
+function TelegramCard({
+  item,
+  nudge,
+  onNudge,
+  score,
+  minScore,
+  suppressAutoEmbeds,
+}: {
+  item: Extract<TimelineItem, { provider: 'telegram' }>
+  nudge?: 'up' | 'down' | null
+  onNudge?: (id: string, direction: 'up' | 'down') => void
+  score?: number | null
+  minScore?: number
+  suppressAutoEmbeds?: boolean
+}) {
+  const post = item.payload
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+  const [bodyExpanded, setBodyExpanded] = useState(false)
+  const [ogResolved, setOgResolved] = useState(false)
+  const [ogAvailable, setOgAvailable] = useState(false)
+  const mediaPayload = useMemo(
+    () => parseTelegramMedia(post.media, post.previewUrl, post.thumbnailUrl),
+    [post.media, post.previewUrl, post.thumbnailUrl],
+  )
+  const mediaItems = mediaPayload.items || []
+  const files = mediaPayload.files || []
+  const body = post.content || ''
+  const bodyLines = body.split('\n')
+  const bodyNeedsTruncation = body.length > MAX_CHARS || bodyLines.length > 12
+  let visibleBody = body
+  if (bodyNeedsTruncation && !bodyExpanded) {
+    if (bodyLines.length > 12) visibleBody = bodyLines.slice(0, 12).join('\n')
+    if (visibleBody.length > MAX_CHARS) visibleBody = visibleBody.slice(0, MAX_CHARS)
+    visibleBody = `${visibleBody.trimEnd()}...`
+  }
+  const bodyParagraphs = visibleBody
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+  const linkCardData = post.linkUrl && post.domain
+    ? {
+        title: post.channelTitle || `@${post.channelUsername}`,
+        description: post.content || null,
+        thumbnail: post.previewUrl || post.thumbnailUrl || mediaItems[0]?.thumbnail || null,
+        domain: post.domain,
+        url: post.linkUrl,
+      }
+    : null
+
+  return (
+    <article class="np-tweet relative overflow-hidden">
+      <div class="space-y-3">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-1.5 text-xs">
+            <span class="np-copy-strong font-semibold">{post.channelTitle || post.channelUsername}</span>
+            <span class="np-copy-muted">t.me/{post.channelUsername}</span>
+            {post.publishedAt && <span class="np-copy-muted">{timeAgo(post.publishedAt)}</span>}
+          </div>
+        </div>
+
+        {bodyParagraphs.length > 0 && (
+          <div>
+            <div class="np-copy-subtle break-words text-[0.95rem] leading-relaxed">
+              {bodyParagraphs.map((paragraph, index) => (
+                <p key={index} class={index === bodyParagraphs.length - 1 ? '' : 'mb-3'}>
+                  {textWithBreaks(paragraph)}
+                </p>
+              ))}
+            </div>
+            {bodyNeedsTruncation && (
+              <button
+                type="button"
+                onClick={() => setBodyExpanded((value) => !value)}
+                class="np-link-accent mt-1 text-sm"
+              >
+                {bodyExpanded ? 'Show less' : 'Show full post'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {mediaItems.length > 0 && (
+          <MediaGrid media={mediaItems} onPhotoClick={setLightboxIndex} />
+        )}
+
+        {files.length > 0 && (
+          <div class="space-y-2">
+            {files.map((file) => (
+              <a
+                key={file.url}
+                href={file.url}
+                target="_blank"
+                rel="noopener"
+                class="np-inline-card np-inline-card-row block"
+              >
+                <div class="min-w-0">
+                  <p class="np-copy-strong break-all">{file.fileName}</p>
+                  {file.fileSizeLabel && <p class="np-copy-muted">{file.fileSizeLabel}</p>}
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
+
+        {post.linkUrl && mediaItems.length === 0 && !suppressAutoEmbeds && (
+          <OgEmbed
+            text={post.content || ''}
+            url={post.linkUrl}
+            onLoaded={() => setOgAvailable(true)}
+            onResolved={(found) => {
+              setOgResolved(true)
+              setOgAvailable(found)
+            }}
+          />
+        )}
+        {(suppressAutoEmbeds || (ogResolved && !ogAvailable)) && linkCardData && (
+          <LinkCard data={linkCardData} fallbackUrl={post.linkUrl} />
+        )}
+
+        <div class="np-post-actions flex flex-wrap items-center justify-between gap-y-1 text-xs">
+          <span class="flex items-center gap-3">
+            {post.viewCount > 0 && (
+              <span class="flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                {fmt(post.viewCount)}
+              </span>
+            )}
+            {files.length > 0 && (
+              <span class="flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path d="M12 16V4m0 12l-4-4m4 4l4-4M4 20h16" />
+                </svg>
+                {files.length}
+              </span>
+            )}
+          </span>
+          <span class="flex items-center gap-2">
+            {onNudge && (
+              <span class="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  class={`p-0.5 rounded transition-colors ${nudge === 'up' ? 'np-score-high' : 'np-nudge-up'}`}
+                  onClick={() => onNudge(item.id, 'up')}
+                  title="Show more like this"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={nudge === 'up' ? '2.5' : '1.5'}>
+                    <path d="M12 19V5m0 0l-6 6m6-6l6 6" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class={`p-0.5 rounded transition-colors ${nudge === 'down' ? 'np-score-low' : 'np-nudge-down'}`}
+                  onClick={() => onNudge(item.id, 'down')}
+                  title="Show less like this"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={nudge === 'down' ? '2.5' : '1.5'}>
+                    <path d="M12 5v14m0 0l6-6m-6 6l-6-6" />
+                  </svg>
+                </button>
+              </span>
+            )}
+            {score != null && (
+              <span class={`np-post-score rounded-sm px-1 py-0.5 text-[10px] font-medium ${minScore != null && score < minScore ? 'np-score-low' : score >= 70 ? 'np-score-high' : score >= 50 ? 'np-score-mid' : 'np-score-cutoff'}`}>
+                {score}
+              </span>
+            )}
+            <CopyShareButton url={post.permalink} iconOnly />
+            <a
+              href={post.permalink}
+              target="_blank"
+              rel="noopener"
+              class="np-action-strong flex items-center gap-1 whitespace-nowrap"
+              title="View on Telegram"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </a>
+          </span>
+        </div>
+      </div>
+
+      {lightboxIndex != null && (
+        <Lightbox items={mediaItems} index={lightboxIndex} onClose={() => setLightboxIndex(null)} />
       )}
     </article>
   )
@@ -2810,6 +3052,11 @@ function estimateFeedItemHeight(item: TimelineItem | Tweet) {
       const bodyLength = item.payload.body?.length || 0
       return 240 + Math.min(220, Math.ceil(bodyLength / 3)) + (hasMedia ? 180 : 0)
     }
+    if (item.provider === 'telegram') {
+      const media = parseTelegramMedia(item.payload.media, item.payload.previewUrl, item.payload.thumbnailUrl)
+      const bodyLength = item.payload.content?.length || 0
+      return 220 + Math.min(220, Math.ceil(bodyLength / 3)) + (media.items?.length ? 180 : 0) + (media.files?.length ? 80 : 0)
+    }
     return estimateFeedTweetHeight(item.payload)
   }
 
@@ -3039,16 +3286,27 @@ function estimateTimelineTweetHeight(tweet: Tweet) {
   const hasCard = !!safeParse<CardData>(tweet.card)?.title
   const hasQuoted = !!safeParse<QuotedTweet>(tweet.quotedTweet)
   const hasContext = getSelfThreadAncestors(tweet).length > 0 || !!tweet.parentTweet
-  const lineCount = tweet.content.split('\n').length
+  let visibleText = tweet.content
+  if (hasCard) {
+    visibleText = visibleText.replace(/\s*https?:\/\/\S+/g, '').trim()
+  }
+  const lines = visibleText.split('\n')
+  const tooManyLines = lines.length > 10
+  const tooManyChars = visibleText.length > MAX_CHARS
+  const truncated = tooManyLines || tooManyChars
+  if (tooManyLines) visibleText = lines.slice(0, 10).join('\n')
+  if (tooManyChars && visibleText.length > MAX_CHARS) visibleText = visibleText.slice(0, MAX_CHARS)
+  const lineCount = visibleText.split('\n').length
 
-  let height = 220
-  height += Math.min(260, Math.ceil(tweet.content.length / 2.35))
-  height += Math.min(120, Math.max(0, lineCount - 1) * 16)
+  let height = 210
+  height += Math.min(160, Math.ceil(visibleText.length / 3.6))
+  height += Math.min(96, Math.max(0, lineCount - 1) * 14)
   if (media.length > 0) height += media.length === 1 ? 250 : 150
   if (hasQuoted) height += 120
   if (hasCard) height += 150
   if (hasContext) height += 120
   if (tweet.replyToHandle && !tweet.parentTweet) height += 24
+  if (truncated) height += 26
 
   return height
 }
@@ -3056,6 +3314,17 @@ function estimateTimelineTweetHeight(tweet: Tweet) {
 function estimateTimelineItemHeight(item: TimelineItem | undefined) {
   if (!item) return 220
   if (item.provider === 'x') return estimateTimelineTweetHeight(item.payload)
+  if (item.provider === 'telegram') {
+    const media = parseTelegramMedia(item.payload.media, item.payload.previewUrl, item.payload.thumbnailUrl)
+    const bodyLength = item.payload.content?.length || 0
+    const hasLinkCard = media.items?.length === 0 && !!item.payload.linkUrl
+    let height = 210
+    height += Math.min(240, Math.ceil(bodyLength / 2.8))
+    if (media.items && media.items.length > 0) height += 250
+    else if (hasLinkCard) height += 150
+    if (media.files && media.files.length > 0) height += Math.min(160, media.files.length * 48)
+    return height
+  }
 
   const hasMedia = !!(item.payload.previewUrl || item.payload.thumbnailUrl || item.payload.media)
   const hasLinkCard = !hasMedia && !item.payload.isSelf && !!item.payload.domain
@@ -3081,10 +3350,10 @@ function estimateArticleTileHeight(tile: ArticleTile) {
     fragment.type === 'paragraph' ? total + 1 : total
   ), 0)
 
-  let height = tile.lead ? 180 : 110
-  height += Math.ceil(tile.charCount * 0.42)
-  height += paragraphCount * 24
-  height += listEntryCount * 20
+  let height = tile.lead ? 170 : 100
+  height += Math.ceil(tile.charCount * 0.34)
+  height += paragraphCount * 22
+  height += listEntryCount * 18
 
   return height
 }
@@ -3136,6 +3405,22 @@ function getArticlePackageKind(items: SectionItem[], index: number): ArticlePack
   return 'brief'
 }
 
+type ReportLayoutTier = 'compact' | 'medium' | 'wide'
+
+function getReportLayoutTier(width: number): ReportLayoutTier {
+  if (width <= 700) return 'compact'
+  if (width <= 1180) return 'medium'
+  return 'wide'
+}
+
+function getArticleTileColumnCount(kind: ArticlePackageKind, tier: ReportLayoutTier) {
+  if (tier === 'compact') return 1
+  if (tier === 'medium') return kind === 'lead' || kind === 'feature' ? 2 : 1
+  if (kind === 'lead') return 3
+  if (kind === 'feature' || kind === 'standard') return 2
+  return 1
+}
+
 function renderTextTileFragments(fragments: TextFragment[], lead: boolean, prefix: string) {
   let dropCapPending = lead
   return fragments.map((fragment, index) => {
@@ -3157,39 +3442,8 @@ function renderTextTileFragments(fragments: TextFragment[], lead: boolean, prefi
   })
 }
 
-function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefix: string }) {
-  const gridRef = useRef<HTMLDivElement>(null)
-  const [columnCount, setColumnCount] = useState(1)
+function NewspaperArticleLayout({ items, prefix, columnCount }: { items: SectionItem[]; prefix: string; columnCount: number }) {
   const tiles = useMemo(() => arrangeArticleTiles(buildArticleTiles(items)), [items])
-
-  useLayoutEffect(() => {
-    const node = gridRef.current
-    if (!node) return
-    let frame = 0
-
-    const updateColumns = () => {
-      frame = 0
-      const styles = window.getComputedStyle(node)
-      const gap = parseCssLength(styles.getPropertyValue('--np-grid-gap-x'), 18)
-      const minWidth = parseCssLength(styles.getPropertyValue('--np-article-column-min'), 17 * 16)
-      const width = node.getBoundingClientRect().width
-      const next = Math.max(1, Math.floor((width + gap) / (minWidth + gap)))
-      setColumnCount((prev) => (prev === next ? prev : next))
-    }
-
-    const schedule = () => {
-      if (frame) cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(updateColumns)
-    }
-
-    schedule()
-    const observer = new ResizeObserver(schedule)
-    observer.observe(node)
-    return () => {
-      observer.disconnect()
-      if (frame) cancelAnimationFrame(frame)
-    }
-  }, [])
 
   const columns = useMemo(
     () => distributeArticleTiles(tiles, columnCount),
@@ -3202,7 +3456,9 @@ function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefi
         <div key={key} class="np-grid-tile np-grid-tile-tweet">
           {tile.item.provider === 'x'
             ? <TweetCard tweet={tile.item.payload} expandBehavior="detail" suppressAutoEmbeds />
-            : <RedditCard item={tile.item} suppressAutoEmbeds />}
+            : tile.item.provider === 'reddit'
+              ? <RedditCard item={tile.item} suppressAutoEmbeds />
+              : <TelegramCard item={tile.item} suppressAutoEmbeds />}
         </div>
       ) : (
         <div key={key} class="np-grid-tile np-grid-tile-fallback">
@@ -3221,7 +3477,7 @@ function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefi
   }
 
   return (
-    <div ref={gridRef} class="np-article-grid" style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}>
+    <div class="np-article-grid" style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}>
       {columns.map((column, columnIndex) => (
         <div key={`${prefix}c-${columnIndex}`} class="np-article-grid-column">
           {column.map(({ tile, index }) => renderTile(tile, `${prefix}${index}`))}
@@ -3242,18 +3498,34 @@ function NewspaperContent({ sections, reportDate, itemCount: totalItemCount, iss
   showMasthead?: boolean
 }) {
   const articles = sections.filter((s) => s.header)
+  const [layoutTier, setLayoutTier] = useState<ReportLayoutTier>(() => (
+    typeof window === 'undefined' ? 'wide' : getReportLayoutTier(window.innerWidth)
+  ))
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const updateTier = () => {
+      const next = getReportLayoutTier(window.innerWidth)
+      setLayoutTier((prev) => (prev === next ? prev : next))
+    }
+    updateTier()
+    window.addEventListener('resize', updateTier, { passive: true })
+    return () => window.removeEventListener('resize', updateTier)
+  }, [])
+
   const renderArticlePackage = (
     article: (typeof articles)[number],
     index: number,
   ) => {
     const packageKind = getArticlePackageKind(article.items, index)
+    const columnCount = getArticleTileColumnCount(packageKind, layoutTier)
     return (
       <article key={article.anchorId || index} id={article.anchorId} class={`np-article np-article-${packageKind} np-report-article`}>
         <div class={`np-article-header np-section-header ${index === 0 ? 'np-section-header-lg' : article.headerLevel <= 2 ? 'np-section-header-md' : 'np-section-header-sm'}`}>
           {article.header}
         </div>
         <div class="np-body">
-          <NewspaperArticleLayout items={article.items} prefix={`${index}-`} />
+          <NewspaperArticleLayout items={article.items} prefix={`${index}-`} columnCount={columnCount} />
         </div>
       </article>
     )
@@ -4097,6 +4369,18 @@ function renderTimelineFeedItem(
     return (
       <TweetCard
         tweet={item.payload}
+        nudge={nudges.get(item.id) || null}
+        onNudge={onNudge}
+        score={item.score}
+        minScore={minScore}
+      />
+    )
+  }
+
+  if (item.provider === 'telegram') {
+    return (
+      <TelegramCard
+        item={item}
         nudge={nudges.get(item.id) || null}
         onNudge={onNudge}
         score={item.score}
