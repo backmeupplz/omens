@@ -1,6 +1,7 @@
 import { createPortal } from 'preact/compat'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { Link } from 'wouter-preact'
+import { DEFAULT_POST_MAX_CHARS, splitTextParagraphs, truncatePostText } from '@omens/shared'
 import { api, API_BASE } from '../helpers/api'
 import { FeedTabs } from '../helpers/components'
 import { FeedLeadArticle, NewspaperFeedShell } from '../helpers/feed-shell'
@@ -696,6 +697,23 @@ interface TelegramFeedPayload {
   publishedAt: string | null
 }
 
+interface RssFeedPayload {
+  id: string
+  rssPostId: string
+  feedUrl: string
+  feedTitle: string | null
+  authorName: string | null
+  title: string
+  body: string | null
+  previewUrl: string | null
+  thumbnailUrl: string | null
+  media: string | null
+  domain: string | null
+  permalink: string
+  guid: string | null
+  publishedAt: string | null
+}
+
 export type TimelineItem =
   | {
       id: string
@@ -712,6 +730,14 @@ export type TimelineItem =
       score: number | null
       publishedAt: string | null
       payload: RedditFeedPayload
+    }
+  | {
+      id: string
+      provider: 'rss'
+      entityType: 'rss_post'
+      score: number | null
+      publishedAt: string | null
+      payload: RssFeedPayload
     }
   | {
       id: string
@@ -1418,8 +1444,6 @@ function MediaPhotoTile({
   )
 }
 
-const MAX_CHARS = 400
-
 function linkify(text: string): preact.ComponentChildren[] {
   const parts: preact.ComponentChildren[] = []
   const regex = /(https?:\/\/[^\s]+)|(@[\w]{1,15})/g
@@ -1478,16 +1502,10 @@ function TweetContent({
   if (hideUrls) {
     cleaned = cleaned.replace(/\s*https?:\/\/\S+/g, '').trim()
   }
-  const lines = cleaned.split('\n')
-  const tooManyLines = lines.length > 10
-  const tooManyChars = cleaned.length > MAX_CHARS
-  const needsTruncation = tooManyChars || tooManyLines
+  const truncated = truncatePostText(cleaned, { maxChars: DEFAULT_POST_MAX_CHARS, maxLines: 10 })
+  const needsTruncation = truncated.truncated
   const isExpanded = forceExpanded || expanded
-  let display = cleaned
-  if (needsTruncation && !isExpanded) {
-    if (tooManyLines) display = lines.slice(0, 10).join('\n') + '...'
-    if (tooManyChars && display.length > MAX_CHARS) display = display.slice(0, MAX_CHARS) + '...'
-  }
+  const display = needsTruncation && !isExpanded ? truncated.text : cleaned
 
   return (
     <div class={`np-post-content overflow-hidden ${className || ''}`}>
@@ -2166,6 +2184,16 @@ function parseTelegramMedia(media: string | null, previewUrl: string | null, thu
   return { items, files }
 }
 
+function parseRssMedia(media: string | null, previewUrl: string | null, thumbnailUrl: string | null): MediaItem[] {
+  const parsed = safeParse<{ items?: MediaItem[] }>(media)
+  const items = Array.isArray(parsed?.items) ? parsed.items.filter((item) => !!item?.url && !!item?.thumbnail) : []
+  if (items.length === 0) {
+    const fallback = previewUrl || thumbnailUrl
+    if (fallback) items.push({ type: 'photo', url: fallback, thumbnail: fallback })
+  }
+  return items
+}
+
 function getDirectRedditMedia(url: string | null | undefined): MediaItem | null {
   if (!url) return null
 
@@ -2293,18 +2321,11 @@ function RedditCard({
         return mediaUrl !== linkThumbnail && mediaThumb !== linkThumbnail
       })
     : mediaItems
-  const bodyLines = (post.body || '').split('\n')
-  const bodyNeedsTruncation = !!post.body && (bodyLines.length > 10 || post.body.length > MAX_CHARS)
-  let visibleBody = post.body || ''
-  if (bodyNeedsTruncation && !bodyExpanded) {
-    if (bodyLines.length > 10) visibleBody = bodyLines.slice(0, 10).join('\n')
-    if (visibleBody.length > MAX_CHARS) visibleBody = visibleBody.slice(0, MAX_CHARS)
-    visibleBody = `${visibleBody.trimEnd()}...`
-  }
-  const bodyParagraphs = visibleBody
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
+  const body = post.body || ''
+  const truncatedBody = truncatePostText(body, { maxChars: DEFAULT_POST_MAX_CHARS, maxLines: 10 })
+  const bodyNeedsTruncation = !!post.body && truncatedBody.truncated
+  const visibleBody = bodyNeedsTruncation && !bodyExpanded ? truncatedBody.text : body
+  const bodyParagraphs = splitTextParagraphs(visibleBody)
 
   return (
     <article class="np-tweet relative overflow-hidden">
@@ -2460,18 +2481,10 @@ function TelegramCard({
   const mediaItems = mediaPayload.items || []
   const files = mediaPayload.files || []
   const body = post.content || ''
-  const bodyLines = body.split('\n')
-  const bodyNeedsTruncation = body.length > MAX_CHARS || bodyLines.length > 12
-  let visibleBody = body
-  if (bodyNeedsTruncation && !bodyExpanded) {
-    if (bodyLines.length > 12) visibleBody = bodyLines.slice(0, 12).join('\n')
-    if (visibleBody.length > MAX_CHARS) visibleBody = visibleBody.slice(0, MAX_CHARS)
-    visibleBody = `${visibleBody.trimEnd()}...`
-  }
-  const bodyParagraphs = visibleBody
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
+  const truncatedBody = truncatePostText(body, { maxChars: DEFAULT_POST_MAX_CHARS, maxLines: 12 })
+  const bodyNeedsTruncation = truncatedBody.truncated
+  const visibleBody = bodyNeedsTruncation && !bodyExpanded ? truncatedBody.text : body
+  const bodyParagraphs = splitTextParagraphs(visibleBody)
   const linkCardData = post.linkUrl && post.domain
     ? {
         title: post.channelTitle || `@${post.channelUsername}`,
@@ -2549,7 +2562,7 @@ function TelegramCard({
           />
         )}
         {(suppressAutoEmbeds || (ogResolved && !ogAvailable)) && linkCardData && (
-          <LinkCard data={linkCardData} fallbackUrl={post.linkUrl} />
+          <LinkCard data={linkCardData} fallbackUrl={post.linkUrl || undefined} />
         )}
 
         <div class="np-post-actions flex flex-wrap items-center justify-between gap-y-1 text-xs">
@@ -2609,6 +2622,141 @@ function TelegramCard({
               rel="noopener"
               class="np-action-strong flex items-center gap-1 whitespace-nowrap"
               title="View on Telegram"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </a>
+          </span>
+        </div>
+      </div>
+
+      {lightboxIndex != null && (
+        <Lightbox items={mediaItems} index={lightboxIndex} onClose={() => setLightboxIndex(null)} />
+      )}
+    </article>
+  )
+}
+
+function RssCard({
+  item,
+  nudge,
+  onNudge,
+  score,
+  minScore,
+}: {
+  item: Extract<TimelineItem, { provider: 'rss' }>
+  nudge?: 'up' | 'down' | null
+  onNudge?: (id: string, direction: 'up' | 'down') => void
+  score?: number | null
+  minScore?: number
+}) {
+  const post = item.payload
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+  const [bodyExpanded, setBodyExpanded] = useState(false)
+  const mediaItems = useMemo(
+    () => parseRssMedia(post.media, post.previewUrl, post.thumbnailUrl),
+    [post.media, post.previewUrl, post.thumbnailUrl],
+  )
+  const hasLinkCard = mediaItems.length === 0 && !!post.domain
+  const body = post.body || ''
+  const truncatedBody = truncatePostText(body, { maxChars: DEFAULT_POST_MAX_CHARS, maxLines: 10 })
+  const bodyNeedsTruncation = truncatedBody.truncated
+  const visibleBody = bodyNeedsTruncation && !bodyExpanded ? truncatedBody.text : body
+  const bodyParagraphs = splitTextParagraphs(visibleBody)
+
+  return (
+    <article class="np-tweet relative overflow-hidden">
+      <div class="space-y-3">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-1.5 text-xs">
+            <span class="np-copy-strong font-semibold">{post.feedTitle || post.domain || 'Feed'}</span>
+            {post.domain && <span class="np-copy-muted">{post.domain}</span>}
+            {post.publishedAt && <span class="np-copy-muted">{timeAgo(post.publishedAt)}</span>}
+          </div>
+          <h3 class="mt-1.5 text-[1.02rem] font-semibold leading-snug np-copy-strong">{post.title}</h3>
+          {post.authorName && <p class="mt-1 text-sm np-copy-muted">{post.authorName}</p>}
+        </div>
+
+        {bodyParagraphs.length > 0 && (
+          <div>
+            <div class="np-copy-subtle break-words text-[0.95rem] leading-relaxed">
+              {bodyParagraphs.map((paragraph, index) => (
+                <p key={index} class={index === bodyParagraphs.length - 1 ? '' : 'mb-3'}>
+                  {textWithBreaks(paragraph)}
+                </p>
+              ))}
+            </div>
+            {bodyNeedsTruncation && (
+              <button
+                type="button"
+                onClick={() => setBodyExpanded((value) => !value)}
+                class="np-link-accent mt-1 text-sm"
+              >
+                {bodyExpanded ? 'Show less' : 'Show full article'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {mediaItems.length > 0 && (
+          <MediaGrid media={mediaItems} onPhotoClick={setLightboxIndex} />
+        )}
+
+        {hasLinkCard && (
+          <LinkCard
+            data={{
+              title: post.title,
+              description: post.body || null,
+              thumbnail: post.previewUrl || post.thumbnailUrl || null,
+              domain: post.domain || 'feed',
+              url: post.permalink,
+            }}
+            fallbackUrl={post.permalink}
+          />
+        )}
+
+        <div class="np-post-actions flex flex-wrap items-center justify-between gap-y-1 text-xs">
+          <span class="flex items-center gap-3" />
+          <span class="flex items-center gap-2">
+            {onNudge && (
+              <span class="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  class={`p-0.5 rounded transition-colors ${nudge === 'up' ? 'np-score-high' : 'np-nudge-up'}`}
+                  onClick={() => onNudge(item.id, 'up')}
+                  title="Show more like this"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={nudge === 'up' ? '2.5' : '1.5'}>
+                    <path d="M12 19V5m0 0l-6 6m6-6l6 6" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class={`p-0.5 rounded transition-colors ${nudge === 'down' ? 'np-score-low' : 'np-nudge-down'}`}
+                  onClick={() => onNudge(item.id, 'down')}
+                  title="Show less like this"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={nudge === 'down' ? '2.5' : '1.5'}>
+                    <path d="M12 5v14m0 0l6-6m-6 6l-6-6" />
+                  </svg>
+                </button>
+              </span>
+            )}
+            {score != null && (
+              <span class={`np-post-score rounded-sm px-1 py-0.5 text-[10px] font-medium ${minScore != null && score < minScore ? 'np-score-low' : score >= 70 ? 'np-score-high' : score >= 50 ? 'np-score-mid' : 'np-score-cutoff'}`}>
+                {score}
+              </span>
+            )}
+            <CopyShareButton url={post.permalink} iconOnly />
+            <a
+              href={post.permalink}
+              target="_blank"
+              rel="noopener"
+              class="np-action-strong flex items-center gap-1 whitespace-nowrap"
+              title="Open article"
             >
               <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
@@ -3052,6 +3200,11 @@ function estimateFeedItemHeight(item: TimelineItem | Tweet) {
       const bodyLength = item.payload.body?.length || 0
       return 240 + Math.min(220, Math.ceil(bodyLength / 3)) + (hasMedia ? 180 : 0)
     }
+    if (item.provider === 'rss') {
+      const media = parseRssMedia(item.payload.media, item.payload.previewUrl, item.payload.thumbnailUrl)
+      const bodyLength = item.payload.body?.length || 0
+      return 220 + Math.min(220, Math.ceil(bodyLength / 3)) + (media.length > 0 ? 180 : 0)
+    }
     if (item.provider === 'telegram') {
       const media = parseTelegramMedia(item.payload.media, item.payload.previewUrl, item.payload.thumbnailUrl)
       const bodyLength = item.payload.content?.length || 0
@@ -3290,12 +3443,9 @@ function estimateTimelineTweetHeight(tweet: Tweet) {
   if (hasCard) {
     visibleText = visibleText.replace(/\s*https?:\/\/\S+/g, '').trim()
   }
-  const lines = visibleText.split('\n')
-  const tooManyLines = lines.length > 10
-  const tooManyChars = visibleText.length > MAX_CHARS
-  const truncated = tooManyLines || tooManyChars
-  if (tooManyLines) visibleText = lines.slice(0, 10).join('\n')
-  if (tooManyChars && visibleText.length > MAX_CHARS) visibleText = visibleText.slice(0, MAX_CHARS)
+  const truncatedText = truncatePostText(visibleText, { maxChars: DEFAULT_POST_MAX_CHARS, maxLines: 10 })
+  const truncated = truncatedText.truncated
+  if (truncated) visibleText = truncatedText.text
   const lineCount = visibleText.split('\n').length
 
   let height = 210
@@ -3314,6 +3464,16 @@ function estimateTimelineTweetHeight(tweet: Tweet) {
 function estimateTimelineItemHeight(item: TimelineItem | undefined) {
   if (!item) return 220
   if (item.provider === 'x') return estimateTimelineTweetHeight(item.payload)
+  if (item.provider === 'rss') {
+    const media = parseRssMedia(item.payload.media, item.payload.previewUrl, item.payload.thumbnailUrl)
+    const bodyLength = item.payload.body?.length || 0
+    let height = 220
+    height += Math.min(180, Math.ceil(item.payload.title.length / 2.2))
+    height += Math.min(240, Math.ceil(bodyLength / 2.8))
+    if (media.length > 0) height += 250
+    else if (item.payload.domain) height += 150
+    return height
+  }
   if (item.provider === 'telegram') {
     const media = parseTelegramMedia(item.payload.media, item.payload.previewUrl, item.payload.thumbnailUrl)
     const bodyLength = item.payload.content?.length || 0
@@ -3343,17 +3503,35 @@ function estimateTimelineItemHeight(item: TimelineItem | undefined) {
 function estimateArticleTileHeight(tile: ArticleTile) {
   if (tile.type === 'item') return estimateTimelineItemHeight(tile.item)
 
-  const listEntryCount = tile.fragments.reduce((total, fragment) => (
-    fragment.type === 'list' ? total + fragment.entries.length : total
-  ), 0)
-  const paragraphCount = tile.fragments.reduce((total, fragment) => (
-    fragment.type === 'paragraph' ? total + 1 : total
-  ), 0)
+  const estimateLines = (text: string, charsPerLine: number) => {
+    const normalizedLength = text.trim().replace(/\s+/g, ' ').length
+    return Math.max(1, Math.ceil(normalizedLength / charsPerLine))
+  }
 
-  let height = tile.lead ? 170 : 100
-  height += Math.ceil(tile.charCount * 0.34)
-  height += paragraphCount * 22
-  height += listEntryCount * 18
+  let height = tile.lead ? 74 : 32
+  let firstParagraph = true
+
+  for (const fragment of tile.fragments) {
+    if (fragment.type === 'spacer') {
+      height += 18
+      continue
+    }
+
+    if (fragment.type === 'list') {
+      for (const entry of fragment.entries) {
+        const lines = estimateLines(entry, 28)
+        height += 20 + lines * 18
+      }
+      height += 8
+      continue
+    }
+
+    const charsPerLine = firstParagraph && tile.lead ? 28 : 34
+    const lines = estimateLines(fragment.text, charsPerLine)
+    height += 14 + lines * 20
+    if (!firstParagraph) height += 6
+    firstParagraph = false
+  }
 
   return height
 }
@@ -3381,17 +3559,103 @@ function arrangeArticleTiles(tiles: ArticleTile[]) {
   return arranged
 }
 
+type ArticleTilePlacement = { tile: ArticleTile; index: number; weight: number }
+type ArticleTileColumn = { tiles: ArticleTilePlacement[]; weight: number }
+
+function getArticleColumnImbalanceScore(columns: ArticleTileColumn[]) {
+  const weights = columns.map((column) => column.weight)
+  const maxWeight = Math.max(...weights)
+  const minWeight = Math.min(...weights)
+  const meanWeight = weights.reduce((total, weight) => total + weight, 0) / columns.length
+  const deviation = weights.reduce((total, weight) => total + Math.abs(weight - meanWeight), 0)
+  return (maxWeight - minWeight) * 10 + deviation
+}
+
+function cloneArticleColumns(columns: ArticleTileColumn[]): ArticleTileColumn[] {
+  return columns.map((column) => ({
+    weight: column.weight,
+    tiles: [...column.tiles],
+  }))
+}
+
+function optimizeArticleTileColumns(initialColumns: ArticleTileColumn[]) {
+  let columns = cloneArticleColumns(initialColumns)
+
+  for (let iteration = 0; iteration < 12; iteration++) {
+    const currentScore = getArticleColumnImbalanceScore(columns)
+    let bestScore = currentScore
+    let bestColumns: ArticleTileColumn[] | null = null
+
+    for (let sourceIndex = 0; sourceIndex < columns.length; sourceIndex++) {
+      const sourceColumn = columns[sourceIndex]
+
+      for (let tileIndex = 1; tileIndex < sourceColumn.tiles.length; tileIndex++) {
+        const placement = sourceColumn.tiles[tileIndex]
+
+        for (let targetIndex = 0; targetIndex < columns.length; targetIndex++) {
+          if (targetIndex === sourceIndex) continue
+
+          const candidate = cloneArticleColumns(columns)
+          candidate[sourceIndex].tiles.splice(tileIndex, 1)
+          candidate[sourceIndex].weight -= placement.weight
+          candidate[targetIndex].tiles.push(placement)
+          candidate[targetIndex].weight += placement.weight
+
+          const score = getArticleColumnImbalanceScore(candidate)
+          if (score < bestScore) {
+            bestScore = score
+            bestColumns = candidate
+          }
+        }
+      }
+    }
+
+    for (let leftColumnIndex = 0; leftColumnIndex < columns.length; leftColumnIndex++) {
+      for (let rightColumnIndex = leftColumnIndex + 1; rightColumnIndex < columns.length; rightColumnIndex++) {
+        const leftColumn = columns[leftColumnIndex]
+        const rightColumn = columns[rightColumnIndex]
+
+        for (let leftTileIndex = 1; leftTileIndex < leftColumn.tiles.length; leftTileIndex++) {
+          const leftPlacement = leftColumn.tiles[leftTileIndex]
+
+          for (let rightTileIndex = 1; rightTileIndex < rightColumn.tiles.length; rightTileIndex++) {
+            const rightPlacement = rightColumn.tiles[rightTileIndex]
+            const candidate = cloneArticleColumns(columns)
+
+            candidate[leftColumnIndex].tiles[leftTileIndex] = rightPlacement
+            candidate[rightColumnIndex].tiles[rightTileIndex] = leftPlacement
+            candidate[leftColumnIndex].weight += rightPlacement.weight - leftPlacement.weight
+            candidate[rightColumnIndex].weight += leftPlacement.weight - rightPlacement.weight
+
+            const score = getArticleColumnImbalanceScore(candidate)
+            if (score < bestScore) {
+              bestScore = score
+              bestColumns = candidate
+            }
+          }
+        }
+      }
+    }
+
+    if (!bestColumns || bestScore >= currentScore) break
+    columns = bestColumns
+  }
+
+  return columns
+}
+
 function distributeArticleTiles(tiles: ArticleTile[], columnCount: number) {
-  const columns = Array.from({ length: columnCount }, () => ({ tiles: [] as Array<{ tile: ArticleTile; index: number }>, weight: 0 }))
+  const columns = Array.from({ length: columnCount }, (): ArticleTileColumn => ({ tiles: [], weight: 0 }))
   for (const [index, tile] of tiles.entries()) {
+    const weight = estimateArticleTileHeight(tile)
     let target = 0
     for (let index = 1; index < columns.length; index++) {
       if (columns[index].weight < columns[target].weight) target = index
     }
-    columns[target].tiles.push({ tile, index })
-    columns[target].weight += estimateArticleTileHeight(tile)
+    columns[target].tiles.push({ tile, index, weight })
+    columns[target].weight += weight
   }
-  return columns.map((column) => column.tiles)
+  return optimizeArticleTileColumns(columns).map((column) => column.tiles)
 }
 
 function getArticlePackageKind(items: SectionItem[], index: number): ArticlePackageKind {
@@ -3413,10 +3677,18 @@ function getReportLayoutTier(width: number): ReportLayoutTier {
   return 'wide'
 }
 
-function getArticleTileColumnCount(kind: ArticlePackageKind, tier: ReportLayoutTier) {
+function getArticleTileColumnCount(kind: ArticlePackageKind, tier: ReportLayoutTier, items: SectionItem[]) {
+  const itemCount = items.filter((item) => item.type === 'item').length
+  const textLength = items.reduce((total, item) => total + (item.type === 'text' ? item.line.trim().length : 0), 0)
+  const hasMixedContent = itemCount > 0 && textLength > 0
+
   if (tier === 'compact') return 1
-  if (tier === 'medium') return kind === 'lead' || kind === 'feature' ? 2 : 1
-  if (kind === 'lead') return 3
+  if (tier === 'medium') {
+    if (hasMixedContent) return 2
+    return kind === 'lead' || kind === 'feature' ? 2 : 1
+  }
+  if (kind === 'lead' && itemCount >= 3 && textLength >= 900) return 3
+  if (hasMixedContent) return 2
   if (kind === 'feature' || kind === 'standard') return 2
   return 1
 }
@@ -3456,6 +3728,8 @@ function NewspaperArticleLayout({ items, prefix, columnCount }: { items: Section
         <div key={key} class="np-grid-tile np-grid-tile-tweet">
           {tile.item.provider === 'x'
             ? <TweetCard tweet={tile.item.payload} expandBehavior="detail" suppressAutoEmbeds />
+            : tile.item.provider === 'rss'
+              ? <RssCard item={tile.item} />
             : tile.item.provider === 'reddit'
               ? <RedditCard item={tile.item} suppressAutoEmbeds />
               : <TelegramCard item={tile.item} suppressAutoEmbeds />}
@@ -3518,7 +3792,7 @@ function NewspaperContent({ sections, reportDate, itemCount: totalItemCount, iss
     index: number,
   ) => {
     const packageKind = getArticlePackageKind(article.items, index)
-    const columnCount = getArticleTileColumnCount(packageKind, layoutTier)
+    const columnCount = getArticleTileColumnCount(packageKind, layoutTier, article.items)
     return (
       <article key={article.anchorId || index} id={article.anchorId} class={`np-article np-article-${packageKind} np-report-article`}>
         <div class={`np-article-header np-section-header ${index === 0 ? 'np-section-header-lg' : article.headerLevel <= 2 ? 'np-section-header-md' : 'np-section-header-sm'}`}>
@@ -4369,6 +4643,18 @@ function renderTimelineFeedItem(
     return (
       <TweetCard
         tweet={item.payload}
+        nudge={nudges.get(item.id) || null}
+        onNudge={onNudge}
+        score={item.score}
+        minScore={minScore}
+      />
+    )
+  }
+
+  if (item.provider === 'rss') {
+    return (
+      <RssCard
+        item={item}
         nudge={nudges.get(item.id) || null}
         onNudge={onNudge}
         score={item.score}
