@@ -120,6 +120,26 @@ function shouldRefreshPendingConfirmation(subscription: SubscriptionRow) {
   return Date.now() - subscription.lastConfirmationSentAt.getTime() > 24 * 3_600_000
 }
 
+export async function sendDemoConfirmationEmail(params: {
+  email: string
+  feedName: string
+  publicationName: string
+}) {
+  if (!isEmailFeatureEnabled()) {
+    throw new Error('Email feature is not configured')
+  }
+  const confirmToken = generateToken()
+  const unsubscribeToken = generateToken()
+  await sendConfirmationEmail({
+    email: params.email,
+    feedName: params.feedName,
+    publicationName: params.publicationName,
+    confirmToken,
+    unsubscribeToken,
+  })
+  return { to: params.email }
+}
+
 async function sendConfirmationEmail(params: {
   email: string
   feedName: string

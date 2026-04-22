@@ -13,6 +13,7 @@ import {
   getAccountReportEmailStatus,
   confirmReportEmailSubscription,
   resendAccountReportEmailConfirmation,
+  sendDemoConfirmationEmail,
   sendLatestReportTestEmail,
   unsubscribeReportEmailSubscription,
   upsertPublicDemoReportSubscription,
@@ -253,6 +254,27 @@ emailRouter.post('/me/dev/send-latest-report', zValidator('json', sendLatestRepo
   })
 
   return c.json({ ok: true, ...result })
+})
+
+emailRouter.post('/dev/send-demo-confirmation', async (c) => {
+  if (process.env.NODE_ENV === 'production') return c.json({ error: 'Not found' }, 404)
+  if (!isEmailFeatureEnabled()) return c.json({ error: 'Email feature not available' }, 404)
+  if (!env.DEMO_USER_EMAIL) return c.json({ error: 'DEMO_USER_EMAIL is not configured' }, 404)
+
+  const target = await getDemoSubscriptionTarget()
+  const feedName = target?.feedName || 'your Omens reports'
+
+  try {
+    const result = await sendDemoConfirmationEmail({
+      email: env.DEMO_USER_EMAIL,
+      feedName,
+      publicationName: 'the public Omens demo',
+    })
+    return c.json({ ok: true, ...result })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not send confirmation'
+    return c.json({ error: message }, 503)
+  }
 })
 
 emailRouter.post('/dev/send-demo-report', async (c) => {

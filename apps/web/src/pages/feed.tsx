@@ -3669,28 +3669,53 @@ function getArticlePackageKind(items: SectionItem[], index: number): ArticlePack
   return 'brief'
 }
 
-type ReportLayoutTier = 'compact' | 'medium' | 'wide'
+function ArticlePackage({ article, index }: { article: ParsedReportSection; index: number }) {
+  const containerRef = useRef<HTMLElement | null>(null)
+  const tiles = useMemo(() => arrangeArticleTiles(buildArticleTiles(article.items)), [article.items])
+  const tileCount = Math.max(1, tiles.length)
+  const [columnCount, setColumnCount] = useState(1)
+  const packageKind = getArticlePackageKind(article.items, index)
 
-function getReportLayoutTier(width: number): ReportLayoutTier {
-  if (width <= 700) return 'compact'
-  if (width <= 1180) return 'medium'
-  return 'wide'
-}
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return
+    const el = containerRef.current
+    if (!el) return
 
-function getArticleTileColumnCount(kind: ArticlePackageKind, tier: ReportLayoutTier, items: SectionItem[]) {
-  const itemCount = items.filter((item) => item.type === 'item').length
-  const textLength = items.reduce((total, item) => total + (item.type === 'text' ? item.line.trim().length : 0), 0)
-  const hasMixedContent = itemCount > 0 && textLength > 0
+    const compute = () => {
+      const bodyEl = el.querySelector('.np-body') as HTMLElement | null
+      const target = bodyEl ?? el
+      const styles = window.getComputedStyle(target)
+      const minCol = parseCssLength(styles.getPropertyValue('--np-article-column-min') || '17rem', 17 * 16)
+      const gap = parseCssLength(styles.getPropertyValue('--np-grid-gap-x') || '18px', 18)
+      const width = target.clientWidth
+      if (width <= 0) return
+      const fits = Math.max(1, Math.floor((width + gap) / (minCol + gap)))
+      const next = Math.min(fits, tileCount)
+      setColumnCount((prev) => (prev === next ? prev : next))
+    }
 
-  if (tier === 'compact') return 1
-  if (tier === 'medium') {
-    if (hasMixedContent) return 2
-    return kind === 'lead' || kind === 'feature' ? 2 : 1
-  }
-  if (kind === 'lead' && itemCount >= 3 && textLength >= 900) return 3
-  if (hasMixedContent) return 2
-  if (kind === 'feature' || kind === 'standard') return 2
-  return 1
+    compute()
+    const ro = new ResizeObserver(compute)
+    ro.observe(el)
+    const body = el.querySelector('.np-body')
+    if (body) ro.observe(body)
+    return () => ro.disconnect()
+  }, [tileCount])
+
+  return (
+    <article
+      ref={(el) => { containerRef.current = el }}
+      id={article.anchorId}
+      class={`np-article np-article-${packageKind} np-report-article`}
+    >
+      <div class={`np-article-header np-section-header ${index === 0 ? 'np-section-header-lg' : article.headerLevel <= 2 ? 'np-section-header-md' : 'np-section-header-sm'}`}>
+        {article.header}
+      </div>
+      <div class="np-body">
+        <NewspaperArticleLayout items={article.items} prefix={`${index}-`} columnCount={columnCount} />
+      </div>
+    </article>
+  )
 }
 
 function renderTextTileFragments(fragments: TextFragment[], lead: boolean, prefix: string) {
@@ -3772,38 +3797,6 @@ function NewspaperContent({ sections, reportDate, itemCount: totalItemCount, iss
   showMasthead?: boolean
 }) {
   const articles = sections.filter((s) => s.header)
-  const [layoutTier, setLayoutTier] = useState<ReportLayoutTier>(() => (
-    typeof window === 'undefined' ? 'wide' : getReportLayoutTier(window.innerWidth)
-  ))
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const updateTier = () => {
-      const next = getReportLayoutTier(window.innerWidth)
-      setLayoutTier((prev) => (prev === next ? prev : next))
-    }
-    updateTier()
-    window.addEventListener('resize', updateTier, { passive: true })
-    return () => window.removeEventListener('resize', updateTier)
-  }, [])
-
-  const renderArticlePackage = (
-    article: (typeof articles)[number],
-    index: number,
-  ) => {
-    const packageKind = getArticlePackageKind(article.items, index)
-    const columnCount = getArticleTileColumnCount(packageKind, layoutTier, article.items)
-    return (
-      <article key={article.anchorId || index} id={article.anchorId} class={`np-article np-article-${packageKind} np-report-article`}>
-        <div class={`np-article-header np-section-header ${index === 0 ? 'np-section-header-lg' : article.headerLevel <= 2 ? 'np-section-header-md' : 'np-section-header-sm'}`}>
-          {article.header}
-        </div>
-        <div class="np-body">
-          <NewspaperArticleLayout items={article.items} prefix={`${index}-`} columnCount={columnCount} />
-        </div>
-      </article>
-    )
-  }
   const [leadArticle, ...tiledArticles] = articles
 
   const d = new Date(reportDate)
@@ -3848,15 +3841,15 @@ function NewspaperContent({ sections, reportDate, itemCount: totalItemCount, iss
 
       {leadArticle ? (
         <div class="np-page-grid">
-          {renderArticlePackage(leadArticle, 0)}
+          <ArticlePackage key={leadArticle.anchorId || 0} article={leadArticle} index={0} />
         </div>
       ) : null}
 
       {tiledArticles.length > 0 ? (
         <div class="np-article-masonry">
           {tiledArticles.map((article, index) => (
-            <div key={index + 1} class="np-article-masonry-item">
-              {renderArticlePackage(article, index + 1)}
+            <div key={article.anchorId || index + 1} class="np-article-masonry-item">
+              <ArticlePackage article={article} index={index + 1} />
             </div>
           ))}
         </div>
