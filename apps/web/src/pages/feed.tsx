@@ -2050,15 +2050,15 @@ function parseRedditMedia(media: string | null, previewUrl: string | null, thumb
   const itemIndexByKey = new Map<string, number>()
   const parsed = safeParse<any>(media)
   const rawDirectUrls = Array.isArray(parsed?.urls) ? parsed.urls : []
-  const hasOriginalRedditImage = rawDirectUrls.some((url) => getUrlHostname(url) === 'i.redd.it')
-  const hasNonPreviewDirectMedia = rawDirectUrls.some((url) => {
+  const hasOriginalRedditImage = rawDirectUrls.some((url: string) => getUrlHostname(url) === 'i.redd.it')
+  const hasNonPreviewDirectMedia = rawDirectUrls.some((url: string) => {
     const hostname = getUrlHostname(url)
     return !!hostname && hostname !== 'preview.redd.it' && hostname !== 'external-preview.redd.it'
   })
   const directUrls = hasOriginalRedditImage
-    ? rawDirectUrls.filter((url) => getUrlHostname(url) !== 'preview.redd.it')
+    ? rawDirectUrls.filter((url: string) => getUrlHostname(url) !== 'preview.redd.it')
     : hasNonPreviewDirectMedia
-      ? rawDirectUrls.filter((url) => getUrlHostname(url) !== 'external-preview.redd.it')
+      ? rawDirectUrls.filter((url: string) => getUrlHostname(url) !== 'external-preview.redd.it')
     : rawDirectUrls
   const galleryItems = Array.isArray(parsed?.galleryItems) ? parsed.galleryItems : []
   const galleryUrls = Array.isArray(parsed?.galleryUrls) ? parsed.galleryUrls : []
@@ -3319,6 +3319,90 @@ function getBriefingLabel(date: Date) {
   return `Your AI-Curated ${date.getHours() < 12 ? 'Morning' : date.getHours() < 17 ? 'Afternoon' : 'Evening'} Briefing`
 }
 
+function DemoReportEmailSignup({
+  enabled,
+  confirmationRequired,
+  feedName,
+}: {
+  enabled?: boolean
+  confirmationRequired?: boolean
+  feedName?: string
+}) {
+  const [email, setEmail] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<'idle' | 'pending' | 'active'>('idle')
+
+  if (!enabled) return null
+
+  const submit = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await api<{ status: 'pending' | 'active' }>('/email/demo/subscribe', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      })
+      setStatus(res.status)
+      if (res.status === 'active') setEmail('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not subscribe')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <article class="np-article np-article-lead np-demo-subscribe">
+      <div class="np-demo-subscribe-kicker">Public Demo Dispatch</div>
+      <div class="np-demo-subscribe-layout">
+        <div>
+          <h2 class="np-section-header np-section-header-md np-demo-subscribe-title">
+            Get new demo editions by email
+          </h2>
+          <p class="np-demo-subscribe-copy">
+            Subscribe to {feedName || 'the public Omens demo'} and receive each new report in a newspaper-style email.
+          </p>
+          <p class="np-demo-subscribe-note">
+            {confirmationRequired
+              ? 'Subscriptions require email confirmation before delivery starts.'
+              : 'Delivery starts as soon as you subscribe.'}
+          </p>
+        </div>
+
+        <div class="np-demo-subscribe-form">
+          <input
+            type="email"
+            class="np-demo-subscribe-input"
+            placeholder="you@example.com"
+            value={email}
+            onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
+          />
+          <button
+            type="button"
+            class="np-demo-subscribe-button"
+            onClick={submit}
+            disabled={saving || !email.trim()}
+          >
+            {saving ? 'Subscribing…' : 'Subscribe'}
+          </button>
+          {status === 'pending' && (
+            <p class="np-demo-subscribe-feedback">
+              Check your inbox to confirm the subscription.
+            </p>
+          )}
+          {status === 'active' && (
+            <p class="np-demo-subscribe-feedback">
+              You’re subscribed. The next edition will arrive by email.
+            </p>
+          )}
+          {error && <p class="np-alert np-alert-error text-left mb-0">{error}</p>}
+        </div>
+      </div>
+    </article>
+  )
+}
+
 export function NewspaperReportPage({
   text,
   refItems,
@@ -3517,6 +3601,7 @@ function AiSetupLead({
 function AiReportView({ demo }: { demo?: boolean } = {}) {
   const prefix = demo ? '/demo' : '/ai'
   const { data: settings, loading: settingsLoading, error: settingsError, refetch: refetchSettings } = useApi<{ configured: boolean; reportIntervalHours?: number; reportAtHour?: number; nextReportAt?: number | null }>(demo ? null : '/ai/settings')
+  const { data: demoEmailMeta } = useApi<{ enabled: boolean; confirmationRequired: boolean; feedName: string }>(demo ? '/email/demo/meta' : null)
   const aiConfigured = demo || !!settings?.configured
   const { feeds, selectedFeed, selectedFeedId, setSelectedFeedId, loading: feedsLoading } = useScoringFeeds(aiConfigured)
   const reportPath = demo ? `${prefix}/report` : (selectedFeedId ? withFeedId(`${prefix}/report`, selectedFeedId) : null)
@@ -3852,6 +3937,13 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     </>
   ) : null
   const newspaperLeftControls = <NewspaperRouteControls current="report" showSettings={!demo} />
+  const demoEmailPromo = demo ? (
+    <DemoReportEmailSignup
+      enabled={demoEmailMeta?.enabled}
+      confirmationRequired={demoEmailMeta?.confirmationRequired}
+      feedName={demoEmailMeta?.feedName}
+    />
+  ) : null
   const renderGenerationPanel = () => (
     <div class="np-status-panel">
       <div class="np-status-head">
@@ -3881,6 +3973,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
           rightControls={newspaperControls}
           preContent={
             <>
+              {demoEmailPromo}
               {reportTabs}
               {error && <p class="np-alert np-alert-error text-center mb-3">{error}</p>}
               {renderGenerationPanel()}
@@ -3920,6 +4013,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
           historyPanel={historyPanel}
           preContent={
             <>
+              {demoEmailPromo}
               {reportTabs}
               {generating ? renderGenerationPanel() : null}
             </>
@@ -3933,6 +4027,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
           rightControls={newspaperControls}
           showMeta={false}
         >
+          {demoEmailPromo}
           {reportTabs}
           <div class="np-page-grid">
             <article class="np-article np-article-lead">
@@ -3968,7 +4063,12 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
 
 const FEED_LIMIT = 50
 
-function renderTimelineFeedItem(item: TimelineItem, nudges: Map<string, 'up' | 'down'>, onNudge?: (id: string, direction: 'up' | 'down') => void, minScore?: number) {
+function renderTimelineFeedItem(
+  item: TimelineItem,
+  nudges: Map<string, 'up' | 'down'>,
+  onNudge?: (id: string, direction: 'up' | 'down') => void,
+  minScore?: number,
+) {
   if (item.provider === 'x') {
     return (
       <TweetCard

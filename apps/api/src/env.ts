@@ -23,4 +23,9 @@ export default cleanEnv(process.env, {
   REDDIT_CLIENT_SECRET: str({ default: '' }),
   REDDIT_REDIRECT_URI: str({ default: '' }),
   REDDIT_USER_AGENT: str({ default: isDev ? 'Omens/dev by borodutch' : '' }),
+  RESEND_API_KEY: str({ default: '' }),
+  EMAIL_FROM: str({ default: '' }),
+  EMAIL_REPLY_TO: str({ default: '' }),
+  EMAILS_REQUIRE_CONFIRMATION: bool({ default: true }),
+  EMAIL_CONFIRMATION_TTL_HOURS: num({ default: 48 }),
 })

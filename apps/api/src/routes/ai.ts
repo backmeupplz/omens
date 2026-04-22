@@ -26,6 +26,7 @@ import env from '../env'
 import { parsePagination } from '../helpers/http'
 import { hydrateReport } from '../helpers/report'
 import { feedInputsScope, getTimelineItemsByIds, getTimelinePage, serializeTimelineItems, type TimelineItem } from '../helpers/timeline'
+import { sendReportEmailsForReport } from '../email/service'
 import {
   DEFAULT_SYSTEM_PROMPT,
   FILTER_SYSTEM_PROMPT,
@@ -1103,6 +1104,9 @@ export async function generateReportForUser(userId: string, feedId?: string | nu
     progress.done = true
     for (const sub of progress.subscribers) sub('[DONE]')
     reportGenerating.delete(progressKey)
+    void sendReportEmailsForReport(report.id).catch((err) =>
+      console.error(`[ai] Report email send failed for report ${report.id}:`, err instanceof Error ? err.message : err),
+    )
     console.log(`[ai] Generated report for user ${userId}, feed ${feed.id} (${aiItems.length} items)`)
     return report
   } catch (err) {

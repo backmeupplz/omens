@@ -432,6 +432,69 @@ export const aiReports = pgTable('ai_reports', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+export const reportEmailSubscriptions = pgTable(
+  'report_email_subscriptions',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    ownerUserId: text('owner_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    feedId: text('feed_id')
+      .notNull()
+      .references(() => aiScoringFeeds.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    normalizedEmail: text('normalized_email').notNull(),
+    source: text('source').notNull().default('account'), // 'account' | 'public_demo'
+    status: text('status').notNull().default('pending'), // 'pending' | 'active' | 'unsubscribed'
+    confirmationRequired: boolean('confirmation_required').notNull().default(true),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    unsubscribedAt: timestamp('unsubscribed_at', { withTimezone: true }),
+    confirmTokenHash: text('confirm_token_hash'),
+    confirmTokenExpiresAt: timestamp('confirm_token_expires_at', { withTimezone: true }),
+    unsubscribeToken: text('unsubscribe_token').notNull(),
+    lastConfirmationSentAt: timestamp('last_confirmation_sent_at', { withTimezone: true }),
+    createdFromIp: text('created_from_ip'),
+    confirmedFromIp: text('confirmed_from_ip'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('report_email_subscriptions_owner_feed_email_idx').on(
+      table.ownerUserId,
+      table.feedId,
+      table.normalizedEmail,
+    ),
+    uniqueIndex('report_email_subscriptions_unsubscribe_token_idx').on(table.unsubscribeToken),
+  ],
+)
+
+export const reportEmailDeliveries = pgTable(
+  'report_email_deliveries',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId()),
+    subscriptionId: text('subscription_id')
+      .notNull()
+      .references(() => reportEmailSubscriptions.id, { onDelete: 'cascade' }),
+    reportId: text('report_id')
+      .notNull()
+      .references(() => aiReports.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    providerMessageId: text('provider_message_id'),
+    status: text('status').notNull().default('pending'), // 'pending' | 'sent' | 'failed'
+    error: text('error'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('report_email_deliveries_subscription_report_idx').on(table.subscriptionId, table.reportId),
+  ],
+)
+
 export const nudges = pgTable(
   'nudges',
   {

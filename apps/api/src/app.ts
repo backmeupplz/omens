@@ -18,6 +18,7 @@ import timelineRouter from './routes/timeline'
 import xRouter from './routes/x'
 import demoRouter from './routes/demo'
 import shareRouter, { shareDataRouter } from './routes/share'
+import emailRouter from './routes/email'
 import { fetchOg } from './x/og'
 
 const currentDir = dirname(fileURLToPath(import.meta.url))
@@ -85,6 +86,14 @@ export function createApp() {
     '/x/login',
     rateLimiter({ windowMs: 60_000, max: 5, keyPrefix: 'x-login' }),
   )
+  apiApp.post(
+    '/email/demo/subscribe',
+    rateLimiter({ windowMs: 60 * 60_000, max: 10, keyPrefix: 'email-demo-subscribe' }),
+  )
+  apiApp.post(
+    '/email/me/feed-subscription/resend-confirmation',
+    rateLimiter({ windowMs: 60 * 60_000, max: 3, keyPrefix: 'email-account-resend-confirmation' }),
+  )
 
   // Auth routes
   apiApp.route('/auth', authRoutes)
@@ -102,6 +111,8 @@ export function createApp() {
   apiApp.use('/api-keys/*', authMiddleware)
   apiApp.use('/ai', authMiddleware)
   apiApp.use('/ai/*', authMiddleware)
+  apiApp.use('/email/me', authMiddleware)
+  apiApp.use('/email/me/*', authMiddleware)
   apiApp.use('/og', authMiddleware)
   apiApp.use('/og/*', authMiddleware)
   apiApp.use('/media', authMiddleware)
@@ -226,6 +237,7 @@ export function createApp() {
 
   // Public demo endpoints (read-only, no auth)
   apiApp.route('/demo', demoRouter)
+  apiApp.route('/email', emailRouter)
 
   // Share data endpoints (public JSON, no auth)
   apiApp.route('/', shareDataRouter)

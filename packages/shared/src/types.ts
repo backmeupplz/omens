@@ -78,3 +78,15 @@ export const redditRssInputCreateSchema = z.object({
   listingType: z.enum(redditRssListingTypes).default('new'),
   timeRange: z.enum(redditRssTimeRanges).optional().default('week'),
 })
+
+export const reportEmailSubscribeSchema = z.object({
+  email: z.string().trim().email(),
+})
+
+export const reportEmailFeedSchema = z.object({
+  feedId: z.string().trim().min(1),
+})
+
+export const reportEmailTokenSchema = z.object({
+  token: z.string().trim().min(16).max(512),
+})

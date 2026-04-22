@@ -18,6 +18,8 @@ const isProd = process.env.NODE_ENV === 'production'
 auth.get('/mode', (c) => c.json({
   singleUser: env.SINGLE_USER_MODE,
   demoMode: !!env.DEMO_USER_EMAIL,
+  emailFeatureEnabled: !!(env.RESEND_API_KEY && env.EMAIL_FROM),
+  emailsRequireConfirmation: !!(env.RESEND_API_KEY && env.EMAIL_FROM) && env.EMAILS_REQUIRE_CONFIRMATION,
 }))
 
 auth.get('/me', authMiddleware, (c) => {

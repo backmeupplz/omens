@@ -169,6 +169,13 @@
       "when": 1776072000000,
       "tag": "0023_rss_input_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1776268075000,
+      "tag": "0024_report_email_subscriptions",
+      "breakpoints": true
     }
   ]
 }

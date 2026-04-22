@@ -1212,9 +1212,11 @@ function FetchIntervalSection({ compact = false }: { compact?: boolean } = {}) {
 function FeedTuningEditor({
   feed,
   refetchFeeds,
+  emailFeatureEnabled,
 }: {
   feed: ScoringFeed
   refetchFeeds: () => void
+  emailFeatureEnabled: boolean
 }) {
   const feedId = feed.id
   const { data: internals, refetch } = useApi<InternalsData>(`/ai/internals?feedId=${encodeURIComponent(feedId)}`)
@@ -1528,6 +1530,13 @@ function FeedTuningEditor({
           </SettingsItem>
         )}
 
+        {emailFeatureEnabled && (
+          <FeedEmailDeliverySettings
+            feedId={feed.id}
+            feedName={feedName.trim() || feed.name}
+          />
+        )}
+
         <SettingsItem title={`Tell the AI what you want to see in ${feed.name}`}>
           <div class="np-settings-inline">
             <input
@@ -1660,8 +1669,119 @@ function FeedTuningEditor({
   )
 }
 
+type FeedEmailStatus = {
+  email: string
+  status: 'missing' | 'pending' | 'active' | 'unsubscribed'
+  confirmationRequired: boolean
+}
+
+function FeedEmailDeliverySettings({
+  feedId,
+  feedName,
+}: {
+  feedId: string
+  feedName: string
+}) {
+  const { data, loading, error, refetch } = useApi<FeedEmailStatus>(`/email/me/feed-status?feedId=${encodeURIComponent(feedId)}`)
+  const [submitting, setSubmitting] = useState<'enable' | 'disable' | 'resend' | null>(null)
+  const [actionError, setActionError] = useState('')
+
+  const runAction = async (action: 'enable' | 'disable' | 'resend') => {
+    setSubmitting(action)
+    setActionError('')
+    try {
+      await api(
+        action === 'enable'
+          ? '/email/me/feed-subscription/enable'
+          : action === 'disable'
+            ? '/email/me/feed-subscription/disable'
+            : '/email/me/feed-subscription/resend-confirmation',
+        {
+          method: 'POST',
+          body: JSON.stringify({ feedId }),
+        },
+      )
+      refetch()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Could not update email delivery')
+    } finally {
+      setSubmitting(null)
+    }
+  }
+
+  let copy = 'Loading email delivery settings...'
+  if (data?.status === 'active') {
+    copy = `Every new ${feedName} report will be sent to ${data.email}.`
+  } else if (data?.status === 'pending') {
+    copy = data.confirmationRequired
+      ? `Check ${data.email} and confirm the link before delivery starts for ${feedName}.`
+      : `Email delivery is being prepared for ${data.email}.`
+  } else if (data?.status === 'unsubscribed') {
+    copy = `Delivery to ${data.email} is paused for ${feedName}.`
+  } else if (data?.status === 'missing') {
+    copy = data.email
+      ? `New ${feedName} reports are not going to ${data.email} yet.`
+      : 'Your account does not have an email address available for delivery.'
+  }
+
+  return (
+    <SettingsItem
+      title="Email delivery"
+      copy={copy}
+      actions={data ? (
+        <>
+          {(data.status === 'missing' || data.status === 'unsubscribed') && (
+            <button
+              type="button"
+              onClick={() => runAction('enable')}
+              disabled={submitting !== null || !data.email}
+              class="np-button np-button-secondary np-button-small disabled:opacity-50 whitespace-nowrap"
+            >
+              {submitting === 'enable' ? 'Enabling...' : data.status === 'unsubscribed' ? 'Re-enable' : 'Enable'}
+            </button>
+          )}
+          {data.status === 'pending' && data.confirmationRequired && (
+            <button
+              type="button"
+              onClick={() => runAction('resend')}
+              disabled={submitting !== null}
+              class="np-button np-button-secondary np-button-small disabled:opacity-50 whitespace-nowrap"
+            >
+              {submitting === 'resend' ? 'Sending...' : 'Resend confirmation'}
+            </button>
+          )}
+          {(data.status === 'active' || data.status === 'pending') && (
+            <button
+              type="button"
+              onClick={() => runAction('disable')}
+              disabled={submitting !== null}
+              class="np-button np-button-danger np-button-small disabled:opacity-50 whitespace-nowrap"
+            >
+              {submitting === 'disable' ? 'Disabling...' : 'Disable'}
+            </button>
+          )}
+        </>
+      ) : undefined}
+    >
+      {(loading || error || actionError || data?.status === 'pending') && (
+        <div class="np-settings-fields">
+          {loading && <p class="np-settings-item-copy">Loading account delivery status...</p>}
+          {error && <p class="np-settings-item-copy np-copy-danger">{error}</p>}
+          {actionError && <p class="np-settings-item-copy np-copy-danger">{actionError}</p>}
+          {data?.status === 'pending' && data.confirmationRequired && (
+            <p class="np-settings-item-copy">
+              Deliveries start after confirmation. A new email will be sent whenever you press resend.
+            </p>
+          )}
+        </div>
+      )}
+    </SettingsItem>
+  )
+}
+
 function AiTuningSection({ compact = false }: { compact?: boolean } = {}) {
   const { data: settings } = useApi<{ configured: boolean }>('/ai/settings')
+  const { data: authMode } = useApi<{ emailFeatureEnabled: boolean }>('/auth/mode')
   const { feeds, loading: feedsLoading, refetch: refetchFeeds } = useScoringFeeds(!!settings?.configured)
   const [showAddFeed, setShowAddFeed] = useState(false)
   const [newFeedName, setNewFeedName] = useState('')
@@ -1680,6 +1800,7 @@ function AiTuningSection({ compact = false }: { compact?: boolean } = {}) {
           key={feed.id}
           feed={feed}
           refetchFeeds={refetchFeeds}
+          emailFeatureEnabled={!!authMode?.emailFeatureEnabled}
         />
       ))}
       <section class="np-settings-section">

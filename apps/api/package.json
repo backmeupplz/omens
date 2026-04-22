@@ -13,16 +13,23 @@
     "@omens/db": "workspace:*",
     "@omens/shared": "workspace:*",
     "@paralleldrive/cuid2": "^2.2",
+    "@react-email/components": "^1.0.12",
+    "@react-email/render": "^2.0.6",
     "@resvg/resvg-js": "^2.6.2",
     "dotenv": "^16",
     "drizzle-orm": "^0.44",
     "envalid": "^8",
     "hono": "^4",
     "jose": "^6",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "resend": "^6.11.0",
     "satori": "^0.26.0",
     "zod": "^3.25"
   },
   "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "typescript": "^5.8"
   }
 }

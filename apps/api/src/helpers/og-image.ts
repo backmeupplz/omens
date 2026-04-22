@@ -156,7 +156,7 @@ function svgToPng(svg: string): Uint8Array {
 }
 
 async function renderToPng(node: SatoriNode) {
-  const svg = await satori(node, {
+  const svg = await satori(node as any, {
     width: WIDTH,
     height: HEIGHT,
     fonts: SATORI_FONTS,

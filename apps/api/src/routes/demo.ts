@@ -1,28 +1,13 @@
 import { Hono } from 'hono'
 import { and, desc, eq, gte, sql } from 'drizzle-orm'
-import { aiReports, aiSettings, getDb, tweets, tweetScores, userTweets, users } from '@omens/db'
+import { aiReports, aiSettings, getDb, tweets, tweetScores, userTweets } from '@omens/db'
 import env from '../env'
 import { buildPagination, hydrateFeedRows } from '../helpers/feed'
 import { parsePagination } from '../helpers/http'
 import { hydrateReport } from '../helpers/report'
+import { getDemoUserId } from '../helpers/demo'
 
 const demoRouter = new Hono()
-
-let _demoUserId: string | null | undefined
-async function getDemoUserId(): Promise<string | null> {
-  if (!env.DEMO_USER_EMAIL) return null
-  if (_demoUserId !== undefined) return _demoUserId
-  const db = getDb(env.DATABASE_URL)
-  let [user] = await db.select({ id: users.id }).from(users)
-    .where(eq(users.email, env.DEMO_USER_EMAIL)).limit(1)
-  if (!user) {
-    ;[user] = await db.insert(users)
-      .values({ email: env.DEMO_USER_EMAIL })
-      .returning({ id: users.id })
-  }
-  _demoUserId = user?.id ?? null
-  return _demoUserId
-}
 
 // Feed
 demoRouter.get('/feed', async (c) => {
