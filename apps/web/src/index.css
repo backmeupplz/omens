@@ -1035,7 +1035,8 @@ body {
 }
 
 .demo-notice-wrap {
-  margin-bottom: 1rem;
+  padding-top: 0.9rem;
+  margin-bottom: 0.35rem;
 }
 
 .demo-notice {
@@ -1690,22 +1691,47 @@ html.newspaper-active .newspaper {
   flex-direction: column;
   gap: 0.65rem;
   padding-top: 0.2rem;
+  align-self: stretch;
+}
+
+.np-demo-subscribe-label {
+  margin: 0;
+  color: var(--np-text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .np-demo-subscribe-input {
+  appearance: none;
   width: 100%;
   min-height: 2.85rem;
-  padding: 0.78rem 0.9rem;
-  border: 1px solid var(--np-border);
-  background: rgba(255, 252, 247, 0.86);
-  color: var(--np-text-primary);
+  padding: 0.88rem 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--np-button-primary-border) 72%, var(--np-border) 28%);
+  background: linear-gradient(180deg, rgba(255, 249, 239, 0.1), rgba(255, 249, 239, 0.05));
+  color: var(--np-text);
   font: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 248, 237, 0.08);
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  caret-color: var(--np-button-primary-border);
+}
+
+.np-demo-subscribe-input::placeholder {
+  color: color-mix(in srgb, var(--np-text-muted) 72%, transparent);
+}
+
+.np-demo-subscribe-input:hover {
+  border-color: var(--np-button-primary-border);
+  background: linear-gradient(180deg, rgba(255, 249, 239, 0.14), rgba(255, 249, 239, 0.08));
 }
 
 .np-demo-subscribe-input:focus {
   outline: none;
   border-color: var(--np-button-primary-border);
-  box-shadow: 0 0 0 1px var(--np-button-primary-border);
+  background: linear-gradient(180deg, rgba(255, 249, 239, 0.18), rgba(255, 249, 239, 0.1));
+  box-shadow: 0 0 0 1px var(--np-button-primary-border), 0 0 0 4px rgba(170, 88, 59, 0.12);
+  transform: translateY(-1px);
 }
 
 .np-demo-subscribe-button {
@@ -2002,8 +2028,8 @@ html.newspaper-active .feed-masonry {
   --feed-masonry-gap: 0.65rem;
 }
 
-html.newspaper-active .feed-masonry-column {
-  gap: 0.65rem;
+html.newspaper-active .feed-masonry-item {
+  margin-bottom: 0.65rem;
 }
 
 html.newspaper-active .np-post-modal {
@@ -2078,22 +2104,13 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
 
 .feed-masonry {
   --feed-card-min-width: 17rem;
-  --feed-masonry-gap: 0.8rem;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: var(--feed-masonry-gap);
-  width: 100%;
-}
-
-.feed-masonry-column {
-  display: flex;
-  flex-direction: column;
-  gap: var(--feed-masonry-gap);
-  min-width: 0;
+  column-width: var(--feed-card-min-width);
+  column-gap: 0.8rem;
 }
 
 .feed-masonry-item {
+  break-inside: avoid;
+  margin-bottom: 0.8rem;
   min-width: 0;
 }
 

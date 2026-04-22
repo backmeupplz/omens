@@ -1481,11 +1481,13 @@ function ConversationContextTweet({
   onShowReplies,
   forceExpandedText,
   onExpandRequest,
+  suppressAutoEmbeds,
 }: {
   tweet: Tweet
   onShowReplies?: () => void
   forceExpandedText?: boolean
   onExpandRequest?: () => void
+  suppressAutoEmbeds?: boolean
 }) {
   const media: MediaItem[] = safeParse<MediaItem[]>(tweet.mediaUrls) ?? []
   const cardRaw = safeParse<CardData>(tweet.card)
@@ -1532,7 +1534,7 @@ function ConversationContextTweet({
       {card ? (
         <LinkCard data={card} fallbackUrl={tweet.url} tweetUrl={tweet.url} />
       ) : (
-        media.length === 0 && !quoted && <OgEmbed text={tweet.content} onLoaded={() => {}} />
+        !suppressAutoEmbeds && media.length === 0 && !quoted && <OgEmbed text={tweet.content} onLoaded={() => {}} />
       )}
 
       <div class="np-copy-muted mt-2 flex items-center gap-3 text-xs">
@@ -1736,7 +1738,7 @@ function TweetDetailModal({
   )
 }
 
-export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, expandBehavior, forceExpandedText, threadTweetId, forceShowThreadButton }: {
+export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, expandBehavior, forceExpandedText, threadTweetId, forceShowThreadButton, suppressAutoEmbeds }: {
   tweet: Tweet
   nudge?: 'up' | 'down' | null
   onNudge?: (tweetId: string, direction: 'up' | 'down') => void
@@ -1747,6 +1749,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
   forceExpandedText?: boolean
   threadTweetId?: string
   forceShowThreadButton?: boolean
+  suppressAutoEmbeds?: boolean
 }) {
   const media: MediaItem[] = safeParse<MediaItem[]>(tweet.mediaUrls) ?? []
   const quoted = safeParse<QuotedTweet>(tweet.quotedTweet)
@@ -1842,6 +1845,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
           onShowReplies={index === 0 ? contextRepliesHandler : undefined}
           forceExpandedText={forceExpandedText}
           onExpandRequest={onExpandRequest}
+          suppressAutoEmbeds={suppressAutoEmbeds}
         />
       ))}
 
@@ -1935,7 +1939,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
       {card ? (
         <LinkCard data={card} fallbackUrl={tweet.url} tweetUrl={tweet.url} />
       ) : (
-        !quoted && media.length === 0 && <OgEmbed text={tweet.content} onLoaded={onOgLoaded} />
+        !suppressAutoEmbeds && !quoted && media.length === 0 && <OgEmbed text={tweet.content} onLoaded={onOgLoaded} />
       )}
 
       {/* Engagement */}
@@ -2202,12 +2206,14 @@ function RedditCard({
   onNudge,
   score,
   minScore,
+  suppressAutoEmbeds,
 }: {
   item: Extract<TimelineItem, { provider: 'reddit' }>
   nudge?: 'up' | 'down' | null
   onNudge?: (id: string, direction: 'up' | 'down') => void
   score?: number | null
   minScore?: number
+  suppressAutoEmbeds?: boolean
 }) {
   const post = item.payload
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
@@ -2292,7 +2298,7 @@ function RedditCard({
           <MediaGrid media={dedupedMediaItems} onPhotoClick={setLightboxIndex} />
         )}
 
-        {post.url && dedupedMediaItems.length === 0 && !post.isSelf && !hasDirectMediaUrl && (
+        {post.url && dedupedMediaItems.length === 0 && !post.isSelf && !hasDirectMediaUrl && !suppressAutoEmbeds && (
           <OgEmbed
             text=""
             url={post.url}
@@ -2303,7 +2309,7 @@ function RedditCard({
             }}
           />
         )}
-        {ogResolved && !ogAvailable && linkCardData && <LinkCard data={linkCardData} fallbackUrl={post.url} />}
+        {(suppressAutoEmbeds || (ogResolved && !ogAvailable)) && linkCardData && <LinkCard data={linkCardData} fallbackUrl={post.url} />}
 
         <div class="np-post-actions flex flex-wrap items-center justify-between gap-y-1 text-xs">
           <span class="flex items-center gap-3">
@@ -2602,8 +2608,7 @@ Karpathy's framing around personal research knowledge bases and Farza's prototyp
   return (
     <NewspaperShell subtitle="Fixture Preview" showMeta={false}>
       <NewspaperContent
-        text={text}
-        refItems={refItems}
+        sections={parseReportSections(text, refItems)}
         reportDate="2026-04-05T09:02:00.000Z"
         itemCount={fixtureTweets.length}
         issueNumber={7}
@@ -3029,6 +3034,61 @@ function buildArticleTiles(items: SectionItem[]) {
   return tiles
 }
 
+function estimateTimelineTweetHeight(tweet: Tweet) {
+  const media = safeParse<MediaItem[]>(tweet.mediaUrls) ?? []
+  const hasCard = !!safeParse<CardData>(tweet.card)?.title
+  const hasQuoted = !!safeParse<QuotedTweet>(tweet.quotedTweet)
+  const hasContext = getSelfThreadAncestors(tweet).length > 0 || !!tweet.parentTweet
+  const lineCount = tweet.content.split('\n').length
+
+  let height = 220
+  height += Math.min(260, Math.ceil(tweet.content.length / 2.35))
+  height += Math.min(120, Math.max(0, lineCount - 1) * 16)
+  if (media.length > 0) height += media.length === 1 ? 250 : 150
+  if (hasQuoted) height += 120
+  if (hasCard) height += 150
+  if (hasContext) height += 120
+  if (tweet.replyToHandle && !tweet.parentTweet) height += 24
+
+  return height
+}
+
+function estimateTimelineItemHeight(item: TimelineItem | undefined) {
+  if (!item) return 220
+  if (item.provider === 'x') return estimateTimelineTweetHeight(item.payload)
+
+  const hasMedia = !!(item.payload.previewUrl || item.payload.thumbnailUrl || item.payload.media)
+  const hasLinkCard = !hasMedia && !item.payload.isSelf && !!item.payload.domain
+  const bodyLength = item.payload.body?.length || 0
+  const titleLength = item.payload.title.length
+
+  let height = 220
+  height += Math.min(180, Math.ceil(titleLength / 2.2))
+  height += Math.min(240, Math.ceil(bodyLength / 2.8))
+  if (hasMedia) height += 250
+  else if (hasLinkCard) height += 150
+
+  return height
+}
+
+function estimateArticleTileHeight(tile: ArticleTile) {
+  if (tile.type === 'item') return estimateTimelineItemHeight(tile.item)
+
+  const listEntryCount = tile.fragments.reduce((total, fragment) => (
+    fragment.type === 'list' ? total + fragment.entries.length : total
+  ), 0)
+  const paragraphCount = tile.fragments.reduce((total, fragment) => (
+    fragment.type === 'paragraph' ? total + 1 : total
+  ), 0)
+
+  let height = tile.lead ? 180 : 110
+  height += Math.ceil(tile.charCount * 0.42)
+  height += paragraphCount * 24
+  height += listEntryCount * 20
+
+  return height
+}
+
 function arrangeArticleTiles(tiles: ArticleTile[]) {
   const textTiles = tiles.filter((tile): tile is Extract<ArticleTile, { type: 'text' }> => tile.type === 'text')
   const itemTiles = tiles.filter((tile): tile is Extract<ArticleTile, { type: 'item' }> => tile.type === 'item')
@@ -3037,6 +3097,9 @@ function arrangeArticleTiles(tiles: ArticleTile[]) {
   if (textTiles.length > 0) arranged.push(textTiles.shift()!)
   if (itemTiles.length > 0) arranged.push(itemTiles.shift()!)
   if (textTiles.length > 0) arranged.push(textTiles.shift()!)
+
+  itemTiles.sort((left, right) => estimateArticleTileHeight(right) - estimateArticleTileHeight(left))
+
   if (itemTiles.length > 0) arranged.push(itemTiles.shift()!)
 
   while (textTiles.length > 0 || itemTiles.length > 0) {
@@ -3049,14 +3112,7 @@ function arrangeArticleTiles(tiles: ArticleTile[]) {
   return arranged
 }
 
-function estimateArticleTileWeight(tile: ArticleTile) {
-  if (tile.type === 'item') return 6
-  const listWeight = tile.fragments.some((fragment) => fragment.type === 'list') ? 2 : 0
-  const paragraphWeight = Math.ceil(tile.charCount / 180)
-  return Math.max(2, paragraphWeight + listWeight + (tile.lead ? 1 : 0))
-}
-
-function distributeArticleTiles(tiles: ArticleTile[], columnCount: number, measuredHeights: Map<number, number>) {
+function distributeArticleTiles(tiles: ArticleTile[], columnCount: number) {
   const columns = Array.from({ length: columnCount }, () => ({ tiles: [] as Array<{ tile: ArticleTile; index: number }>, weight: 0 }))
   for (const [index, tile] of tiles.entries()) {
     let target = 0
@@ -3064,7 +3120,7 @@ function distributeArticleTiles(tiles: ArticleTile[], columnCount: number, measu
       if (columns[index].weight < columns[target].weight) target = index
     }
     columns[target].tiles.push({ tile, index })
-    columns[target].weight += measuredHeights.get(index) ?? estimateArticleTileWeight(tile) * 56
+    columns[target].weight += estimateArticleTileHeight(tile)
   }
   return columns.map((column) => column.tiles)
 }
@@ -3104,8 +3160,6 @@ function renderTextTileFragments(fragments: TextFragment[], lead: boolean, prefi
 function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefix: string }) {
   const gridRef = useRef<HTMLDivElement>(null)
   const [columnCount, setColumnCount] = useState(1)
-  const tileHeightsRef = useRef(new Map<number, number>())
-  const [measuredVersion, setMeasuredVersion] = useState(0)
   const tiles = useMemo(() => arrangeArticleTiles(buildArticleTiles(items)), [items])
 
   useLayoutEffect(() => {
@@ -3137,65 +3191,28 @@ function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefi
     }
   }, [])
 
-  useLayoutEffect(() => {
-    const node = gridRef.current
-    if (!node) return
-
-    tileHeightsRef.current = new Map(
-      [...tileHeightsRef.current].filter(([index]) => index < tiles.length),
-    )
-
-    let frame = 0
-    const observer = new ResizeObserver((entries) => {
-      let changed = false
-      for (const entry of entries) {
-        const target = entry.target as HTMLElement
-        const tileIndex = Number.parseInt(target.dataset.tileIndex || '', 10)
-        if (!Number.isFinite(tileIndex)) continue
-        const nextHeight = Math.ceil(entry.contentRect.height)
-        const prevHeight = tileHeightsRef.current.get(tileIndex)
-        if (prevHeight === nextHeight) continue
-        tileHeightsRef.current.set(tileIndex, nextHeight)
-        changed = true
-      }
-      if (!changed || frame) return
-      frame = requestAnimationFrame(() => {
-        frame = 0
-        setMeasuredVersion((prev) => prev + 1)
-      })
-    })
-
-    const tileNodes = node.querySelectorAll<HTMLElement>('[data-tile-index]')
-    tileNodes.forEach((tileNode) => observer.observe(tileNode))
-
-    return () => {
-      observer.disconnect()
-      if (frame) cancelAnimationFrame(frame)
-    }
-  }, [tiles, columnCount])
-
   const columns = useMemo(
-    () => distributeArticleTiles(tiles, columnCount, tileHeightsRef.current),
-    [tiles, columnCount, measuredVersion],
+    () => distributeArticleTiles(tiles, columnCount),
+    [tiles, columnCount],
   )
 
-  const renderTile = (tile: ArticleTile, key: string, tileIndex: number) => {
+  const renderTile = (tile: ArticleTile, key: string) => {
     if (tile.type === 'item') {
       return tile.item ? (
-        <div key={key} class="np-grid-tile np-grid-tile-tweet" data-tile-index={tileIndex}>
+        <div key={key} class="np-grid-tile np-grid-tile-tweet">
           {tile.item.provider === 'x'
-            ? <TweetCard tweet={tile.item.payload} expandBehavior="detail" />
-            : <RedditCard item={tile.item} />}
+            ? <TweetCard tweet={tile.item.payload} expandBehavior="detail" suppressAutoEmbeds />
+            : <RedditCard item={tile.item} suppressAutoEmbeds />}
         </div>
       ) : (
-        <div key={key} class="np-grid-tile np-grid-tile-fallback" data-tile-index={tileIndex}>
+        <div key={key} class="np-grid-tile np-grid-tile-fallback">
           <div class="np-tweet">Referenced post is no longer available</div>
         </div>
       )
     }
 
     return (
-      <div key={key} class="np-grid-tile np-grid-tile-text" data-tile-index={tileIndex}>
+      <div key={key} class="np-grid-tile np-grid-tile-text">
         <div class="np-text-tile">
           {renderTextTileFragments(tile.fragments, tile.lead, `${key}-`)}
         </div>
@@ -3207,16 +3224,15 @@ function NewspaperArticleLayout({ items, prefix }: { items: SectionItem[]; prefi
     <div ref={gridRef} class="np-article-grid" style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}>
       {columns.map((column, columnIndex) => (
         <div key={`${prefix}c-${columnIndex}`} class="np-article-grid-column">
-          {column.map(({ tile, index }) => renderTile(tile, `${prefix}${index}`, index))}
+          {column.map(({ tile, index }) => renderTile(tile, `${prefix}${index}`))}
         </div>
       ))}
     </div>
   )
 }
 
-function NewspaperContent({ text, refItems, reportDate, itemCount: totalItemCount, issueNumber, leftControls, controls, historyPanel, showMasthead = true }: {
-  text: string
-  refItems: Map<string, TimelineItem>
+function NewspaperContent({ sections, reportDate, itemCount: totalItemCount, issueNumber, leftControls, controls, historyPanel, showMasthead = true }: {
+  sections: ParsedReportSection[]
   reportDate: string
   itemCount: number
   issueNumber: number
@@ -3225,8 +3241,6 @@ function NewspaperContent({ text, refItems, reportDate, itemCount: totalItemCoun
   historyPanel?: preact.ComponentChildren
   showMasthead?: boolean
 }) {
-  const sections = useMemo(() => parseReportSections(text, refItems), [text, refItems])
-
   const articles = sections.filter((s) => s.header)
   const renderArticlePackage = (
     article: (typeof articles)[number],
@@ -3371,12 +3385,22 @@ function DemoReportEmailSignup({
         </div>
 
         <div class="np-demo-subscribe-form">
+          <label class="np-demo-subscribe-label" for="demo-email-subscribe">
+            Email address
+          </label>
           <input
+            id="demo-email-subscribe"
+            name="email"
             type="email"
+            inputMode="email"
+            autoComplete="email"
             class="np-demo-subscribe-input"
             placeholder="you@example.com"
             value={email}
             onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !saving && email.trim()) submit()
+            }}
           />
           <button
             type="button"
@@ -3429,11 +3453,15 @@ export function NewspaperReportPage({
   postContent?: preact.ComponentChildren
 }) {
   const date = new Date(reportDate)
+  const parsedSections = useMemo(
+    () => parseReportSections(text, refItems),
+    [text, refItems],
+  )
   const outlineSections = useMemo(
-    () => parseReportSections(text, refItems)
+    () => parsedSections
       .filter((section): section is ParsedReportSection & { header: string; anchorId: string } => !!section.header && !!section.anchorId)
       .map((section) => ({ header: section.header, anchorId: section.anchorId, headerLevel: section.headerLevel })),
-    [text, refItems],
+    [parsedSections],
   )
   const metaRow = (
     <div class="np-masthead-meta">
@@ -3456,8 +3484,7 @@ export function NewspaperReportPage({
       {historyPanel}
       {preContent}
       <NewspaperContent
-        text={text}
-        refItems={refItems}
+        sections={parsedSections}
         reportDate={reportDate}
         itemCount={itemCount}
         issueNumber={issueNumber}
@@ -3604,8 +3631,10 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
   const { data: demoEmailMeta } = useApi<{ enabled: boolean; confirmationRequired: boolean; feedName: string }>(demo ? '/email/demo/meta' : null)
   const aiConfigured = demo || !!settings?.configured
   const { feeds, selectedFeed, selectedFeedId, setSelectedFeedId, loading: feedsLoading } = useScoringFeeds(aiConfigured)
-  const reportPath = demo ? `${prefix}/report` : (selectedFeedId ? withFeedId(`${prefix}/report`, selectedFeedId) : null)
-  const reportsPath = demo ? `${prefix}/reports` : (selectedFeedId ? withFeedId(`${prefix}/reports`, selectedFeedId) : null)
+  const scopedReportFeedId = !demo && selectedFeed && !selectedFeed.isMain ? selectedFeed.id : null
+  const reportScopeKey = demo ? 'demo' : (scopedReportFeedId || 'main')
+  const reportPath = demo ? `${prefix}/report` : withFeedId(`${prefix}/report`, scopedReportFeedId)
+  const reportsPath = demo ? `${prefix}/reports` : withFeedId(`${prefix}/reports`, scopedReportFeedId)
   const { data, loading, refetch } = useApi<{ report: AiReportData | null }>(reportPath)
   const { data: pastData } = useApi<{ reports: Array<{ id: string; model: string; itemCount: number; createdAt: string; feedId: string }> }>(reportsPath)
   useNewspaperActive()
@@ -3619,7 +3648,6 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
   const [viewingReport, setViewingReport] = useState<AiReportData | null>(null)
   const [showPastReports, setShowPastReports] = useState(false)
   const [historyPage, setHistoryPage] = useState(1)
-  const [switchingFeeds, setSwitchingFeeds] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const refetchRef = useRef(refetch)
   const streamRetryTimerRef = useRef<number | null>(null)
@@ -3646,8 +3674,8 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
-    const statusPath = demo ? '/ai/report-status' : withFeedId('/ai/report-status', selectedFeedId)
-    const streamUrl = `${API_BASE}${demo ? '/ai/report-stream' : withFeedId('/ai/report-stream', selectedFeedId)}`
+    const statusPath = demo ? '/ai/report-status' : withFeedId('/ai/report-status', scopedReportFeedId)
+    const streamUrl = `${API_BASE}${demo ? '/ai/report-stream' : withFeedId('/ai/report-stream', scopedReportFeedId)}`
 
     const recoverStream = async (fallbackMessage: string) => {
       if (controller.signal.aborted || unmountingRef.current) return
@@ -3747,14 +3775,14 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
         if (e instanceof Error && e.name === 'AbortError') return
         await recoverStream(e instanceof Error ? e.message : 'Connection lost during report generation')
       })
-  }, [clearStreamRetry, demo, selectedFeedId])
+  }, [clearStreamRetry, demo, scopedReportFeedId])
   connectStreamRef.current = connectStream
 
   // Check if report is already generating on mount
   useEffect(() => {
     if (demo) return
     if (!selectedFeedId) return
-    api<{ generating: boolean; itemCount: number; status: string | null; startedAt: string | null; error: string | null }>(withFeedId('/ai/report-status', selectedFeedId))
+    api<{ generating: boolean; itemCount: number; status: string | null; startedAt: string | null; error: string | null }>(withFeedId('/ai/report-status', scopedReportFeedId))
       .then((s) => {
         if (s.error) { setError(s.error); return }
         if (s.generating) {
@@ -3771,7 +3799,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
       clearStreamRetry()
       abortRef.current?.abort()
     }
-  }, [clearStreamRetry, connectStream, demo, selectedFeedId])
+  }, [clearStreamRetry, connectStream, demo, scopedReportFeedId, selectedFeedId])
 
   const generate = async () => {
     setGenerating(true)
@@ -3783,7 +3811,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     streamRetryCountRef.current = 0
     clearStreamRetry()
     try {
-      await api(withFeedId('/ai/report', selectedFeedId), { method: 'POST' })
+      await api(withFeedId('/ai/report', scopedReportFeedId), { method: 'POST' })
       connectStream()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate report')
@@ -3822,16 +3850,9 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
     setError(null)
     setStreamContent('')
     setStreamItems(new Map())
-    if (!demo && selectedFeedId) setSwitchingFeeds(true)
-  }, [selectedFeedId])
+  }, [reportScopeKey])
 
-  useEffect(() => {
-    if (!switchingFeeds) return
-    if (loading) return
-    setSwitchingFeeds(false)
-  }, [loading, switchingFeeds])
-
-  if ((!demo && (settingsLoading || (aiConfigured && (feedsLoading || !selectedFeedId)))) || loading || switchingFeeds) {
+  if ((!demo && settingsLoading) || loading) {
     return (
       <NewspaperShell
         leftControls={<NewspaperRouteControls current="report" showSettings={!demo} />}
@@ -3864,10 +3885,13 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
       className="mb-3"
     />
   ) : null
-  const refItemMap = new Map<string, TimelineItem>()
-  if (activeReport?.refItems) {
-    for (const item of activeReport.refItems) refItemMap.set(item.id, item)
-  }
+  const refItemMap = useMemo(() => {
+    const map = new Map<string, TimelineItem>()
+    if (activeReport?.refItems) {
+      for (const item of activeReport.refItems) map.set(item.id, item)
+    }
+    return map
+  }, [activeReport?.refItems])
   const reportIssueNumber = activeReport
     ? (pastData ? pastData.reports.length - (pastData.reports.findIndex((r) => r.id === (viewingReportId || activeReport.id))) : 1)
     : 1
@@ -3973,12 +3997,12 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
           rightControls={newspaperControls}
           preContent={
             <>
-              {demoEmailPromo}
               {reportTabs}
               {error && <p class="np-alert np-alert-error text-center mb-3">{error}</p>}
               {renderGenerationPanel()}
             </>
           }
+          postContent={demoEmailPromo}
         />
       )
     }
@@ -4013,11 +4037,11 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
           historyPanel={historyPanel}
           preContent={
             <>
-              {demoEmailPromo}
               {reportTabs}
               {generating ? renderGenerationPanel() : null}
             </>
           }
+          postContent={demoEmailPromo}
         />
       )}
 
@@ -4027,7 +4051,6 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
           rightControls={newspaperControls}
           showMeta={false}
         >
-          {demoEmailPromo}
           {reportTabs}
           <div class="np-page-grid">
             <article class="np-article np-article-lead">
@@ -4053,6 +4076,7 @@ function AiReportView({ demo }: { demo?: boolean } = {}) {
               </div>
             </article>
           </div>
+          {demoEmailPromo}
         </NewspaperShell>
       )}
     </div>
@@ -4414,23 +4438,23 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
         </div>
       )}
 
-      <FeedMasonry
-        items={allItems}
-        getEstimateHeight={estimateFeedItemHeight}
-        renderItem={(item: TimelineItem | Tweet) => (
-          'provider' in item
-            ? renderTimelineFeedItem(item, demo ? new Map() : nudges, demo ? undefined : onNudge, minScore)
-            : (
-                <TweetCard
-                  tweet={item}
-                  nudge={demo ? undefined : nudges.get(item.id) || null}
-                  onNudge={demo ? undefined : onNudge}
-                  score={(item as any).score}
-                  minScore={minScore}
-                />
-              )
-        )}
-      />
+      <div class="feed-masonry">
+        {allItems.map((item: TimelineItem | Tweet) => (
+          <div key={item.id} class="feed-masonry-item">
+            {'provider' in item
+              ? renderTimelineFeedItem(item, demo ? new Map() : nudges, demo ? undefined : onNudge, minScore)
+              : (
+                  <TweetCard
+                    tweet={item}
+                    nudge={demo ? undefined : nudges.get(item.id) || null}
+                    onNudge={demo ? undefined : onNudge}
+                    score={(item as any).score}
+                    minScore={minScore}
+                  />
+                )}
+          </div>
+        ))}
+      </div>
     </NewspaperFeedShell>
   )
 }
@@ -4513,23 +4537,23 @@ export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise
       loadingMore={loadingMore}
       onLoadMore={loadMore}
     >
-      <FeedMasonry
-        items={allItems}
-        getEstimateHeight={estimateFeedItemHeight}
-        renderItem={(item: TimelineItem | Tweet) => (
-          'provider' in item
-            ? renderTimelineFeedItem(item, demo ? new Map() : nudges, demo ? undefined : onNudge, minScore)
-            : (
-                <TweetCard
-                  tweet={item}
-                  nudge={demo ? undefined : nudges.get(item.id) || null}
-                  onNudge={demo ? undefined : onNudge}
-                  score={(item as any).score}
-                  minScore={minScore}
-                />
-              )
-        )}
-      />
+      <div class="feed-masonry">
+        {allItems.map((item: TimelineItem | Tweet) => (
+          <div key={item.id} class="feed-masonry-item">
+            {'provider' in item
+              ? renderTimelineFeedItem(item, demo ? new Map() : nudges, demo ? undefined : onNudge, minScore)
+              : (
+                  <TweetCard
+                    tweet={item}
+                    nudge={demo ? undefined : nudges.get(item.id) || null}
+                    onNudge={demo ? undefined : onNudge}
+                    score={(item as any).score}
+                    minScore={minScore}
+                  />
+                )}
+          </div>
+        ))}
+      </div>
     </NewspaperFeedShell>
   )
 }
