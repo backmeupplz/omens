@@ -629,6 +629,7 @@ export interface Tweet {
   quotedTweet: string | null
   replyToHandle: string | null
   replyToTweetId: string | null
+  hasSelfThreadReply: boolean
   parentTweet: Tweet | null
   url: string
   likes: number
@@ -741,6 +742,7 @@ function remoteTweetToTweet(tweet: RemoteTweet, parentTweet: Tweet | null): Twee
     quotedTweet: tweet.quotedTweet ? JSON.stringify(tweet.quotedTweet) : null,
     replyToHandle: tweet.replyToHandle,
     replyToTweetId: tweet.replyToTweetId,
+    hasSelfThreadReply: false,
     parentTweet,
     url: tweet.url,
     likes: tweet.likes,
@@ -858,7 +860,7 @@ function EmbeddedTweet({ tweetId }: { tweetId: string }) {
             mediaUrls: t.media ? JSON.stringify(t.media) : null,
             isRetweet: null, card: t.card ? JSON.stringify(t.card) : null,
             quotedTweet: t.quotedTweet ? JSON.stringify(t.quotedTweet) : null,
-            replyToHandle: null, replyToTweetId: null, parentTweet: null,
+            replyToHandle: null, replyToTweetId: null, hasSelfThreadReply: false, parentTweet: null,
             url: t.url, likes: t.likes || 0, retweets: t.retweets || 0,
             replies: t.replies || 0, views: 0, publishedAt: t.publishedAt || '',
           })
@@ -1767,7 +1769,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
   const replyCount = replyTarget.replies
   const replyContextTweetId = extractTweetIdFromUrl(tweet.url) || tweet.tweetId
   const threadTargetTweetId = threadTweetId || extractTweetIdFromUrl(tweet.url) || tweet.tweetId
-  const showThreadButton = !!threadTargetTweetId && (forceShowThreadButton || isSelfThread)
+  const showThreadButton = !!threadTargetTweetId && (forceShowThreadButton || isSelfThread || tweet.hasSelfThreadReply)
   const onOgLoaded = useCallback(() => setOgLoaded(true), [])
   const openDetail = useCallback((expandedText = false) => {
     if (embedded) return
@@ -2491,6 +2493,7 @@ function createFixtureTweet(overrides: Partial<Tweet> & Pick<Tweet, 'id' | 'twee
     quotedTweet: null,
     replyToHandle: null,
     replyToTweetId: null,
+    hasSelfThreadReply: false,
     parentTweet: null,
     url: `https://x.com/${overrides.authorHandle}/status/${overrides.tweetId}`,
     likes: 1200,
@@ -2774,6 +2777,161 @@ function parseCssLength(value: string, fallback: number) {
     return numeric * rootFontSize
   }
   return numeric
+}
+
+function estimateFeedTweetHeight(tweet: Tweet) {
+  const media = safeParse<MediaItem[]>(tweet.mediaUrls) ?? []
+  const hasCard = !!safeParse<CardData>(tweet.card)?.title
+  const hasQuoted = !!safeParse<QuotedTweet>(tweet.quotedTweet)
+  const hasContext = getSelfThreadAncestors(tweet).length > 0 || !!tweet.parentTweet
+  const lineCount = tweet.content.split('\n').length
+
+  let height = 220
+  height += Math.min(220, Math.ceil(tweet.content.length / 2.4))
+  height += Math.min(120, Math.max(0, lineCount - 1) * 18)
+  if (media.length > 0) height += media.length === 1 ? 220 : 160
+  if (hasQuoted) height += 120
+  if (hasCard) height += 120
+  if (hasContext) height += 150
+  if (tweet.replyToHandle && !tweet.parentTweet) height += 28
+
+  return height
+}
+
+function estimateFeedItemHeight(item: TimelineItem | Tweet) {
+  if ('provider' in item) {
+    if (item.provider === 'reddit') {
+      const hasMedia = !!(item.payload.previewUrl || item.payload.thumbnailUrl || item.payload.media)
+      const bodyLength = item.payload.body?.length || 0
+      return 240 + Math.min(220, Math.ceil(bodyLength / 3)) + (hasMedia ? 180 : 0)
+    }
+    return estimateFeedTweetHeight(item.payload)
+  }
+
+  return estimateFeedTweetHeight(item)
+}
+
+function distributeFeedItems<T extends { id: string }>(
+  items: T[],
+  columnCount: number,
+  measuredHeights: Map<string, number>,
+  getEstimateHeight: (item: T) => number,
+) {
+  const columns = Array.from({ length: columnCount }, () => ({ items: [] as T[], height: 0 }))
+
+  for (const item of items) {
+    let target = 0
+    for (let index = 1; index < columns.length; index++) {
+      if (columns[index].height < columns[target].height) target = index
+    }
+    columns[target].items.push(item)
+    columns[target].height += measuredHeights.get(item.id) ?? getEstimateHeight(item)
+  }
+
+  return columns.map((column) => column.items)
+}
+
+function FeedMasonry<T extends { id: string }>({
+  items,
+  renderItem,
+  getEstimateHeight,
+}: {
+  items: T[]
+  renderItem: (item: T) => preact.ComponentChildren
+  getEstimateHeight: (item: T) => number
+}) {
+  const masonryRef = useRef<HTMLDivElement>(null)
+  const [columnCount, setColumnCount] = useState(1)
+  const itemHeightsRef = useRef(new Map<string, number>())
+  const [measuredVersion, setMeasuredVersion] = useState(0)
+
+  useLayoutEffect(() => {
+    const node = masonryRef.current
+    if (!node) return
+    let frame = 0
+
+    const updateColumns = () => {
+      frame = 0
+      const styles = window.getComputedStyle(node)
+      const gap = parseCssLength(styles.getPropertyValue('--feed-masonry-gap'), 12.8)
+      const minWidth = parseCssLength(styles.getPropertyValue('--feed-card-min-width'), 17 * 16)
+      const width = node.getBoundingClientRect().width
+      const next = Math.max(1, Math.floor((width + gap) / (minWidth + gap)))
+      setColumnCount((prev) => (prev === next ? prev : next))
+    }
+
+    const schedule = () => {
+      if (frame) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(updateColumns)
+    }
+
+    schedule()
+    const observer = new ResizeObserver(schedule)
+    observer.observe(node)
+    return () => {
+      observer.disconnect()
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    const node = masonryRef.current
+    if (!node) return
+
+    const validIds = new Set(items.map((item) => item.id))
+    itemHeightsRef.current = new Map(
+      [...itemHeightsRef.current].filter(([id]) => validIds.has(id)),
+    )
+
+    let frame = 0
+    const observer = new ResizeObserver((entries) => {
+      let changed = false
+
+      for (const entry of entries) {
+        const target = entry.target as HTMLElement
+        const itemId = target.dataset.masonryId || ''
+        if (!itemId) continue
+        const nextHeight = Math.ceil(entry.contentRect.height)
+        const prevHeight = itemHeightsRef.current.get(itemId)
+        if (prevHeight === nextHeight) continue
+        itemHeightsRef.current.set(itemId, nextHeight)
+        changed = true
+      }
+
+      if (!changed || frame) return
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        setMeasuredVersion((prev) => prev + 1)
+      })
+    })
+
+    const itemNodes = node.querySelectorAll<HTMLElement>('[data-masonry-id]')
+    itemNodes.forEach((itemNode) => observer.observe(itemNode))
+
+    return () => {
+      observer.disconnect()
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [items, columnCount])
+
+  const columns = useMemo(
+    () => distributeFeedItems(items, columnCount, itemHeightsRef.current, getEstimateHeight),
+    [items, columnCount, getEstimateHeight, measuredVersion],
+  )
+
+  return (
+    <div ref={masonryRef} class="feed-masonry" style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}>
+      {columns.map((column, columnIndex) => (
+        <div key={`column-${columnIndex}`} class="feed-masonry-column">
+          {column.map((item) => (
+            <div key={item.id} class="feed-masonry-item" data-masonry-id={item.id}>
+              {renderItem(item)}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function splitParagraphForTiles(text: string) {
@@ -4156,15 +4314,23 @@ export function FilteredFeed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () =>
         </div>
       )}
 
-      <div class="feed-masonry">
-        {allItems.map((item: any) => (
-          <div key={item.id} class="feed-masonry-item">
-            {'provider' in item
-              ? renderTimelineFeedItem(item as TimelineItem, demo ? new Map() : nudges, demo ? undefined : onNudge, minScore)
-              : <TweetCard tweet={item as Tweet} nudge={demo ? undefined : nudges.get(item.id) || null} onNudge={demo ? undefined : onNudge} score={(item as any).score} minScore={minScore} />}
-          </div>
-        ))}
-      </div>
+      <FeedMasonry
+        items={allItems}
+        getEstimateHeight={estimateFeedItemHeight}
+        renderItem={(item: TimelineItem | Tweet) => (
+          'provider' in item
+            ? renderTimelineFeedItem(item, demo ? new Map() : nudges, demo ? undefined : onNudge, minScore)
+            : (
+                <TweetCard
+                  tweet={item}
+                  nudge={demo ? undefined : nudges.get(item.id) || null}
+                  onNudge={demo ? undefined : onNudge}
+                  score={(item as any).score}
+                  minScore={minScore}
+                />
+              )
+        )}
+      />
     </NewspaperFeedShell>
   )
 }
@@ -4247,15 +4413,23 @@ export function Feed({ onRefreshRef, demo }: { onRefreshRef?: (fn: () => Promise
       loadingMore={loadingMore}
       onLoadMore={loadMore}
     >
-      <div class="feed-masonry">
-        {allItems.map((item: any) => (
-          <div key={item.id} class="feed-masonry-item">
-            {'provider' in item
-              ? renderTimelineFeedItem(item as TimelineItem, demo ? new Map() : nudges, demo ? undefined : onNudge, minScore)
-              : <TweetCard tweet={item as Tweet} nudge={demo ? undefined : nudges.get(item.id) || null} onNudge={demo ? undefined : onNudge} score={(item as any).score} minScore={minScore} />}
-          </div>
-        ))}
-      </div>
+      <FeedMasonry
+        items={allItems}
+        getEstimateHeight={estimateFeedItemHeight}
+        renderItem={(item: TimelineItem | Tweet) => (
+          'provider' in item
+            ? renderTimelineFeedItem(item, demo ? new Map() : nudges, demo ? undefined : onNudge, minScore)
+            : (
+                <TweetCard
+                  tweet={item}
+                  nudge={demo ? undefined : nudges.get(item.id) || null}
+                  onNudge={demo ? undefined : onNudge}
+                  score={(item as any).score}
+                  minScore={minScore}
+                />
+              )
+        )}
+      />
     </NewspaperFeedShell>
   )
 }

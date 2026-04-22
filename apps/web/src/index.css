@@ -1899,11 +1899,11 @@ html.newspaper-active .np-post-score {
 }
 
 html.newspaper-active .feed-masonry {
-  column-gap: 0.65rem;
+  --feed-masonry-gap: 0.65rem;
 }
 
-html.newspaper-active .feed-masonry-item {
-  margin-bottom: 0.65rem;
+html.newspaper-active .feed-masonry-column {
+  gap: 0.65rem;
 }
 
 html.newspaper-active .np-post-modal {
@@ -1978,13 +1978,23 @@ html.newspaper-active .np-post-modal-replies button[class*="bg-zinc"]:hover {
 
 .feed-masonry {
   --feed-card-min-width: 17rem;
-  column-width: var(--feed-card-min-width);
-  column-gap: 0.8rem;
+  --feed-masonry-gap: 0.8rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--feed-masonry-gap);
+  width: 100%;
+}
+
+.feed-masonry-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--feed-masonry-gap);
+  min-width: 0;
 }
 
 .feed-masonry-item {
-  break-inside: avoid;
-  margin-bottom: 0.8rem;
+  min-width: 0;
 }
 
 .np-toast {

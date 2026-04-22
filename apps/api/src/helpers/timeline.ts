@@ -34,6 +34,7 @@ export interface TimelineTweetPayload {
   quotedTweet: string | null
   replyToHandle: string | null
   replyToTweetId: string | null
+  hasSelfThreadReply: boolean
   parentTweet: TimelineTweetPayload | null
   url: string
   likes: number
@@ -146,9 +147,42 @@ async function resolveParentXPosts(rows: TimelineXRow[]) {
   return parentMap
 }
 
+async function resolveSelfThreadReplyIds(rows: TimelineXRow[]) {
+  const visibleTweets = rows
+    .filter((row) => !!row.xPost)
+    .map((row) => ({ contentItem: row.contentItem, xPost: row.xPost! }))
+  const visibleIds = uniqueXPostIds(visibleTweets.map((row) => row.xPost.xPostId))
+  if (visibleIds.length === 0) return new Set<string>()
+
+  const parentAuthorById = new Map(
+    visibleTweets.map((row) => [row.xPost.xPostId, row.xPost.authorHandle] as const),
+  )
+
+  const db = getDb()
+  const children = await db
+    .select({
+      replyToXPostId: xPosts.replyToXPostId,
+      authorHandle: xPosts.authorHandle,
+    })
+    .from(xPosts)
+    .where(inArray(xPosts.replyToXPostId, visibleIds))
+
+  const ids = new Set<string>()
+  for (const child of children) {
+    const parentId = child.replyToXPostId
+    if (!parentId) continue
+    if (parentAuthorById.get(parentId) === child.authorHandle) {
+      ids.add(parentId)
+    }
+  }
+
+  return ids
+}
+
 function serializeTweetPayload(
   row: TimelineParentRow,
   parentMap: Map<string, TimelineParentRow>,
+  selfThreadReplyIds: Set<string>,
   cache: Map<string, TimelineTweetPayload>,
 ): TimelineTweetPayload {
   const cached = cache.get(row.xPost.xPostId)
@@ -170,7 +204,8 @@ function serializeTweetPayload(
     quotedTweet: row.xPost.quotedTweet,
     replyToHandle: row.xPost.replyToHandle,
     replyToTweetId: row.xPost.replyToXPostId,
-    parentTweet: parent ? serializeTweetPayload(parent, parentMap, cache) : null,
+    hasSelfThreadReply: selfThreadReplyIds.has(row.xPost.xPostId),
+    parentTweet: parent ? serializeTweetPayload(parent, parentMap, selfThreadReplyIds, cache) : null,
     url: row.contentItem.url,
     likes: row.xPost.likes,
     retweets: row.xPost.retweets,
@@ -184,6 +219,7 @@ function serializeTweetPayload(
 
 export async function serializeTimelineItems(rows: TimelineXRow[]): Promise<TimelineItem[]> {
   const parentMap = await resolveParentXPosts(rows)
+  const selfThreadReplyIds = await resolveSelfThreadReplyIds(rows)
   const tweetCache = new Map<string, TimelineTweetPayload>()
   const items: TimelineItem[] = []
   for (const row of rows) {
@@ -194,7 +230,12 @@ export async function serializeTimelineItems(rows: TimelineXRow[]): Promise<Time
         entityType: 'x_post' as const,
         score: row.score,
         publishedAt: row.contentItem.publishedAt,
-        payload: serializeTweetPayload({ contentItem: row.contentItem, xPost: row.xPost }, parentMap, tweetCache),
+        payload: serializeTweetPayload(
+          { contentItem: row.contentItem, xPost: row.xPost },
+          parentMap,
+          selfThreadReplyIds,
+          tweetCache,
+        ),
       })
       continue
     }
