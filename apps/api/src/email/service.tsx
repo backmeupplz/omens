@@ -6,9 +6,11 @@ import {
   reportEmailSubscriptions,
   users,
 } from '@omens/db'
-import { and, eq, ne } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, ne } from 'drizzle-orm'
 import env from '../env'
+import { hydrateReport } from '../helpers/report'
 import { sendEmail, isEmailFeatureEnabled } from './provider'
+import { renderPlainTextReportEmail } from './report-content'
 import { ReportEmailTemplate } from './templates/report-email'
 import { ConfirmEmailTemplate } from './templates/confirm-email'
 
@@ -50,6 +52,65 @@ function confirmUrl(token: string) {
   return `${appOrigin()}/api/email/confirm?token=${encodeURIComponent(token)}`
 }
 
+function unsubscribeHeaders(url: string) {
+  return {
+    'List-Unsubscribe': `<${url}>`,
+  }
+}
+
+function reportUrl(reportId: string) {
+  return `${appOrigin()}/report/${reportId}`
+}
+
+function reportEmailSubject(feedName: string, createdAt: Date) {
+  const dateLabel = createdAt.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+  return `${feedName} • ${dateLabel} • The Daily Omens`
+}
+
+async function sendHydratedReportEmail(params: {
+  to: string
+  report: Awaited<ReturnType<typeof hydrateReport>>
+  feedName: string
+  unsubscribeHref: string
+  headers?: Record<string, string>
+}) {
+  const emailReportUrl = reportUrl(params.report.id)
+  const dateLabel = params.report.createdAt.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+
+  return sendEmail({
+    to: params.to,
+    subject: reportEmailSubject(params.feedName, params.report.createdAt),
+    headers: params.headers,
+    react: (
+      <ReportEmailTemplate
+        reportContent={params.report.content}
+        reportUrl={emailReportUrl}
+        unsubscribeUrl={params.unsubscribeHref}
+        feedName={params.feedName}
+        createdAt={params.report.createdAt}
+        itemCount={params.report.itemCount}
+        refItems={params.report.refItems}
+      />
+    ),
+    text: renderPlainTextReportEmail({
+      reportContent: params.report.content,
+      reportUrl: emailReportUrl,
+      unsubscribeUrl: params.unsubscribeHref,
+      feedName: params.feedName,
+      dateLabel,
+      refItems: params.report.refItems,
+    }),
+  })
+}
+
 function shouldRefreshPendingConfirmation(subscription: SubscriptionRow) {
   if (!subscription.confirmationRequired) return false
   if (subscription.status !== 'pending') return false
@@ -73,18 +134,21 @@ async function sendConfirmationEmail(params: {
   await sendEmail({
     to: params.email,
     subject,
+    headers: unsubscribeHeaders(unsubscribeHref),
     react: (
       <ConfirmEmailTemplate
         confirmUrl={confirmHref}
         unsubscribeUrl={unsubscribeHref}
         publicationName={params.publicationName}
         feedName={params.feedName}
+        expiresInHours={env.EMAIL_CONFIRMATION_TTL_HOURS}
       />
     ),
     text: [
       `Confirm your subscription to ${params.publicationName}.`,
       '',
       `Feed: ${params.feedName}`,
+      `This confirmation link expires in ${env.EMAIL_CONFIRMATION_TTL_HOURS} hours.`,
       `Confirm: ${confirmHref}`,
       `Unsubscribe: ${unsubscribeHref}`,
     ].join('\n'),
@@ -125,6 +189,36 @@ async function createOrRefreshConfirmation(params: {
   })
 
   return updated
+}
+
+async function rollbackConfirmationRefresh(params: {
+  subscription: SubscriptionRow
+  db: ReturnType<typeof getDb>
+}) {
+  await params.db
+    .update(reportEmailSubscriptions)
+    .set({
+      status: params.subscription.status,
+      confirmationRequired: params.subscription.confirmationRequired,
+      confirmTokenHash: params.subscription.confirmTokenHash,
+      confirmTokenExpiresAt: params.subscription.confirmTokenExpiresAt,
+      lastConfirmationSentAt: params.subscription.lastConfirmationSentAt,
+      unsubscribedAt: params.subscription.unsubscribedAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(reportEmailSubscriptions.id, params.subscription.id))
+}
+
+async function createPendingSubscription(params: {
+  db: ReturnType<typeof getDb>
+  values: Omit<typeof reportEmailSubscriptions.$inferInsert, 'id'>
+}) {
+  const [created] = await params.db
+    .insert(reportEmailSubscriptions)
+    .values(params.values)
+    .returning()
+
+  return created
 }
 
 async function getOwnerAccountEmail(db: ReturnType<typeof getDb>, ownerUserId: string) {
@@ -206,9 +300,9 @@ async function ensureAccountFeedSubscription(
     if (env.EMAILS_REQUIRE_CONFIRMATION) {
       const confirmToken = generateToken()
       const confirmTokenHash = await hashToken(confirmToken)
-      const [created] = await db
-        .insert(reportEmailSubscriptions)
-        .values({
+      const created = await createPendingSubscription({
+        db,
+        values: {
           ownerUserId,
           feedId,
           email: ownerEmail,
@@ -222,16 +316,21 @@ async function ensureAccountFeedSubscription(
           lastConfirmationSentAt: now,
           createdAt: now,
           updatedAt: now,
-        })
-        .returning()
-
-      await sendConfirmationEmail({
-        email: ownerEmail,
-        feedName,
-        publicationName: 'your Omens reports',
-        confirmToken,
-        unsubscribeToken,
+        },
       })
+
+      try {
+        await sendConfirmationEmail({
+          email: ownerEmail,
+          feedName,
+          publicationName: 'your Omens reports',
+          confirmToken,
+          unsubscribeToken,
+        })
+      } catch (err) {
+        await db.delete(reportEmailSubscriptions).where(eq(reportEmailSubscriptions.id, created.id))
+        throw err
+      }
 
       return created
     }
@@ -271,6 +370,7 @@ async function ensureAccountFeedSubscription(
         unsubscribedAt: null,
         confirmTokenHash: null,
         confirmTokenExpiresAt: null,
+        lastConfirmationSentAt: null,
         updatedAt: now,
       })
       .where(eq(reportEmailSubscriptions.id, existing.id))
@@ -279,24 +379,34 @@ async function ensureAccountFeedSubscription(
   }
 
   if (existing.status === 'unsubscribed' && options?.allowResubscribe) {
-    return createOrRefreshConfirmation({
-      subscription: existing,
-      email: ownerEmail,
-      feedName,
-      publicationName: 'your Omens reports',
-      db,
-    })
+    try {
+      return await createOrRefreshConfirmation({
+        subscription: existing,
+        email: ownerEmail,
+        feedName,
+        publicationName: 'your Omens reports',
+        db,
+      })
+    } catch (err) {
+      await rollbackConfirmationRefresh({ subscription: existing, db })
+      throw err
+    }
   }
 
   if (existing.status === 'active') return existing
   if (options?.forceConfirmationRefresh || shouldRefreshPendingConfirmation(existing)) {
-    return createOrRefreshConfirmation({
-      subscription: existing,
-      email: ownerEmail,
-      feedName,
-      publicationName: 'your Omens reports',
-      db,
-    })
+    try {
+      return await createOrRefreshConfirmation({
+        subscription: existing,
+        email: ownerEmail,
+        feedName,
+        publicationName: 'your Omens reports',
+        db,
+      })
+    } catch (err) {
+      await rollbackConfirmationRefresh({ subscription: existing, db })
+      throw err
+    }
   }
 
   return existing
@@ -446,9 +556,9 @@ export async function upsertPublicDemoReportSubscription(params: {
     if (env.EMAILS_REQUIRE_CONFIRMATION) {
       const confirmToken = generateToken()
       const confirmTokenHash = await hashToken(confirmToken)
-      const [created] = await db
-        .insert(reportEmailSubscriptions)
-        .values({
+      const created = await createPendingSubscription({
+        db,
+        values: {
           ownerUserId: params.ownerUserId,
           feedId: params.feedId,
           email: params.email.trim(),
@@ -463,16 +573,21 @@ export async function upsertPublicDemoReportSubscription(params: {
           createdFromIp: params.createdFromIp,
           createdAt: now,
           updatedAt: now,
-        })
-        .returning()
-
-      await sendConfirmationEmail({
-        email: created.email,
-        feedName: params.feedName,
-        publicationName: 'the public Omens demo',
-        confirmToken,
-        unsubscribeToken,
+        },
       })
+
+      try {
+        await sendConfirmationEmail({
+          email: created.email,
+          feedName: params.feedName,
+          publicationName: 'the public Omens demo',
+          confirmToken,
+          unsubscribeToken,
+        })
+      } catch (err) {
+        await db.delete(reportEmailSubscriptions).where(eq(reportEmailSubscriptions.id, created.id))
+        throw err
+      }
 
       return { status: 'pending' as const }
     }
@@ -508,6 +623,7 @@ export async function upsertPublicDemoReportSubscription(params: {
         unsubscribedAt: null,
         confirmTokenHash: null,
         confirmTokenExpiresAt: null,
+        lastConfirmationSentAt: null,
         updatedAt: now,
       })
       .where(eq(reportEmailSubscriptions.id, existing.id))
@@ -517,13 +633,19 @@ export async function upsertPublicDemoReportSubscription(params: {
 
   if (existing.status === 'active') return { status: 'active' as const }
 
-  const updated = await createOrRefreshConfirmation({
-    subscription: existing,
-    email: params.email.trim(),
-    feedName: params.feedName,
-    publicationName: 'the public Omens demo',
-    db,
-  })
+  let updated: SubscriptionRow
+  try {
+    updated = await createOrRefreshConfirmation({
+      subscription: existing,
+      email: params.email.trim(),
+      feedName: params.feedName,
+      publicationName: 'the public Omens demo',
+      db,
+    })
+  } catch (err) {
+    await rollbackConfirmationRefresh({ subscription: existing, db })
+    throw err
+  }
 
   return { status: updated.status === 'active' ? 'active' as const : 'pending' as const }
 }
@@ -549,10 +671,13 @@ export async function confirmReportEmailSubscription(token: string, confirmedFro
     .update(reportEmailSubscriptions)
     .set({
       status: 'active',
+      confirmationRequired: false,
       confirmedAt: new Date(),
       confirmedFromIp,
       confirmTokenHash: null,
       confirmTokenExpiresAt: null,
+      lastConfirmationSentAt: null,
+      unsubscribedAt: null,
       updatedAt: new Date(),
     })
     .where(eq(reportEmailSubscriptions.id, subscription.id))
@@ -592,14 +717,9 @@ export async function sendReportEmailsForReport(reportId: string) {
   if (!isEmailFeatureEnabled()) return
 
   const db = getDb(env.DATABASE_URL)
-  const [report] = await db
+  const [reportRow] = await db
     .select({
-      id: aiReports.id,
-      content: aiReports.content,
-      createdAt: aiReports.createdAt,
-      itemCount: aiReports.itemCount,
-      ownerUserId: aiReports.userId,
-      feedId: aiReports.feedId,
+      report: aiReports,
       feedName: aiScoringFeeds.name,
     })
     .from(aiReports)
@@ -607,27 +727,51 @@ export async function sendReportEmailsForReport(reportId: string) {
     .where(eq(aiReports.id, reportId))
     .limit(1)
 
-  if (!report) return
+  if (!reportRow) return
 
-  await ensureAccountFeedSubscription(report.ownerUserId, report.feedId, report.feedName)
+  const report = await hydrateReport(db, reportRow.report)
+  const ownerUserId = reportRow.report.userId
+  const feedId = reportRow.report.feedId
+  const feedName = reportRow.feedName
 
-  const subscriptions = await db
+  try {
+    await ensureAccountFeedSubscription(ownerUserId, feedId, feedName)
+  } catch (err) {
+    console.error(
+      `[email] Failed to refresh owner subscription for report ${report.id}:`,
+      err instanceof Error ? err.message : err,
+    )
+  }
+
+  const allSubscriptions = await db
     .select()
     .from(reportEmailSubscriptions)
     .where(and(
-      eq(reportEmailSubscriptions.ownerUserId, report.ownerUserId),
-      eq(reportEmailSubscriptions.feedId, report.feedId),
+      eq(reportEmailSubscriptions.ownerUserId, ownerUserId),
+      eq(reportEmailSubscriptions.feedId, feedId),
       eq(reportEmailSubscriptions.status, 'active'),
     ))
 
-  if (subscriptions.length === 0) return
+  const demoSubscriptions = allSubscriptions.filter((sub) => sub.source === 'public_demo')
+  let subscriptions = allSubscriptions
+  if (demoSubscriptions.length > 0) {
+    const cutoff = new Date(Date.now() - 24 * 3_600_000)
+    const [recentDemoDelivery] = await db
+      .select({ id: reportEmailDeliveries.id })
+      .from(reportEmailDeliveries)
+      .where(and(
+        inArray(reportEmailDeliveries.subscriptionId, demoSubscriptions.map((sub) => sub.id)),
+        eq(reportEmailDeliveries.status, 'sent'),
+        gte(reportEmailDeliveries.sentAt, cutoff),
+      ))
+      .limit(1)
 
-  const reportUrl = `${appOrigin()}/report/${report.id}`
-  const dateLabel = report.createdAt.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
+    if (recentDemoDelivery) {
+      subscriptions = allSubscriptions.filter((sub) => sub.source !== 'public_demo')
+    }
+  }
+
+  if (subscriptions.length === 0) return
 
   for (const subscription of subscriptions) {
     const [existingDelivery] = await db
@@ -661,26 +805,12 @@ export async function sendReportEmailsForReport(reportId: string) {
     }
 
     try {
-      const messageId = await sendEmail({
+      const messageId = await sendHydratedReportEmail({
         to: subscription.email,
-        subject: `${report.feedName} • ${dateLabel} • The Daily Omens`,
-        react: (
-          <ReportEmailTemplate
-            reportContent={report.content}
-            reportUrl={reportUrl}
-            unsubscribeUrl={unsubscribeUrl(subscription.unsubscribeToken)}
-            feedName={report.feedName}
-            createdAt={report.createdAt}
-            itemCount={report.itemCount}
-          />
-        ),
-        text: [
-          `${report.feedName} • ${dateLabel}`,
-          '',
-          report.content.replace(/\[\[(?:item|tweet):[^\]]+\]\]/g, '').trim(),
-          '',
-          `Read online: ${reportUrl}`,
-        ].join('\n'),
+        report,
+        feedName,
+        unsubscribeHref: unsubscribeUrl(subscription.unsubscribeToken),
+        headers: unsubscribeHeaders(unsubscribeUrl(subscription.unsubscribeToken)),
       })
 
       await db
@@ -708,5 +838,53 @@ export async function sendReportEmailsForReport(reportId: string) {
           eq(reportEmailDeliveries.reportId, report.id),
         ))
     }
+  }
+}
+
+export async function sendLatestReportTestEmail(params: {
+  ownerUserId: string
+  feedId: string
+  toEmail?: string | null
+}) {
+  if (!isEmailFeatureEnabled()) {
+    throw new Error('Email feature is not configured')
+  }
+
+  const db = getDb(env.DATABASE_URL)
+  const [reportRow] = await db
+    .select({
+      report: aiReports,
+      feedName: aiScoringFeeds.name,
+    })
+    .from(aiReports)
+    .innerJoin(aiScoringFeeds, eq(aiScoringFeeds.id, aiReports.feedId))
+    .where(and(
+      eq(aiReports.userId, params.ownerUserId),
+      eq(aiReports.feedId, params.feedId),
+    ))
+    .orderBy(desc(aiReports.createdAt))
+    .limit(1)
+
+  if (!reportRow) {
+    throw new Error('No report found for this feed')
+  }
+
+  const destinationEmail = normalizeEmail(params.toEmail || await getOwnerAccountEmail(db, params.ownerUserId) || '')
+  if (!destinationEmail) {
+    throw new Error('No destination email available')
+  }
+
+  const report = await hydrateReport(db, reportRow.report)
+  const messageId = await sendHydratedReportEmail({
+    to: destinationEmail,
+    report,
+    feedName: reportRow.feedName,
+    unsubscribeHref: `${appOrigin()}/settings`,
+  })
+
+  return {
+    reportId: report.id,
+    to: destinationEmail,
+    messageId,
   }
 }

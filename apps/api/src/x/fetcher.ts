@@ -10,11 +10,11 @@ import {
   getDb,
   inputItems,
   inputs,
-  redditAccounts,
-  redditInputs,
   redditPosts,
   rssInputs,
-  sourceAccounts,
+  rssPosts,
+  telegramInputs,
+  telegramPosts,
   tweets,
   userTweets,
   xAccounts,
@@ -24,11 +24,16 @@ import {
 } from '@omens/db'
 import { and, eq, inArray } from 'drizzle-orm'
 import env from '../env'
-import { decrypt, encrypt } from '../helpers/crypto'
+import { decrypt } from '../helpers/crypto'
 import { ensureLegacyXInputForUser, ensureXAccountInput } from '../helpers/inputs'
+import { fetchRedditPublicGalleryMedia, type RedditPostRecord } from '../reddit/public'
 import { scoreUnscoredTweetsForAllFeeds } from '../routes/ai'
+import { parseGenericRssFeed, type GenericRssPostRecord } from '../rss/generic'
 import { parseRedditRssFeed } from '../rss/reddit'
-import { fetchRedditPublicGalleryMedia, getRedditAppAccessToken, getRedditBest, getRedditPostById, refreshRedditAccessToken, type RedditPostRecord } from '../reddit/api'
+import {
+  fetchTelegramChannelPosts,
+  type TelegramPostRecord,
+} from '../telegram/public'
 import { getHomeTimeline } from './graphql'
 import { fetchOg } from './og'
 
@@ -65,6 +70,7 @@ async function prefetchOgForTweets(
 
 type ParsedTweet = Awaited<ReturnType<typeof getHomeTimeline>>['tweets'][number]
 type UniversalRssInputRow = Awaited<ReturnType<typeof listUniversalRssInputs>>[number]
+type UniversalTelegramInputRow = Awaited<ReturnType<typeof listUniversalTelegramInputs>>[number]
 
 async function upsertUniversalXData(userId: string, inputId: string, parsedTweets: ParsedTweet[]) {
   await ensureLegacyXInputForUser(userId)
@@ -250,6 +256,182 @@ async function upsertUniversalRedditData(inputIds: string | string[], posts: Red
   }
 }
 
+async function upsertUniversalTelegramData(targets: Array<{ post: TelegramPostRecord; inputIds: string[] }>) {
+  const db = getDb(env.DATABASE_URL)
+
+  for (const target of targets) {
+    const inputIds = [...new Set(target.inputIds)]
+    if (inputIds.length === 0) continue
+
+    const { post } = target
+    const mediaPayload = post.media ? JSON.parse(post.media) as { items?: unknown[]; files?: unknown[] } : null
+    const mediaCount = (Array.isArray(mediaPayload?.items) ? mediaPayload.items.length : 0)
+      + (Array.isArray(mediaPayload?.files) ? mediaPayload.files.length : 0)
+
+    const [contentItem] = await db
+      .insert(contentItems)
+      .values({
+        provider: 'telegram',
+        entityType: 'telegram_post',
+        externalId: post.telegramPostId,
+        url: post.permalink,
+        authorName: post.channelTitle,
+        authorHandle: post.channelUsername,
+        textPreview: (post.content || post.linkUrl || `@${post.channelUsername}`).slice(0, 280),
+        mediaCount,
+        publishedAt: post.publishedAt,
+      })
+      .onConflictDoUpdate({
+        target: [contentItems.provider, contentItems.entityType, contentItems.externalId],
+        set: {
+          url: post.permalink,
+          authorName: post.channelTitle,
+          authorHandle: post.channelUsername,
+          textPreview: (post.content || post.linkUrl || `@${post.channelUsername}`).slice(0, 280),
+          mediaCount,
+          publishedAt: post.publishedAt,
+          fetchedAt: new Date(),
+        },
+      })
+      .returning({ id: contentItems.id })
+
+    await db
+      .insert(telegramPosts)
+      .values({
+        contentItemId: contentItem.id,
+        telegramPostId: post.telegramPostId,
+        channelUsername: post.channelUsername,
+        channelTitle: post.channelTitle,
+        messageId: post.messageId,
+        content: post.content,
+        media: post.media,
+        previewUrl: post.previewUrl,
+        thumbnailUrl: post.thumbnailUrl,
+        domain: post.domain,
+        linkUrl: post.linkUrl,
+        permalink: post.permalink,
+        viewCount: post.viewCount,
+        postType: post.postType,
+      })
+      .onConflictDoUpdate({
+        target: telegramPosts.contentItemId,
+        set: {
+          telegramPostId: post.telegramPostId,
+          channelUsername: post.channelUsername,
+          channelTitle: post.channelTitle,
+          messageId: post.messageId,
+          content: post.content,
+          media: post.media,
+          previewUrl: post.previewUrl,
+          thumbnailUrl: post.thumbnailUrl,
+          domain: post.domain,
+          linkUrl: post.linkUrl,
+          permalink: post.permalink,
+          viewCount: post.viewCount,
+          postType: post.postType,
+          fetchedAt: new Date(),
+        },
+      })
+
+    await Promise.all(
+      inputIds.map((inputId) =>
+        db
+          .insert(inputItems)
+          .values({
+            inputId,
+            contentItemId: contentItem.id,
+          })
+          .onConflictDoNothing(),
+      ),
+    )
+  }
+}
+
+async function upsertUniversalRssData(inputIds: string | string[], posts: GenericRssPostRecord[]) {
+  const db = getDb(env.DATABASE_URL)
+  const targetInputIds = [...new Set(Array.isArray(inputIds) ? inputIds : [inputIds])]
+
+  for (const post of posts) {
+    const mediaPayload = post.media ? JSON.parse(post.media) as { items?: unknown[] } : null
+    const mediaCount = Array.isArray(mediaPayload?.items) ? mediaPayload.items.length : 0
+
+    const [contentItem] = await db
+      .insert(contentItems)
+      .values({
+        provider: 'rss',
+        entityType: 'rss_post',
+        externalId: post.rssPostId,
+        url: post.permalink,
+        authorName: post.authorName || post.feedTitle,
+        authorHandle: post.domain,
+        textPreview: (post.body || post.title).slice(0, 280),
+        mediaCount,
+        publishedAt: post.publishedAt,
+      })
+      .onConflictDoUpdate({
+        target: [contentItems.provider, contentItems.entityType, contentItems.externalId],
+        set: {
+          url: post.permalink,
+          authorName: post.authorName || post.feedTitle,
+          authorHandle: post.domain,
+          textPreview: (post.body || post.title).slice(0, 280),
+          mediaCount,
+          publishedAt: post.publishedAt,
+          fetchedAt: new Date(),
+        },
+      })
+      .returning({ id: contentItems.id })
+
+    await db
+      .insert(rssPosts)
+      .values({
+        contentItemId: contentItem.id,
+        rssPostId: post.rssPostId,
+        feedUrl: post.feedUrl,
+        feedTitle: post.feedTitle,
+        authorName: post.authorName,
+        title: post.title,
+        body: post.body,
+        previewUrl: post.previewUrl,
+        thumbnailUrl: post.thumbnailUrl,
+        media: post.media,
+        domain: post.domain,
+        permalink: post.permalink,
+        guid: post.guid,
+      })
+      .onConflictDoUpdate({
+        target: rssPosts.contentItemId,
+        set: {
+          rssPostId: post.rssPostId,
+          feedUrl: post.feedUrl,
+          feedTitle: post.feedTitle,
+          authorName: post.authorName,
+          title: post.title,
+          body: post.body,
+          previewUrl: post.previewUrl,
+          thumbnailUrl: post.thumbnailUrl,
+          media: post.media,
+          domain: post.domain,
+          permalink: post.permalink,
+          guid: post.guid,
+          fetchedAt: new Date(),
+        },
+      })
+
+    await Promise.all(
+      targetInputIds.map((inputId) =>
+        db
+          .insert(inputItems)
+          .values({
+            inputId,
+            contentItemId: contentItem.id,
+          })
+          .onConflictDoNothing(),
+      ),
+    )
+  }
+}
+
 async function listUniversalXInputs() {
   const db = getDb(env.DATABASE_URL)
   return db
@@ -267,26 +449,6 @@ async function listUniversalXInputs() {
     .innerJoin(xInputs, eq(xInputs.inputId, inputs.id))
     .innerJoin(xAccounts, eq(xAccounts.sourceAccountId, inputs.sourceAccountId!))
     .where(and(eq(inputs.provider, 'x'), eq(inputs.enabled, true)))
-}
-
-async function listUniversalRedditInputs() {
-  const db = getDb(env.DATABASE_URL)
-  return db
-    .select({
-      inputId: inputs.id,
-      userId: inputs.userId,
-      pollIntervalMinutes: inputs.pollIntervalMinutes,
-      lastFetchedAt: inputs.lastFetchedAt,
-      sourceAccountId: inputs.sourceAccountId,
-      username: redditAccounts.username,
-      refreshToken: redditAccounts.refreshToken,
-      accessToken: redditAccounts.accessToken,
-      accessTokenExpiresAt: redditAccounts.accessTokenExpiresAt,
-    })
-    .from(inputs)
-    .innerJoin(redditInputs, eq(redditInputs.inputId, inputs.id))
-    .innerJoin(redditAccounts, eq(redditAccounts.sourceAccountId, inputs.sourceAccountId!))
-    .where(and(eq(inputs.provider, 'reddit'), eq(inputs.enabled, true)))
 }
 
 async function listUniversalRssInputs() {
@@ -309,6 +471,25 @@ async function listUniversalRssInputs() {
     .from(inputs)
     .innerJoin(rssInputs, eq(rssInputs.inputId, inputs.id))
     .where(and(eq(inputs.provider, 'rss'), eq(inputs.enabled, true)))
+}
+
+async function listUniversalTelegramInputs() {
+  const db = getDb(env.DATABASE_URL)
+  return db
+    .select({
+      inputId: inputs.id,
+      userId: inputs.userId,
+      pollIntervalMinutes: inputs.pollIntervalMinutes,
+      lastFetchedAt: inputs.lastFetchedAt,
+      channelUsername: telegramInputs.channelUsername,
+      channelTitle: telegramInputs.channelTitle,
+      siteUrl: telegramInputs.siteUrl,
+      latestSeenMessageId: telegramInputs.latestSeenMessageId,
+      lastCheckedAt: telegramInputs.lastCheckedAt,
+    })
+    .from(inputs)
+    .innerJoin(telegramInputs, eq(telegramInputs.inputId, inputs.id))
+    .where(and(eq(inputs.provider, 'telegram'), eq(inputs.enabled, true)))
 }
 
 async function fetchRssFeed(feedUrl: string, etag?: string | null, lastModified?: string | null) {
@@ -346,63 +527,7 @@ async function fetchRssFeed(feedUrl: string, etag?: string | null, lastModified?
   }
 }
 
-async function getValidRedditAccessToken(row: {
-  sourceAccountId: string | null
-  refreshToken: string
-  accessToken: string | null
-  accessTokenExpiresAt: Date | null
-}) {
-  const db = getDb(env.DATABASE_URL)
-  const expiresSoon = !row.accessTokenExpiresAt || row.accessTokenExpiresAt.getTime() - Date.now() < 60_000
-
-  if (row.accessToken && !expiresSoon) {
-    return decrypt(row.accessToken)
-  }
-
-  const refreshToken = await decrypt(row.refreshToken)
-  const refreshed = await refreshRedditAccessToken(refreshToken)
-  const encryptedAccessToken = await encrypt(refreshed.access_token)
-
-  if (row.sourceAccountId) {
-    await db
-      .update(redditAccounts)
-      .set({
-        accessToken: encryptedAccessToken,
-        accessTokenExpiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
-        scope: refreshed.scope || null,
-        updatedAt: new Date(),
-      })
-      .where(eq(redditAccounts.sourceAccountId, row.sourceAccountId))
-  }
-
-  return refreshed.access_token
-}
-
-async function getAnyRedditAccountForUsers(userIds: string[]) {
-  const db = getDb(env.DATABASE_URL)
-  const uniqueUserIds = [...new Set(userIds)]
-
-  if (uniqueUserIds.length === 0) return null
-
-  const [row] = await db
-    .select({
-      sourceAccountId: redditAccounts.sourceAccountId,
-      refreshToken: redditAccounts.refreshToken,
-      accessToken: redditAccounts.accessToken,
-      accessTokenExpiresAt: redditAccounts.accessTokenExpiresAt,
-    })
-    .from(sourceAccounts)
-    .innerJoin(redditAccounts, eq(redditAccounts.sourceAccountId, sourceAccounts.id))
-    .where(and(
-      inArray(sourceAccounts.userId, uniqueUserIds),
-      eq(sourceAccounts.provider, 'reddit'),
-    ))
-    .limit(1)
-
-  return row || null
-}
-
-async function enrichRedditRssGalleryPosts(userIds: string[], posts: RedditPostRecord[]) {
+async function enrichRedditRssGalleryPosts(posts: RedditPostRecord[]) {
   const getMediaUrlCount = (media: string | null) => {
     if (!media) return 0
     try {
@@ -421,45 +546,19 @@ async function enrichRedditRssGalleryPosts(userIds: string[], posts: RedditPostR
 
   if (galleryPosts.length === 0) return posts
 
-  const redditAccount = await getAnyRedditAccountForUsers(userIds)
-  let accessToken: string | null = null
-  if (redditAccount) {
-    try {
-      accessToken = await getValidRedditAccessToken(redditAccount)
-    } catch (err) {
-      console.error(
-        `[fetcher] Reddit account token fetch failed for gallery enrichment:`,
-        err instanceof Error ? err.message : err,
-      )
-    }
-  }
-  if (!accessToken) {
-    try {
-      accessToken = await getRedditAppAccessToken()
-    } catch (err) {
-      console.error(
-        `[fetcher] Reddit app token fetch failed for gallery enrichment:`,
-        err instanceof Error ? err.message : err,
-      )
-    }
-  }
-
   const enrichedById = new Map<string, Pick<RedditPostRecord, 'previewUrl' | 'thumbnailUrl' | 'media'>>()
 
   await Promise.all(galleryPosts.map(async (post) => {
     try {
-      let enriched = accessToken ? await getRedditPostById(accessToken, post.redditPostId) : null
-      if ((!enriched?.media || getMediaUrlCount(enriched.media) < 2)) {
-        const publicGalleryItems = await fetchRedditPublicGalleryMedia(post.permalink || post.url)
-        if (publicGalleryItems.length > 0) {
-          enriched = {
+      const publicGalleryItems = await fetchRedditPublicGalleryMedia(post.permalink || post.url)
+      const enriched = publicGalleryItems.length > 0
+        ? {
             ...post,
             previewUrl: publicGalleryItems[0]?.thumbnail || post.previewUrl,
             thumbnailUrl: publicGalleryItems[0]?.thumbnail || post.thumbnailUrl,
             media: JSON.stringify({ galleryItems: publicGalleryItems }),
           }
-        }
-      }
+        : null
 
       if (enriched && (enriched.media || enriched.previewUrl || enriched.thumbnailUrl)) {
         enrichedById.set(post.redditPostId, {
@@ -610,53 +709,6 @@ async function fetchXInput(row: {
   return result.count
 }
 
-async function fetchRedditInput(row: {
-  inputId: string
-  userId: string
-  sourceAccountId: string | null
-  refreshToken: string
-  accessToken: string | null
-  accessTokenExpiresAt: Date | null
-}) {
-  const db = getDb(env.DATABASE_URL)
-  const accessToken = await getValidRedditAccessToken(row)
-  const posts = await getRedditBest(accessToken)
-
-  const incomingIds = posts.map((post) => post.redditPostId)
-  const existingItems = incomingIds.length > 0
-    ? await db
-      .select({ externalId: contentItems.externalId })
-      .from(contentItems)
-      .where(and(
-        eq(contentItems.provider, 'reddit'),
-        eq(contentItems.entityType, 'reddit_post'),
-        inArray(contentItems.externalId, incomingIds),
-      ))
-    : []
-  const existingSet = new Set(existingItems.map((item) => item.externalId))
-
-  await upsertUniversalRedditData(row.inputId, posts)
-
-  await db
-    .update(inputs)
-    .set({
-      lastFetchedAt: new Date(),
-      lastError: null,
-      updatedAt: new Date(),
-    })
-    .where(eq(inputs.id, row.inputId))
-
-  const newCount = posts.filter((post) => !existingSet.has(post.redditPostId)).length
-  if (newCount > 0) {
-    console.log(`[fetcher] Inserted ${newCount} new reddit posts for user ${row.userId}`)
-    void scoreUnscoredTweetsForAllFeeds(row.userId).catch((err) =>
-      console.error(`[fetcher] Scoring error for user ${row.userId}:`, err instanceof Error ? err.message : err),
-    )
-  }
-
-  return newCount
-}
-
 async function fetchRssInput(row: {
   inputId: string
   userId: string
@@ -696,7 +748,7 @@ async function fetchRssInput(row: {
 
   if (row.sourceProvider === 'reddit') {
     const parsedPosts = parseRedditRssFeed(fetched.body, row.sourceKey || undefined)
-    const posts = await enrichRedditRssGalleryPosts([row.userId], parsedPosts)
+    const posts = await enrichRedditRssGalleryPosts(parsedPosts)
     const incomingIds = posts.map((post) => post.redditPostId)
     const existingItems = incomingIds.length > 0
       ? await db
@@ -712,6 +764,23 @@ async function fetchRssInput(row: {
 
     await upsertUniversalRedditData([row.inputId], posts)
     newCount = posts.filter((post) => !existingSet.has(post.redditPostId)).length
+  } else if (row.sourceProvider === 'generic') {
+    const { posts } = parseGenericRssFeed(fetched.body, row.feedUrl)
+    const incomingIds = posts.map((post) => post.rssPostId)
+    const existingItems = incomingIds.length > 0
+      ? await db
+        .select({ externalId: contentItems.externalId })
+        .from(contentItems)
+        .where(and(
+          eq(contentItems.provider, 'rss'),
+          eq(contentItems.entityType, 'rss_post'),
+          inArray(contentItems.externalId, incomingIds),
+        ))
+      : []
+    const existingSet = new Set(existingItems.map((item) => item.externalId))
+
+    await upsertUniversalRssData([row.inputId], posts)
+    newCount = posts.filter((post) => !existingSet.has(post.rssPostId)).length
   } else {
     throw new Error(`Unsupported RSS provider: ${row.sourceProvider}`)
   }
@@ -742,6 +811,104 @@ async function fetchRssInput(row: {
   }
 
   return newCount
+}
+
+function buildTelegramFetchGroupKey(row: UniversalTelegramInputRow) {
+  return row.channelUsername.toLowerCase()
+}
+
+async function fetchTelegramChannelForRows(rows: UniversalTelegramInputRow[]) {
+  const oldestSeenMessageId = rows.reduce<number | null>((oldest, row) => {
+    if (row.latestSeenMessageId == null) return oldest
+    if (oldest == null) return row.latestSeenMessageId
+    return Math.min(oldest, row.latestSeenMessageId)
+  }, null)
+
+  return fetchTelegramChannelPosts({
+    channelUsername: rows[0]!.channelUsername,
+    stopAtMessageId: oldestSeenMessageId,
+    maxPages: oldestSeenMessageId == null ? 1 : 10,
+  })
+}
+
+async function updateFetchedStateForTelegramInputs(
+  rows: UniversalTelegramInputRow[],
+  now: Date,
+  channelTitle: string | null,
+  newestMessageId: number | null,
+) {
+  const db = getDb(env.DATABASE_URL)
+  const inputIds = rows.map((row) => row.inputId)
+
+  for (const row of rows) {
+    await db
+      .update(telegramInputs)
+      .set({
+        channelTitle: channelTitle || row.channelTitle || null,
+        latestSeenMessageId: newestMessageId != null
+          ? Math.max(row.latestSeenMessageId || 0, newestMessageId)
+          : row.latestSeenMessageId,
+        lastCheckedAt: now,
+      })
+      .where(eq(telegramInputs.inputId, row.inputId))
+  }
+
+  await db
+    .update(inputs)
+    .set({
+      lastFetchedAt: now,
+      lastError: null,
+      updatedAt: now,
+    })
+    .where(inArray(inputs.id, inputIds))
+}
+
+async function setTelegramFetchError(inputIds: string[], message: string) {
+  const db = getDb(env.DATABASE_URL)
+  await db
+    .update(inputs)
+    .set({
+      lastError: message.slice(0, 500),
+      updatedAt: new Date(),
+    })
+    .where(inArray(inputs.id, inputIds))
+}
+
+async function fetchTelegramInput(row: UniversalTelegramInputRow) {
+  try {
+    const db = getDb(env.DATABASE_URL)
+    const fetched = await fetchTelegramChannelForRows([row])
+    const now = new Date()
+    const incomingIds = fetched.posts.map((post) => post.telegramPostId)
+    const existingItems = incomingIds.length > 0
+      ? await db
+        .select({ externalId: contentItems.externalId })
+        .from(contentItems)
+        .where(and(
+          eq(contentItems.provider, 'telegram'),
+          eq(contentItems.entityType, 'telegram_post'),
+          inArray(contentItems.externalId, incomingIds),
+        ))
+      : []
+    const existingSet = new Set(existingItems.map((item) => item.externalId))
+    const newPosts = fetched.posts.filter((post) => row.latestSeenMessageId == null || post.messageId > row.latestSeenMessageId)
+
+    await upsertUniversalTelegramData(newPosts.map((post) => ({ post, inputIds: [row.inputId] })))
+    await updateFetchedStateForTelegramInputs([row], now, fetched.channelTitle, fetched.newestMessageId)
+
+    const newCount = newPosts.filter((post) => !existingSet.has(post.telegramPostId)).length
+    if (newCount > 0) {
+      console.log(`[fetcher] Inserted ${newCount} new telegram posts for user ${row.userId}`)
+      void scoreUnscoredTweetsForAllFeeds(row.userId).catch((err) =>
+        console.error(`[fetcher] Scoring error for user ${row.userId}:`, err instanceof Error ? err.message : err),
+      )
+    }
+
+    return newCount
+  } catch (err) {
+    await setTelegramFetchError([row.inputId], err instanceof Error ? err.message : String(err))
+    throw err
+  }
 }
 
 function buildRssFetchGroupKey(row: UniversalRssInputRow) {
@@ -820,7 +987,7 @@ async function fetchSharedRssInputGroup(rows: UniversalRssInputRow[]) {
 
   if (rows[0]!.sourceProvider === 'reddit') {
     const parsedPosts = parseRedditRssFeed(fetched.body, rows[0]!.sourceKey || undefined)
-    const posts = await enrichRedditRssGalleryPosts(rows.map((row) => row.userId), parsedPosts)
+    const posts = await enrichRedditRssGalleryPosts(parsedPosts)
     const incomingIds = posts.map((post) => post.redditPostId)
     const existingItems = incomingIds.length > 0
       ? await db
@@ -836,6 +1003,23 @@ async function fetchSharedRssInputGroup(rows: UniversalRssInputRow[]) {
 
     await upsertUniversalRedditData(rows.map((row) => row.inputId), posts)
     newCount = posts.filter((post) => !existingSet.has(post.redditPostId)).length
+  } else if (rows[0]!.sourceProvider === 'generic') {
+    const { posts } = parseGenericRssFeed(fetched.body, rows[0]!.feedUrl)
+    const incomingIds = posts.map((post) => post.rssPostId)
+    const existingItems = incomingIds.length > 0
+      ? await db
+        .select({ externalId: contentItems.externalId })
+        .from(contentItems)
+        .where(and(
+          eq(contentItems.provider, 'rss'),
+          eq(contentItems.entityType, 'rss_post'),
+          inArray(contentItems.externalId, incomingIds),
+        ))
+      : []
+    const existingSet = new Set(existingItems.map((item) => item.externalId))
+
+    await upsertUniversalRssData(rows.map((row) => row.inputId), posts)
+    newCount = posts.filter((post) => !existingSet.has(post.rssPostId)).length
   } else {
     throw new Error(`Unsupported RSS provider: ${rows[0]!.sourceProvider}`)
   }
@@ -858,13 +1042,80 @@ async function fetchSharedRssInputGroup(rows: UniversalRssInputRow[]) {
   return newCount
 }
 
+async function fetchSharedTelegramInputGroup(rows: UniversalTelegramInputRow[]) {
+  if (rows.length === 0) return 0
+
+  try {
+    const db = getDb(env.DATABASE_URL)
+    const fetched = await fetchTelegramChannelForRows(rows)
+    const now = new Date()
+    const incomingIds = fetched.posts.map((post) => post.telegramPostId)
+    const existingItems = incomingIds.length > 0
+      ? await db
+        .select({ externalId: contentItems.externalId })
+        .from(contentItems)
+        .where(and(
+          eq(contentItems.provider, 'telegram'),
+          eq(contentItems.entityType, 'telegram_post'),
+          inArray(contentItems.externalId, incomingIds),
+        ))
+      : []
+    const existingSet = new Set(existingItems.map((item) => item.externalId))
+
+    const targetInputIdsByPostId = new Map<string, string[]>()
+    for (const row of rows) {
+      for (const post of fetched.posts) {
+        if (row.latestSeenMessageId != null && post.messageId <= row.latestSeenMessageId) continue
+        const existingTargets = targetInputIdsByPostId.get(post.telegramPostId)
+        if (existingTargets) {
+          existingTargets.push(row.inputId)
+        } else {
+          targetInputIdsByPostId.set(post.telegramPostId, [row.inputId])
+        }
+      }
+    }
+
+    const targetPosts = fetched.posts
+      .filter((post) => targetInputIdsByPostId.has(post.telegramPostId))
+      .map((post) => ({
+        post,
+        inputIds: targetInputIdsByPostId.get(post.telegramPostId)!,
+      }))
+
+    await upsertUniversalTelegramData(targetPosts)
+    await updateFetchedStateForTelegramInputs(rows, now, fetched.channelTitle, fetched.newestMessageId)
+
+    const newCount = targetPosts
+      .map((target) => target.post)
+      .filter((post) => !existingSet.has(post.telegramPostId))
+      .length
+
+    if (newCount > 0) {
+      const watcherIds = [...new Set(rows.map((row) => row.userId))]
+      console.log(`[fetcher] Inserted ${newCount} new telegram posts shared across ${watcherIds.length} watcher(s)`)
+      await Promise.all(
+        watcherIds.map((userId) =>
+          scoreUnscoredTweetsForAllFeeds(userId).catch((err) =>
+            console.error(`[fetcher] Scoring error for user ${userId}:`, err instanceof Error ? err.message : err),
+          ),
+        ),
+      )
+    }
+
+    return newCount
+  } catch (err) {
+    await setTelegramFetchError(rows.map((row) => row.inputId), err instanceof Error ? err.message : String(err))
+    throw err
+  }
+}
+
 async function fetchForUser(userId: string): Promise<{ count: number; inputs: number; error?: string }> {
   try {
     await ensureLegacyXInputForUser(userId)
     const xInputsForUser = (await listUniversalXInputs()).filter((row) => row.userId === userId)
-    const redditInputsForUser = (await listUniversalRedditInputs()).filter((row) => row.userId === userId)
     const rssInputsForUser = (await listUniversalRssInputs()).filter((row) => row.userId === userId)
-    const universalInputs = [...xInputsForUser, ...redditInputsForUser, ...rssInputsForUser]
+    const telegramInputsForUser = (await listUniversalTelegramInputs()).filter((row) => row.userId === userId)
+    const universalInputs = [...xInputsForUser, ...rssInputsForUser, ...telegramInputsForUser]
 
     if (universalInputs.length === 0) return { count: 0, inputs: 0 }
 
@@ -872,9 +1123,9 @@ async function fetchForUser(userId: string): Promise<{ count: number; inputs: nu
     for (const input of universalInputs) {
       totalCount += 'ct0' in input
         ? await fetchXInput(input)
-        : 'refreshToken' in input
-          ? await fetchRedditInput(input)
-          : await fetchRssInput(input)
+        : 'feedUrl' in input
+          ? await fetchRssInput(input)
+          : await fetchTelegramInput(input)
     }
 
     return { count: totalCount, inputs: universalInputs.length }
@@ -902,12 +1153,12 @@ async function pollAll() {
   )
 
   const xRows = await listUniversalXInputs()
-  const redditRows = await listUniversalRedditInputs()
   const rssRows = await listUniversalRssInputs()
+  const telegramRows = await listUniversalTelegramInputs()
 
   const tasks: Promise<void>[] = []
 
-  for (const row of [...xRows, ...redditRows]) {
+  for (const row of xRows) {
     const userId = row.userId
     // Skip if already fetching for this user
     const key = `${userId}:${row.inputId}`
@@ -922,11 +1173,7 @@ async function pollAll() {
 
     activeFetches.add(key)
     tasks.push(
-      ('ct0' in row
-        ? fetchXInput(row)
-        : 'refreshToken' in row
-          ? fetchRedditInput(row)
-          : fetchRssInput(row))
+      fetchXInput(row)
         .then(() => {})
         .catch((err) => console.error(`[fetcher] Error for input ${row.inputId}:`, err))
         .finally(() => activeFetches.delete(key)),
@@ -947,6 +1194,20 @@ async function pollAll() {
     }
   }
 
+  const telegramGroups = new Map<string, UniversalTelegramInputRow[]>()
+  for (const row of telegramRows) {
+    const interval = row.pollIntervalMinutes ?? 15
+    if (interval === 0) continue
+
+    const groupKey = buildTelegramFetchGroupKey(row)
+    const group = telegramGroups.get(groupKey)
+    if (group) {
+      group.push(row)
+    } else {
+      telegramGroups.set(groupKey, [row])
+    }
+  }
+
   for (const [groupKey, groupRows] of rssGroups) {
     const nextFetchAt = Math.min(
       ...groupRows.map((row) => getNextFetchAt(row.lastFetchedAt, row.pollIntervalMinutes ?? 15)),
@@ -961,6 +1222,24 @@ async function pollAll() {
       fetchSharedRssInputGroup(groupRows)
         .then(() => {})
         .catch((err) => console.error(`[fetcher] Error for rss group ${groupKey}:`, err))
+        .finally(() => activeFetches.delete(key)),
+    )
+  }
+
+  for (const [groupKey, groupRows] of telegramGroups) {
+    const nextFetchAt = Math.min(
+      ...groupRows.map((row) => getNextFetchAt(row.lastFetchedAt, row.pollIntervalMinutes ?? 15)),
+    )
+    if (Date.now() < nextFetchAt) continue
+
+    const key = `telegram:${groupKey}`
+    if (activeFetches.has(key)) continue
+
+    activeFetches.add(key)
+    tasks.push(
+      fetchSharedTelegramInputGroup(groupRows)
+        .then(() => {})
+        .catch((err) => console.error(`[fetcher] Error for telegram group ${groupKey}:`, err))
         .finally(() => activeFetches.delete(key)),
     )
   }

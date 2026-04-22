@@ -34,7 +34,8 @@ CREATE SCHEMA IF NOT EXISTS grafana AUTHORIZATION omens;
 ALTER SCHEMA grafana OWNER TO omens;
 REVOKE ALL ON SCHEMA grafana FROM PUBLIC;
 
-CREATE OR REPLACE VIEW grafana.summary_metrics AS
+DROP VIEW IF EXISTS grafana.summary_metrics;
+CREATE VIEW grafana.summary_metrics AS
 SELECT
   (SELECT COUNT(*)::bigint FROM users) AS total_users,
   (SELECT COUNT(*)::bigint FROM inputs WHERE enabled) AS enabled_inputs,
@@ -42,7 +43,14 @@ SELECT
   (SELECT COUNT(*)::bigint FROM ai_reports) AS total_reports,
   (SELECT COUNT(*)::bigint FROM content_items WHERE created_at >= NOW() - INTERVAL '24 hours') AS content_items_last_24h,
   (SELECT COUNT(*)::bigint FROM item_scores WHERE created_at >= NOW() - INTERVAL '24 hours') AS scores_last_24h,
-  (SELECT COUNT(*)::bigint FROM ai_reports WHERE created_at >= NOW() - INTERVAL '24 hours') AS reports_last_24h;
+  (SELECT COUNT(*)::bigint FROM ai_reports WHERE created_at >= NOW() - INTERVAL '24 hours') AS reports_last_24h,
+  (SELECT COUNT(DISTINCT owner_user_id)::bigint
+     FROM report_email_subscriptions
+     WHERE source = 'account' AND status = 'active') AS users_with_email_enabled,
+  (SELECT COUNT(*)::bigint FROM report_email_deliveries WHERE status = 'sent') AS report_emails_sent,
+  (SELECT COUNT(*)::bigint
+     FROM report_email_subscriptions
+     WHERE source = 'public_demo' AND status = 'active') AS demo_email_subscribers;
 
 CREATE OR REPLACE VIEW grafana.daily_user_signups AS
 WITH days AS (

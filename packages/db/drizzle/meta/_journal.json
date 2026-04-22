@@ -176,6 +176,20 @@
       "when": 1776268075000,
       "tag": "0024_report_email_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1776816000000,
+      "tag": "0025_steady_telegraph",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1776819600000,
+      "tag": "0026_native_rss_posts",
+      "breakpoints": true
     }
   ]
 }

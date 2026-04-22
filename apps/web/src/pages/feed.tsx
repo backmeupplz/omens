@@ -2276,7 +2276,7 @@ function normalizeComparableUrl(url: string | null | undefined): string | null {
   }
 }
 
-function RedditCard({
+export function RedditCard({
   item,
   nudge,
   onNudge,
@@ -2454,7 +2454,7 @@ function RedditCard({
   )
 }
 
-function TelegramCard({
+export function TelegramCard({
   item,
   nudge,
   onNudge,
@@ -2640,7 +2640,7 @@ function TelegramCard({
   )
 }
 
-function RssCard({
+export function RssCard({
   item,
   nudge,
   onNudge,

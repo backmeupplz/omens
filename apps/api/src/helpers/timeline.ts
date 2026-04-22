@@ -3,6 +3,8 @@ import {
   getDb,
   itemScores,
   redditPosts,
+  rssPosts,
+  telegramPosts,
   xPosts,
 } from '@omens/db'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
@@ -11,6 +13,8 @@ type TimelineXRow = {
   contentItem: typeof contentItems.$inferSelect
   xPost: typeof xPosts.$inferSelect | null
   redditPost: typeof redditPosts.$inferSelect | null
+  rssPost: typeof rssPosts.$inferSelect | null
+  telegramPost: typeof telegramPosts.$inferSelect | null
   score: number | null
 }
 
@@ -80,6 +84,53 @@ export type TimelineItem =
         isSelf: boolean
         linkFlairText: string | null
         postHint: string | null
+        publishedAt: Date | null
+      }
+    }
+  | {
+      id: string
+      provider: 'rss'
+      entityType: 'rss_post'
+      score: number | null
+      publishedAt: Date | null
+      payload: {
+        id: string
+        rssPostId: string
+        feedUrl: string
+        feedTitle: string | null
+        authorName: string | null
+        title: string
+        body: string | null
+        previewUrl: string | null
+        thumbnailUrl: string | null
+        media: string | null
+        domain: string | null
+        permalink: string
+        guid: string | null
+        publishedAt: Date | null
+      }
+    }
+  | {
+      id: string
+      provider: 'telegram'
+      entityType: 'telegram_post'
+      score: number | null
+      publishedAt: Date | null
+      payload: {
+        id: string
+        telegramPostId: string
+        channelUsername: string
+        channelTitle: string | null
+        messageId: number
+        content: string | null
+        media: string | null
+        previewUrl: string | null
+        thumbnailUrl: string | null
+        domain: string | null
+        linkUrl: string | null
+        permalink: string
+        viewCount: number
+        postType: string | null
         publishedAt: Date | null
       }
     }
@@ -271,6 +322,61 @@ export async function serializeTimelineItems(rows: TimelineXRow[]): Promise<Time
           publishedAt: row.contentItem.publishedAt,
         },
       })
+      continue
+    }
+
+    if (row.contentItem.provider === 'rss' && row.rssPost) {
+      items.push({
+        id: row.contentItem.id,
+        provider: 'rss' as const,
+        entityType: 'rss_post' as const,
+        score: row.score,
+        publishedAt: row.contentItem.publishedAt,
+        payload: {
+          id: row.contentItem.id,
+          rssPostId: row.rssPost.rssPostId,
+          feedUrl: row.rssPost.feedUrl,
+          feedTitle: row.rssPost.feedTitle,
+          authorName: row.rssPost.authorName,
+          title: row.rssPost.title,
+          body: row.rssPost.body,
+          previewUrl: row.rssPost.previewUrl,
+          thumbnailUrl: row.rssPost.thumbnailUrl,
+          media: row.rssPost.media,
+          domain: row.rssPost.domain,
+          permalink: row.rssPost.permalink,
+          guid: row.rssPost.guid,
+          publishedAt: row.contentItem.publishedAt,
+        },
+      })
+      continue
+    }
+
+    if (row.contentItem.provider === 'telegram' && row.telegramPost) {
+      items.push({
+        id: row.contentItem.id,
+        provider: 'telegram' as const,
+        entityType: 'telegram_post' as const,
+        score: row.score,
+        publishedAt: row.contentItem.publishedAt,
+        payload: {
+          id: row.contentItem.id,
+          telegramPostId: row.telegramPost.telegramPostId,
+          channelUsername: row.telegramPost.channelUsername,
+          channelTitle: row.telegramPost.channelTitle,
+          messageId: row.telegramPost.messageId,
+          content: row.telegramPost.content,
+          media: row.telegramPost.media,
+          previewUrl: row.telegramPost.previewUrl,
+          thumbnailUrl: row.telegramPost.thumbnailUrl,
+          domain: row.telegramPost.domain,
+          linkUrl: row.telegramPost.linkUrl,
+          permalink: row.telegramPost.permalink,
+          viewCount: row.telegramPost.viewCount,
+          postType: row.telegramPost.postType,
+          publishedAt: row.contentItem.publishedAt,
+        },
+      })
     }
   }
   return items
@@ -300,11 +406,15 @@ export async function getTimelinePage(params: {
       contentItem: contentItems,
       xPost: xPosts,
       redditPost: redditPosts,
+      rssPost: rssPosts,
+      telegramPost: telegramPosts,
       score: itemScores.score,
     })
     .from(contentItems)
     .leftJoin(xPosts, eq(xPosts.contentItemId, contentItems.id))
     .leftJoin(redditPosts, eq(redditPosts.contentItemId, contentItems.id))
+    .leftJoin(rssPosts, eq(rssPosts.contentItemId, contentItems.id))
+    .leftJoin(telegramPosts, eq(telegramPosts.contentItemId, contentItems.id))
     .leftJoin(itemScores, scoreJoin)
     .where(sql`${scope} ${params.minScore != null ? sql`and ${itemScores.score} >= ${params.minScore}` : sql``}`)
     .orderBy(desc(contentItems.publishedAt))
@@ -316,6 +426,8 @@ export async function getTimelinePage(params: {
     .from(contentItems)
     .leftJoin(xPosts, eq(xPosts.contentItemId, contentItems.id))
     .leftJoin(redditPosts, eq(redditPosts.contentItemId, contentItems.id))
+    .leftJoin(rssPosts, eq(rssPosts.contentItemId, contentItems.id))
+    .leftJoin(telegramPosts, eq(telegramPosts.contentItemId, contentItems.id))
     .leftJoin(itemScores, scoreJoin)
     .where(sql`${scope} ${scoreFilter}`)
 
@@ -346,11 +458,15 @@ export async function getTimelineItemsByIds(ids: string[]) {
       contentItem: contentItems,
       xPost: xPosts,
       redditPost: redditPosts,
+      rssPost: rssPosts,
+      telegramPost: telegramPosts,
       score: sql<number | null>`null`,
     })
     .from(contentItems)
     .leftJoin(xPosts, eq(xPosts.contentItemId, contentItems.id))
     .leftJoin(redditPosts, eq(redditPosts.contentItemId, contentItems.id))
+    .leftJoin(rssPosts, eq(rssPosts.contentItemId, contentItems.id))
+    .leftJoin(telegramPosts, eq(telegramPosts.contentItemId, contentItems.id))
     .where(inArray(contentItems.id, ids))
 
   const byId = new Map((await serializeTimelineItems(rows)).map((item) => [item.id, item] as const))

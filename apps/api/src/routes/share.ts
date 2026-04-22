@@ -6,6 +6,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { hydrateTweetsWithParents } from '../helpers/feed'
 import { hydrateReport } from '../helpers/report'
+import { getTimelineItemsByIds } from '../helpers/timeline'
 import {
   extractReportSummary,
   generateReportOgPng,
@@ -27,6 +28,49 @@ function normalizeMetaText(s: string): string {
 }
 
 function origin(): string { return env.CORS_ORIGIN || 'https://omens.online' }
+
+function sharedItemMeta(id: string, item: Awaited<ReturnType<typeof getTimelineItemsByIds>>[number]) {
+  const url = `${origin()}/item/${id}`
+
+  if (item.provider === 'x') {
+    const text = normalizeMetaText(item.payload.content || `Post by ${item.payload.authorName}`)
+    return {
+      title: truncate(text || `@${item.payload.authorHandle}`, 60),
+      description: truncate(text || `Post by ${item.payload.authorName} (@${item.payload.authorHandle})`, 120),
+      url,
+      image: `${origin()}/${item.payload.authorHandle}/status/${item.payload.tweetId}/og.png`,
+      largeImage: true,
+    }
+  }
+
+  if (item.provider === 'reddit') {
+    const description = normalizeMetaText(item.payload.body || item.payload.title)
+    return {
+      title: truncate(normalizeMetaText(item.payload.title), 60),
+      description: truncate(description, 120),
+      url,
+      largeImage: false,
+    }
+  }
+
+  if (item.provider === 'telegram') {
+    const description = normalizeMetaText(item.payload.content || item.payload.channelTitle || `Telegram post from @${item.payload.channelUsername}`)
+    return {
+      title: truncate(normalizeMetaText(item.payload.channelTitle || `@${item.payload.channelUsername}`), 60),
+      description: truncate(description, 120),
+      url,
+      largeImage: false,
+    }
+  }
+
+  const description = normalizeMetaText(item.payload.body || item.payload.title)
+  return {
+    title: truncate(normalizeMetaText(item.payload.title), 60),
+    description: truncate(description, 120),
+    url,
+    largeImage: false,
+  }
+}
 
 let _spaHtml: string | null = null
 function getSpaHtml(): string {
@@ -136,6 +180,13 @@ shareDataRouter.get('/report/:id/data', async (c) => {
   const [report] = await db.select().from(aiReports).where(eq(aiReports.id, id)).limit(1)
   if (!report) return c.json({ error: 'Report not found' }, 404)
   return c.json({ report: await hydrateReport(db, report) })
+})
+
+shareDataRouter.get('/item/:id/data', async (c) => {
+  const id = c.req.param('id')
+  const [item] = await getTimelineItemsByIds([id])
+  if (!item) return c.json({ error: 'Item not found' }, 404)
+  return c.json({ item })
 })
 
 // === Public HTML/OG routes (mounted at root) ===
@@ -272,6 +323,18 @@ shareRouter.get('/report/:id', async (c) => {
   }
 
   if (!env.WEB_DIR) return c.redirect(`http://localhost:5173/report/${id}`)
+
+  return spaWithOg(meta)
+})
+
+shareRouter.get('/item/:id', async (c) => {
+  const id = c.req.param('id')
+  const [item] = await getTimelineItemsByIds([id])
+  if (!item) return notFoundHtml()
+
+  const meta = sharedItemMeta(id, item)
+
+  if (!env.WEB_DIR) return c.redirect(`http://localhost:5173/item/${id}`)
 
   return spaWithOg(meta)
 })

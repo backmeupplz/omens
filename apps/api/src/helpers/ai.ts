@@ -492,6 +492,31 @@ export type ItemForAI =
       previewUrl: string | null
       publishedAt: Date | null
     }
+  | {
+      id: string
+      provider: 'telegram'
+      channelUsername: string
+      channelTitle: string | null
+      content: string | null
+      media: string | null
+      domain: string | null
+      linkUrl: string | null
+      viewCount: number
+      postType: string | null
+      publishedAt: Date | null
+    }
+  | {
+      id: string
+      provider: 'rss'
+      feedTitle: string | null
+      authorName: string | null
+      title: string
+      body: string | null
+      media: string | null
+      domain: string | null
+      permalink: string
+      publishedAt: Date | null
+    }
 
 export function formatItemsForAI(items: ItemForAI[]): string {
   return items
@@ -524,20 +549,70 @@ export function formatItemsForAI(items: ItemForAI[]): string {
         return lines.join('\n')
       }
 
+      if (item.provider === 'reddit') {
+        const lines: string[] = []
+        const time = item.publishedAt ? ` - ${timeAgo(item.publishedAt)}` : ''
+        lines.push(`[ID: ${item.id}]`)
+        lines.push(
+          `[SOURCE: Reddit] r/${item.subreddit} by u/${item.authorName || '[deleted]'}${time}`,
+        )
+        lines.push(item.title)
+        if (item.body) lines.push(item.body.length > 500 ? `${item.body.slice(0, 500)}...` : item.body)
+        lines.push(
+          `[Score: ${item.score} | Comments: ${item.commentCount}${item.linkFlairText ? ` | Flair: ${item.linkFlairText}` : ''}]`,
+        )
+        if (item.domain && !item.isSelf) lines.push(`> Link domain: ${item.domain}`)
+        if (item.over18) lines.push('> NSFW')
+        if (item.spoiler) lines.push('> Spoiler')
+        return lines.join('\n')
+      }
+
+      if (item.provider === 'rss') {
+        const lines: string[] = []
+        const time = item.publishedAt ? ` - ${timeAgo(item.publishedAt)}` : ''
+        let mediaCount = 0
+        try {
+          const parsed = item.media ? JSON.parse(item.media) as { items?: unknown[] } : null
+          mediaCount = Array.isArray(parsed?.items) ? parsed.items.length : 0
+        } catch {}
+        lines.push(`[ID: ${item.id}]`)
+        lines.push(
+          `[SOURCE: RSS] ${item.feedTitle || item.domain || 'Feed'}${item.authorName ? ` by ${item.authorName}` : ''}${time}`,
+        )
+        lines.push(item.title)
+        if (item.body) lines.push(item.body.length > 500 ? `${item.body.slice(0, 500)}...` : item.body)
+        lines.push(
+          `[Domain: ${item.domain || 'unknown'}${mediaCount > 0 ? ` | Media: ${mediaCount}` : ''}]`,
+        )
+        lines.push(`> Link: ${item.permalink}`)
+        return lines.join('\n')
+      }
+
       const lines: string[] = []
       const time = item.publishedAt ? ` - ${timeAgo(item.publishedAt)}` : ''
+      let mediaSummary = ''
+      try {
+        const parsed = item.media ? JSON.parse(item.media) as { items?: Array<{ type?: string }>; files?: Array<{ fileName?: string }> } : null
+        const mediaCount = parsed?.items?.length || 0
+        const fileCount = parsed?.files?.length || 0
+        if (mediaCount > 0 || fileCount > 0) {
+          mediaSummary = ` | Media: ${mediaCount}${fileCount > 0 ? ` | Files: ${fileCount}` : ''}`
+        }
+      } catch {}
       lines.push(`[ID: ${item.id}]`)
       lines.push(
-        `[SOURCE: Reddit] r/${item.subreddit} by u/${item.authorName || '[deleted]'}${time}`,
+        `[SOURCE: Telegram] @${item.channelUsername}${item.channelTitle ? ` (${item.channelTitle})` : ''}${time}`,
       )
-      lines.push(item.title)
-      if (item.body) lines.push(item.body.length > 500 ? `${item.body.slice(0, 500)}...` : item.body)
+      if (item.content) {
+        lines.push(item.content.length > 500 ? `${item.content.slice(0, 500)}...` : item.content)
+      } else {
+        lines.push('[No text body]')
+      }
       lines.push(
-        `[Score: ${item.score} | Comments: ${item.commentCount}${item.linkFlairText ? ` | Flair: ${item.linkFlairText}` : ''}]`,
+        `[Views: ${item.viewCount}${item.postType ? ` | Type: ${item.postType}` : ''}${mediaSummary}]`,
       )
-      if (item.domain && !item.isSelf) lines.push(`> Link domain: ${item.domain}`)
-      if (item.over18) lines.push('> NSFW')
-      if (item.spoiler) lines.push('> Spoiler')
+      if (item.domain) lines.push(`> Link domain: ${item.domain}`)
+      if (item.linkUrl) lines.push(`> External link: ${item.linkUrl}`)
       return lines.join('\n')
     })
     .join('\n---\n')

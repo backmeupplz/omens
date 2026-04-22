@@ -7,7 +7,7 @@ import { useInitializeThemePreference } from './helpers/theme'
 import { AiReportPage, Feed, FilteredFeed, NewspaperFixturePage } from './pages/feed'
 import { Login, Register } from './pages/login'
 import { Settings } from './pages/settings'
-import { ReportSharePage, SharePage } from './pages/share'
+import { ItemSharePage, ReportSharePage, SharePage } from './pages/share'
 
 interface AuthState {
   checked: boolean
@@ -208,6 +208,10 @@ export function App() {
   if (reportMatch) {
     return <ReportSharePage id={reportMatch[1]} />
   }
+  const itemShareMatch = location.match(/^\/item\/([a-z0-9]+)$/)
+  if (itemShareMatch) {
+    return <ItemSharePage id={itemShareMatch[1]} />
+  }
   if (location === '/fixture/newspaper') {
     return <NewspaperFixturePage />
   }
@@ -215,7 +219,7 @@ export function App() {
   return (
     <>
       {isDemo && location !== '/login' && location !== '/register' && (
-        <div class="demo-notice-wrap px-3 pt-4 sm:px-4">
+        <div class="demo-notice-wrap px-3 sm:px-4">
           <div class="mx-auto w-full max-w-[72rem]">
             <div class="demo-notice">
               <div class="demo-notice-copy">

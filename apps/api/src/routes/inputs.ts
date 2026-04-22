@@ -1,16 +1,18 @@
 import {
   getDb,
   inputs,
-  redditAccounts,
   rssInputs,
   sourceAccounts,
+  telegramInputs,
   xAccounts,
 } from '@omens/db'
 import { and, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
-import { redditRssInputCreateSchema } from '@omens/shared'
+import { genericRssInputCreateSchema, redditRssInputCreateSchema, telegramChannelInputCreateSchema } from '@omens/shared'
 import env from '../env'
-import { ensureRedditSubredditRssInput } from '../helpers/inputs'
+import { ensureGenericRssInput, ensureRedditSubredditRssInput, ensureTelegramPublicChannelInput } from '../helpers/inputs'
+import { fetchGenericRssFeedPreview } from '../rss/generic'
+import { fetchTelegramChannelPreview } from '../telegram/public'
 import { fetchForUser } from '../x/fetcher'
 import type { AuthUser } from '../middleware/auth'
 
@@ -34,7 +36,6 @@ inputsRouter.get('/', async (c) => {
       accountLabel: sourceAccounts.label,
       accountStatus: sourceAccounts.status,
       xUsername: xAccounts.username,
-      redditUsername: redditAccounts.username,
       rssFeedUrl: rssInputs.feedUrl,
       rssSiteUrl: rssInputs.siteUrl,
       rssTitle: rssInputs.title,
@@ -43,46 +44,60 @@ inputsRouter.get('/', async (c) => {
       rssSourceLabel: rssInputs.sourceLabel,
       rssListingType: rssInputs.listingType,
       rssTimeRange: rssInputs.timeRange,
+      telegramChannelUsername: telegramInputs.channelUsername,
+      telegramChannelTitle: telegramInputs.channelTitle,
+      telegramSiteUrl: telegramInputs.siteUrl,
     })
     .from(inputs)
     .leftJoin(sourceAccounts, eq(sourceAccounts.id, inputs.sourceAccountId))
     .leftJoin(xAccounts, eq(xAccounts.sourceAccountId, sourceAccounts.id))
-    .leftJoin(redditAccounts, eq(redditAccounts.sourceAccountId, sourceAccounts.id))
     .leftJoin(rssInputs, eq(rssInputs.inputId, inputs.id))
+    .leftJoin(telegramInputs, eq(telegramInputs.inputId, inputs.id))
     .where(eq(inputs.userId, user.id))
 
   return c.json({
-    inputs: rows.map((row) => ({
-      id: row.id,
-      provider: row.provider,
-      kind: row.kind,
-      name: row.name,
-      enabled: row.enabled,
-      pollIntervalMinutes: row.pollIntervalMinutes,
-      lastFetchedAt: row.lastFetchedAt,
-      lastError: row.lastError,
-      account: row.sourceAccountId
-        ? {
-            id: row.sourceAccountId,
-            label: row.accountLabel,
-            status: row.accountStatus,
-            username: row.xUsername || row.redditUsername,
-          }
-        : null,
-      config: row.rssFeedUrl
-        ? {
-            type: 'rss',
-            feedUrl: row.rssFeedUrl,
-            siteUrl: row.rssSiteUrl,
-            title: row.rssTitle,
-            sourceProvider: row.rssSourceProvider,
-            sourceKey: row.rssSourceKey,
-            sourceLabel: row.rssSourceLabel,
-            listingType: row.rssListingType,
-            timeRange: row.rssTimeRange,
-          }
-        : null,
-    })),
+    inputs: rows
+      .filter((row) => row.provider !== 'reddit')
+      .map((row) => ({
+        id: row.id,
+        provider: row.provider,
+        kind: row.kind,
+        name: row.name,
+        enabled: row.enabled,
+        pollIntervalMinutes: row.pollIntervalMinutes,
+        lastFetchedAt: row.lastFetchedAt,
+        lastError: row.lastError,
+        account: row.sourceAccountId
+          ? {
+              id: row.sourceAccountId,
+              label: row.accountLabel,
+              status: row.accountStatus,
+              username: row.xUsername,
+            }
+          : null,
+        config: row.rssFeedUrl
+          ? {
+              type: 'rss',
+              feedUrl: row.rssFeedUrl,
+              siteUrl: row.rssSiteUrl,
+              title: row.rssTitle,
+              sourceProvider: row.rssSourceProvider,
+              sourceKey: row.rssSourceKey,
+              sourceLabel: row.rssSourceLabel,
+              listingType: row.rssListingType,
+              timeRange: row.rssTimeRange,
+            }
+          : row.telegramChannelUsername
+            ? {
+                type: 'telegram',
+                siteUrl: row.telegramSiteUrl,
+                sourceKey: row.telegramChannelUsername,
+                sourceLabel: row.telegramChannelTitle || `@${row.telegramChannelUsername}`,
+                channelUsername: row.telegramChannelUsername,
+                channelTitle: row.telegramChannelTitle,
+              }
+          : null,
+      })),
   })
 })
 
@@ -105,6 +120,52 @@ inputsRouter.post('/rss/reddit', async (c) => {
     return c.json({ ok: true, inputId: created.inputId })
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : 'Could not add subreddit' }, 400)
+  }
+})
+
+inputsRouter.post('/rss', async (c) => {
+  const user = c.get('user')
+  const body = await c.req.json().catch(() => null)
+  const parsed = genericRssInputCreateSchema.safeParse(body)
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message || 'Invalid input' }, 400)
+  }
+
+  try {
+    const preview = await fetchGenericRssFeedPreview(parsed.data.feedUrl)
+    const created = await ensureGenericRssInput({
+      userId: user.id,
+      feedUrl: preview.feedUrl,
+      title: preview.title,
+      siteUrl: preview.siteUrl,
+      description: preview.description,
+    })
+    void fetchForUser(user.id).catch(() => {})
+    return c.json({ ok: true, inputId: created.inputId, feedUrl: created.feedUrl })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'Could not add RSS feed' }, 400)
+  }
+})
+
+inputsRouter.post('/telegram', async (c) => {
+  const user = c.get('user')
+  const body = await c.req.json().catch(() => null)
+  const parsed = telegramChannelInputCreateSchema.safeParse(body)
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message || 'Invalid input' }, 400)
+  }
+
+  try {
+    const preview = await fetchTelegramChannelPreview(parsed.data.channel)
+    const created = await ensureTelegramPublicChannelInput({
+      userId: user.id,
+      channel: preview.channelUsername,
+      channelTitle: preview.channelTitle,
+    })
+    void fetchForUser(user.id).catch(() => {})
+    return c.json({ ok: true, inputId: created.inputId, channelUsername: created.channelUsername })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'Could not add Telegram channel' }, 400)
   }
 })
 

@@ -137,6 +137,17 @@ export const rssInputs = pgTable('rss_inputs', {
   lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
 })
 
+export const telegramInputs = pgTable('telegram_inputs', {
+  inputId: text('input_id')
+    .primaryKey()
+    .references(() => inputs.id, { onDelete: 'cascade' }),
+  channelUsername: text('channel_username').notNull(),
+  channelTitle: text('channel_title'),
+  siteUrl: text('site_url').notNull(),
+  latestSeenMessageId: integer('latest_seen_message_id'),
+  lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+})
+
 export const contentItems = pgTable(
   'content_items',
   {
@@ -211,6 +222,45 @@ export const redditPosts = pgTable('reddit_posts', {
   isSelf: boolean('is_self').notNull().default(false),
   linkFlairText: text('link_flair_text'),
   postHint: text('post_hint'),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const telegramPosts = pgTable('telegram_posts', {
+  contentItemId: text('content_item_id')
+    .primaryKey()
+    .references(() => contentItems.id, { onDelete: 'cascade' }),
+  telegramPostId: text('telegram_post_id').notNull().unique(),
+  channelUsername: text('channel_username').notNull(),
+  channelTitle: text('channel_title'),
+  messageId: integer('message_id').notNull(),
+  content: text('content'),
+  media: text('media'),
+  previewUrl: text('preview_url'),
+  thumbnailUrl: text('thumbnail_url'),
+  domain: text('domain'),
+  linkUrl: text('link_url'),
+  permalink: text('permalink').notNull(),
+  viewCount: integer('view_count').notNull().default(0),
+  postType: text('post_type'),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const rssPosts = pgTable('rss_posts', {
+  contentItemId: text('content_item_id')
+    .primaryKey()
+    .references(() => contentItems.id, { onDelete: 'cascade' }),
+  rssPostId: text('rss_post_id').notNull().unique(),
+  feedUrl: text('feed_url').notNull(),
+  feedTitle: text('feed_title'),
+  authorName: text('author_name'),
+  title: text('title').notNull(),
+  body: text('body'),
+  previewUrl: text('preview_url'),
+  thumbnailUrl: text('thumbnail_url'),
+  media: text('media'),
+  domain: text('domain'),
+  permalink: text('permalink').notNull(),
+  guid: text('guid'),
   fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

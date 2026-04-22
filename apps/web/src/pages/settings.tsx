@@ -357,6 +357,9 @@ type InputSummary = {
     listingType?: string | null
     timeRange?: string | null
     feedUrl?: string | null
+    siteUrl?: string | null
+    channelUsername?: string | null
+    channelTitle?: string | null
   } | null
 }
 
@@ -377,6 +380,14 @@ function formatRedditInputLabel(input: InputSummary) {
     : listingType[0].toUpperCase() + listingType.slice(1)
 
   return `${baseLabel} · ${listingLabel}`
+}
+
+function formatTelegramInputLabel(input: InputSummary) {
+  return input.config?.channelTitle || input.config?.sourceLabel || input.name
+}
+
+function formatGenericRssInputLabel(input: InputSummary) {
+  return input.config?.title || input.config?.sourceLabel || input.name
 }
 
 function RedditSection({ onSourcesChange, compact = false }: { onSourcesChange: () => void; compact?: boolean }) {
@@ -658,6 +669,401 @@ function RedditSection({ onSourcesChange, compact = false }: { onSourcesChange: 
         compact={compact}
       />
       {form}
+    </div>
+  )
+}
+
+function TelegramSection({ onSourcesChange, compact = false }: { onSourcesChange: () => void; compact?: boolean }) {
+  const { data, loading: inputsLoading, error: inputsError, refetch } = useApi<{ inputs: InputSummary[] }>('/inputs')
+  const [channel, setChannel] = useState('')
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const telegramInputs = (data?.inputs || []).filter(
+    (input) => input.provider === 'telegram' && input.kind === 'public_channel',
+  )
+
+  const addChannel = async () => {
+    setError('')
+    setSaving(true)
+    try {
+      await api('/inputs/telegram', {
+        method: 'POST',
+        body: JSON.stringify({ channel }),
+      })
+      setChannel('')
+      setShowAddForm(false)
+      await refetch()
+      onSourcesChange()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not add Telegram channel')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removeInput = async (id: string) => {
+    setError('')
+    try {
+      await api(`/inputs/${id}`, { method: 'DELETE' })
+      await refetch()
+      onSourcesChange()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not remove Telegram channel')
+    }
+  }
+
+  const toggleInput = async (input: InputSummary) => {
+    setError('')
+    try {
+      await api(`/inputs/${input.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled: !input.enabled }),
+      })
+      await refetch()
+      onSourcesChange()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Could not ${input.enabled ? 'pause' : 'enable'} Telegram channel`)
+    }
+  }
+
+  if (inputsLoading) return <Spinner class={compact ? 'py-2' : undefined} />
+
+  if (compact) {
+    return (
+      <SettingsItem title="Telegram Channels">
+        {inputsError && <p class="np-alert np-alert-error">Couldn&apos;t load your current inputs.</p>}
+        {error && <p class="np-alert np-alert-error">{error}</p>}
+
+        <div class="np-settings-pill-row">
+          {telegramInputs.map((input) => (
+            <div
+              key={input.id}
+              class={`np-settings-pill${input.enabled ? '' : ' is-disabled'}`}
+              title={formatTelegramInputLabel(input)}
+            >
+              <span class="np-settings-pill-label">{formatTelegramInputLabel(input)}</span>
+              <button
+                type="button"
+                onClick={() => removeInput(input.id)}
+                class="np-settings-pill-remove"
+                aria-label={`Remove ${formatTelegramInputLabel(input)}`}
+                title="Remove channel"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setShowAddForm((value) => !value)}
+            class="np-settings-pill np-settings-pill-add"
+          >
+            + Add channel
+          </button>
+        </div>
+
+        {showAddForm && (
+          <div class="np-settings-fields">
+            <input
+              type="text"
+              class="np-control"
+              placeholder="Channel username, e.g. durov or https://t.me/durov"
+              value={channel}
+              onInput={(e) => setChannel((e.target as HTMLInputElement).value)}
+            />
+            <div class="np-settings-inline">
+              <button
+                type="button"
+                onClick={addChannel}
+                disabled={saving || !channel.trim()}
+                class="np-button np-button-primary disabled:opacity-50"
+              >
+                {saving ? 'Adding…' : 'Add channel'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddForm(false)}
+                class="np-button np-button-secondary"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!showAddForm && telegramInputs.length === 0 && (
+          <p class="np-settings-item-copy">No Telegram channels yet.</p>
+        )}
+      </SettingsItem>
+    )
+  }
+
+  return (
+    <div class="np-settings-subsection">
+      <SettingsBlockIntro
+        title="Telegram Channels"
+        description="Add public Telegram channels by username or t.me link. Omens fetches public channel posts without bot auth and deduplicates them globally across feeds."
+        compact={compact}
+      />
+
+      {inputsError && <p class="np-alert np-alert-error">Couldn&apos;t load your current inputs.</p>}
+      {error && <p class="np-alert np-alert-error">{error}</p>}
+
+      <div class="np-settings-fields">
+        <input
+          type="text"
+          class="np-control"
+          placeholder="Channel username, e.g. durov or https://t.me/durov"
+          value={channel}
+          onInput={(e) => setChannel((e.target as HTMLInputElement).value)}
+        />
+        <div class="np-settings-inline">
+          <button
+            type="button"
+            onClick={addChannel}
+            disabled={saving || !channel.trim()}
+            class="np-button np-button-primary disabled:opacity-50"
+          >
+            {saving ? 'Adding…' : 'Add channel'}
+          </button>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        {telegramInputs.length === 0 ? (
+          <p class="np-copy-muted">No Telegram channels yet. Add a public channel above to fetch posts, links, and media.</p>
+        ) : telegramInputs.map((input) => (
+          <div class="np-inline-card np-inline-card-row" key={input.id}>
+            <div class="min-w-0">
+              <p class="np-copy-strong">{formatTelegramInputLabel(input)}</p>
+              <p class="np-copy-muted">
+                {input.config?.channelUsername ? `@${input.config.channelUsername}` : input.name}
+                {input.config?.siteUrl ? (
+                  <span> · <a href={input.config.siteUrl} target="_blank" rel="noreferrer" class="np-link-accent">Open channel</a></span>
+                ) : null}
+              </p>
+              <p class="np-copy-muted">{formatInputTimestamp(input.lastFetchedAt)}</p>
+              {input.lastError && <p class="np-alert np-alert-error mt-2">{input.lastError}</p>}
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => toggleInput(input)}
+                class="np-button np-button-secondary np-button-small whitespace-nowrap"
+              >
+                {input.enabled ? 'Pause' : 'Enable'}
+              </button>
+              <button
+                type="button"
+                onClick={() => removeInput(input.id)}
+                class="np-button np-button-danger np-button-small whitespace-nowrap"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function GenericRssSection({ onSourcesChange, compact = false }: { onSourcesChange: () => void; compact?: boolean }) {
+  const { data, loading: inputsLoading, error: inputsError, refetch } = useApi<{ inputs: InputSummary[] }>('/inputs')
+  const [feedUrl, setFeedUrl] = useState('')
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const rssInputs = (data?.inputs || []).filter(
+    (input) => input.provider === 'rss' && input.kind === 'generic_feed' && input.config?.sourceProvider === 'generic',
+  )
+
+  const addFeed = async () => {
+    setError('')
+    setSaving(true)
+    try {
+      await api('/inputs/rss', {
+        method: 'POST',
+        body: JSON.stringify({ feedUrl }),
+      })
+      setFeedUrl('')
+      setShowAddForm(false)
+      await refetch()
+      onSourcesChange()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not add RSS feed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removeInput = async (id: string) => {
+    setError('')
+    try {
+      await api(`/inputs/${id}`, { method: 'DELETE' })
+      await refetch()
+      onSourcesChange()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not remove RSS feed')
+    }
+  }
+
+  const toggleInput = async (input: InputSummary) => {
+    setError('')
+    try {
+      await api(`/inputs/${input.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled: !input.enabled }),
+      })
+      await refetch()
+      onSourcesChange()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Could not ${input.enabled ? 'pause' : 'enable'} RSS feed`)
+    }
+  }
+
+  if (inputsLoading) return <Spinner class={compact ? 'py-2' : undefined} />
+
+  if (compact) {
+    return (
+      <SettingsItem title="RSS Feeds">
+        {inputsError && <p class="np-alert np-alert-error">Couldn&apos;t load your current inputs.</p>}
+        {error && <p class="np-alert np-alert-error">{error}</p>}
+
+        <div class="np-settings-pill-row">
+          {rssInputs.map((input) => (
+            <div
+              key={input.id}
+              class={`np-settings-pill${input.enabled ? '' : ' is-disabled'}`}
+              title={formatGenericRssInputLabel(input)}
+            >
+              <span class="np-settings-pill-label">{formatGenericRssInputLabel(input)}</span>
+              <button
+                type="button"
+                onClick={() => removeInput(input.id)}
+                class="np-settings-pill-remove"
+                aria-label={`Remove ${formatGenericRssInputLabel(input)}`}
+                title="Remove feed"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setShowAddForm((value) => !value)}
+            class="np-settings-pill np-settings-pill-add"
+          >
+            + Add feed
+          </button>
+        </div>
+
+        {showAddForm && (
+          <div class="np-settings-fields">
+            <input
+              type="text"
+              class="np-control"
+              placeholder="Feed URL, e.g. https://9gagrss.com/feed/"
+              value={feedUrl}
+              onInput={(e) => setFeedUrl((e.target as HTMLInputElement).value)}
+            />
+            <div class="np-settings-inline">
+              <button
+                type="button"
+                onClick={addFeed}
+                disabled={saving || !feedUrl.trim()}
+                class="np-button np-button-primary disabled:opacity-50"
+              >
+                {saving ? 'Adding…' : 'Add feed'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddForm(false)}
+                class="np-button np-button-secondary"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!showAddForm && rssInputs.length === 0 && (
+          <p class="np-settings-item-copy">No generic RSS feeds yet.</p>
+        )}
+      </SettingsItem>
+    )
+  }
+
+  return (
+    <div class="np-settings-subsection">
+      <SettingsBlockIntro
+        title="RSS Feeds"
+        description="Add any public RSS or Atom feed URL. Omens deduplicates posts in the database and fetches them on the same polling schedule as your other inputs."
+        compact={compact}
+      />
+
+      {inputsError && <p class="np-alert np-alert-error">Couldn&apos;t load your current inputs.</p>}
+      {error && <p class="np-alert np-alert-error">{error}</p>}
+
+      <div class="np-settings-fields">
+        <input
+          type="text"
+          class="np-control"
+          placeholder="Feed URL, e.g. https://9gagrss.com/feed/"
+          value={feedUrl}
+          onInput={(e) => setFeedUrl((e.target as HTMLInputElement).value)}
+        />
+        <div class="np-settings-inline">
+          <button
+            type="button"
+            onClick={addFeed}
+            disabled={saving || !feedUrl.trim()}
+            class="np-button np-button-primary disabled:opacity-50"
+          >
+            {saving ? 'Adding…' : 'Add feed'}
+          </button>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        {rssInputs.length === 0 ? (
+          <p class="np-copy-muted">No generic RSS feeds yet. Add a feed URL above to fetch public feed items like articles, posts, or link updates.</p>
+        ) : rssInputs.map((input) => (
+          <div class="np-inline-card np-inline-card-row" key={input.id}>
+            <div class="min-w-0">
+              <p class="np-copy-strong">{formatGenericRssInputLabel(input)}</p>
+              <p class="np-copy-muted">
+                {input.config?.siteUrl ? (
+                  <a href={input.config.siteUrl} target="_blank" rel="noreferrer" class="np-link-accent">
+                    {input.config.siteUrl}
+                  </a>
+                ) : input.config?.feedUrl || input.name}
+              </p>
+              <p class="np-copy-muted">{formatInputTimestamp(input.lastFetchedAt)}</p>
+              {input.lastError && <p class="np-alert np-alert-error mt-2">{input.lastError}</p>}
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => toggleInput(input)}
+                class="np-button np-button-secondary np-button-small whitespace-nowrap"
+              >
+                {input.enabled ? 'Pause' : 'Enable'}
+              </button>
+              <button
+                type="button"
+                onClick={() => removeInput(input.id)}
+                class="np-button np-button-danger np-button-small whitespace-nowrap"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -2082,7 +2488,9 @@ export function Settings({
             <section class="np-settings-section">
               <div class="np-settings-section-items">
                 <XSection onXChange={onSourcesChange} compact />
+                <GenericRssSection onSourcesChange={onSourcesChange} compact />
                 <RedditSection onSourcesChange={onSourcesChange} compact />
+                <TelegramSection onSourcesChange={onSourcesChange} compact />
               </div>
             </section>
           </div>

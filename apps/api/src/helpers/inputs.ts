@@ -4,21 +4,22 @@ import {
   aiSettings,
   getDb,
   inputs,
-  redditAccounts,
-  redditInputs,
   rssInputs,
   sourceAccounts,
+  telegramInputs,
   xAccounts,
   xInputs,
   xSessions,
 } from '@omens/db'
 import { and, eq, isNull } from 'drizzle-orm'
 import env from '../env'
+import { normalizeFeedUrl } from '../rss/generic'
 import {
   buildRedditSubredditFeedConfig,
   type RedditRssListingType,
   type RedditRssTimeRange,
 } from '../rss/reddit'
+import { normalizeTelegramChannelUsername } from '../telegram/public'
 
 async function syncInputToFeeds(userId: string, inputId: string) {
   const db = getDb(env.DATABASE_URL)
@@ -130,118 +131,6 @@ export async function ensureXAccountInput(params: {
       .update(inputs)
       .set({
         name: `@${params.username} Home`,
-        updatedAt: new Date(),
-      })
-      .where(eq(inputs.id, inputId))
-  }
-
-  await syncInputToFeeds(params.userId, inputId)
-
-  return { sourceAccountId, inputId }
-}
-
-export async function ensureRedditAccountInput(params: {
-  userId: string
-  redditUserId: string
-  username: string
-  refreshToken: string
-  accessToken?: string | null
-  accessTokenExpiresAt?: Date | null
-  scope?: string | null
-}) {
-  const db = getDb(env.DATABASE_URL)
-  const [settings] = await db
-    .select({ fetchIntervalMinutes: aiSettings.fetchIntervalMinutes })
-    .from(aiSettings)
-    .where(eq(aiSettings.userId, params.userId))
-    .limit(1)
-
-  const [existing] = await db
-    .select({
-      sourceAccountId: sourceAccounts.id,
-      inputId: inputs.id,
-    })
-    .from(sourceAccounts)
-    .innerJoin(redditAccounts, eq(redditAccounts.sourceAccountId, sourceAccounts.id))
-    .leftJoin(inputs, and(
-      eq(inputs.sourceAccountId, sourceAccounts.id),
-      eq(inputs.provider, 'reddit'),
-      eq(inputs.kind, 'home'),
-    ))
-    .where(and(
-      eq(sourceAccounts.userId, params.userId),
-      eq(sourceAccounts.provider, 'reddit'),
-      eq(sourceAccounts.externalAccountId, params.redditUserId),
-    ))
-    .limit(1)
-
-  let sourceAccountId = existing?.sourceAccountId || null
-  let inputId = existing?.inputId || null
-
-  if (!sourceAccountId) {
-    const [created] = await db
-      .insert(sourceAccounts)
-      .values({
-        userId: params.userId,
-        provider: 'reddit',
-        externalAccountId: params.redditUserId,
-        label: `u/${params.username}`,
-      })
-      .returning({ id: sourceAccounts.id })
-    sourceAccountId = created.id
-  } else {
-    await db
-      .update(sourceAccounts)
-      .set({
-        label: `u/${params.username}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(sourceAccounts.id, sourceAccountId))
-  }
-
-  await db
-    .insert(redditAccounts)
-    .values({
-      sourceAccountId,
-      redditUserId: params.redditUserId,
-      username: params.username,
-      refreshToken: params.refreshToken,
-      accessToken: params.accessToken || null,
-      accessTokenExpiresAt: params.accessTokenExpiresAt || null,
-      scope: params.scope || null,
-    })
-    .onConflictDoUpdate({
-      target: redditAccounts.sourceAccountId,
-      set: {
-        redditUserId: params.redditUserId,
-        username: params.username,
-        refreshToken: params.refreshToken,
-        accessToken: params.accessToken || null,
-        accessTokenExpiresAt: params.accessTokenExpiresAt || null,
-        scope: params.scope || null,
-        updatedAt: new Date(),
-      },
-    })
-
-  if (!inputId) {
-    const [createdInput] = await db
-      .insert(inputs)
-      .values({
-        userId: params.userId,
-        sourceAccountId,
-        provider: 'reddit',
-        kind: 'home',
-        name: `u/${params.username} Home`,
-        pollIntervalMinutes: settings?.fetchIntervalMinutes ?? 15,
-      })
-      .returning({ id: inputs.id })
-    inputId = createdInput.id
-    await db.insert(redditInputs).values({ inputId }).onConflictDoNothing()
-  } else {
-    await db
-      .update(inputs)
-      .set({
-        name: `u/${params.username} Home`,
         updatedAt: new Date(),
       })
       .where(eq(inputs.id, inputId))
@@ -368,4 +257,166 @@ export async function ensureRedditSubredditRssInput(params: {
   await syncInputToFeeds(params.userId, inputId)
 
   return { inputId }
+}
+
+export async function ensureGenericRssInput(params: {
+  userId: string
+  feedUrl: string
+  title?: string | null
+  siteUrl?: string | null
+  description?: string | null
+}) {
+  const db = getDb(env.DATABASE_URL)
+  const [settings] = await db
+    .select({ fetchIntervalMinutes: aiSettings.fetchIntervalMinutes })
+    .from(aiSettings)
+    .where(eq(aiSettings.userId, params.userId))
+    .limit(1)
+
+  const feedUrl = normalizeFeedUrl(params.feedUrl)
+  const title = params.title?.trim() || null
+  const siteUrl = params.siteUrl?.trim() || null
+  const description = params.description?.trim() || null
+
+  const [existing] = await db
+    .select({
+      inputId: inputs.id,
+    })
+    .from(inputs)
+    .innerJoin(rssInputs, eq(rssInputs.inputId, inputs.id))
+    .where(and(
+      eq(inputs.userId, params.userId),
+      eq(inputs.provider, 'rss'),
+      eq(inputs.kind, 'generic_feed'),
+      eq(rssInputs.sourceProvider, 'generic'),
+      eq(rssInputs.feedUrl, feedUrl),
+    ))
+    .limit(1)
+
+  let inputId = existing?.inputId || null
+  const inputName = title || siteUrl || feedUrl
+
+  if (!inputId) {
+    const [createdInput] = await db
+      .insert(inputs)
+      .values({
+        userId: params.userId,
+        provider: 'rss',
+        kind: 'generic_feed',
+        name: inputName,
+        pollIntervalMinutes: settings?.fetchIntervalMinutes ?? 15,
+      })
+      .returning({ id: inputs.id })
+
+    inputId = createdInput.id
+    await db.insert(rssInputs).values({
+      inputId,
+      feedUrl,
+      siteUrl,
+      title,
+      description,
+      sourceProvider: 'generic',
+      sourceKey: feedUrl,
+      sourceLabel: title || siteUrl || feedUrl,
+    })
+  } else {
+    await db
+      .update(inputs)
+      .set({
+        name: inputName,
+        updatedAt: new Date(),
+      })
+      .where(eq(inputs.id, inputId))
+
+    await db
+      .update(rssInputs)
+      .set({
+        feedUrl,
+        siteUrl,
+        title,
+        description,
+        sourceProvider: 'generic',
+        sourceKey: feedUrl,
+        sourceLabel: title || siteUrl || feedUrl,
+      })
+      .where(eq(rssInputs.inputId, inputId))
+  }
+
+  await syncInputToFeeds(params.userId, inputId)
+
+  return { inputId, feedUrl }
+}
+
+export async function ensureTelegramPublicChannelInput(params: {
+  userId: string
+  channel: string
+  channelTitle?: string | null
+}) {
+  const db = getDb(env.DATABASE_URL)
+  const [settings] = await db
+    .select({ fetchIntervalMinutes: aiSettings.fetchIntervalMinutes })
+    .from(aiSettings)
+    .where(eq(aiSettings.userId, params.userId))
+    .limit(1)
+
+  const channelUsername = normalizeTelegramChannelUsername(params.channel)
+  const channelTitle = params.channelTitle?.trim() || null
+  const siteUrl = `https://t.me/${channelUsername}`
+
+  const [existing] = await db
+    .select({
+      inputId: inputs.id,
+    })
+    .from(inputs)
+    .innerJoin(telegramInputs, eq(telegramInputs.inputId, inputs.id))
+    .where(and(
+      eq(inputs.userId, params.userId),
+      eq(inputs.provider, 'telegram'),
+      eq(inputs.kind, 'public_channel'),
+      eq(telegramInputs.channelUsername, channelUsername),
+    ))
+    .limit(1)
+
+  let inputId = existing?.inputId || null
+
+  if (!inputId) {
+    const [createdInput] = await db
+      .insert(inputs)
+      .values({
+        userId: params.userId,
+        provider: 'telegram',
+        kind: 'public_channel',
+        name: `@${channelUsername}`,
+        pollIntervalMinutes: settings?.fetchIntervalMinutes ?? 15,
+      })
+      .returning({ id: inputs.id })
+
+    inputId = createdInput.id
+    await db.insert(telegramInputs).values({
+      inputId,
+      channelUsername,
+      channelTitle,
+      siteUrl,
+    })
+  } else {
+    await db
+      .update(inputs)
+      .set({
+        name: `@${channelUsername}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(inputs.id, inputId))
+
+    await db
+      .update(telegramInputs)
+      .set({
+        channelTitle,
+        siteUrl,
+      })
+      .where(eq(telegramInputs.inputId, inputId))
+  }
+
+  await syncInputToFeeds(params.userId, inputId)
+
+  return { inputId, channelUsername }
 }

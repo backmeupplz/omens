@@ -79,6 +79,14 @@ export const redditRssInputCreateSchema = z.object({
   timeRange: z.enum(redditRssTimeRanges).optional().default('week'),
 })
 
+export const telegramChannelInputCreateSchema = z.object({
+  channel: z.string().trim().min(3).max(256),
+})
+
+export const genericRssInputCreateSchema = z.object({
+  feedUrl: z.string().trim().url().max(2048),
+})
+
 export const reportEmailSubscribeSchema = z.object({
   email: z.string().trim().email(),
 })

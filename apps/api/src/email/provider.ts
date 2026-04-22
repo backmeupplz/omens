@@ -20,12 +20,14 @@ export async function sendEmail(params: {
   subject: string
   react: ReactElement
   text: string
+  headers?: Record<string, string>
 }) {
   const resend = getResendClient()
   const html = await render(params.react)
   const { data, error } = await resend.emails.send({
     from: env.EMAIL_FROM,
     replyTo: env.EMAIL_REPLY_TO || undefined,
+    headers: params.headers,
     to: [params.to],
     subject: params.subject,
     html,

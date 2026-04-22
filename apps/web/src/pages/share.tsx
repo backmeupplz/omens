@@ -3,7 +3,7 @@ import { api } from '../helpers/api'
 import { SharePromoArticle } from '../helpers/share-promo'
 import { NewspaperShell, useNewspaperActive } from '../helpers/newspaper-shell'
 import { Spinner } from '../helpers/spinner'
-import { NewspaperReportPage, TweetCard, type TimelineItem, type Tweet } from './feed'
+import { NewspaperReportPage, RedditCard, RssCard, TelegramCard, TweetCard, type TimelineItem, type Tweet } from './feed'
 
 export function SharePage({ handle, tweetId }: { handle: string; tweetId: string }) {
   useNewspaperActive()
@@ -55,6 +55,66 @@ export function SharePage({ handle, tweetId }: { handle: string; tweetId: string
           <div class="np-page-grid np-share-promo-section">
             <SharePromoArticle />
           </div>
+        </div>
+      </div>
+    </NewspaperShell>
+  )
+}
+
+export function ItemSharePage({ id }: { id: string }) {
+  useNewspaperActive()
+  const [item, setItem] = useState<TimelineItem | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api<{ item: TimelineItem }>(`/item/${id}/data`)
+      .then((d) => setItem(d.item))
+      .catch((e) => setError(e instanceof Error ? e.message : 'Post not found'))
+      .finally(() => setLoading(false))
+  }, [id])
+
+  if (loading) {
+    return (
+      <NewspaperShell showMeta={false}>
+        <div class="mx-auto w-full max-w-[34rem] min-h-[18rem]">
+          <Spinner />
+        </div>
+      </NewspaperShell>
+    )
+  }
+
+  if (error || !item) {
+    return (
+      <NewspaperShell showMeta={false}>
+        <div class="mx-auto w-full max-w-[34rem]">
+          <article class="np-article np-article-lead">
+            <div class="flex flex-col items-center justify-center gap-4 py-20 text-center">
+              <p class="np-empty-copy">This post could not be found.</p>
+            </div>
+          </article>
+          <div class="np-page-grid np-share-promo-section">
+            <SharePromoArticle />
+          </div>
+        </div>
+      </NewspaperShell>
+    )
+  }
+
+  return (
+    <NewspaperShell showMeta={false}>
+      <div class="mx-auto w-full max-w-[34rem]">
+        <div class="mx-auto w-full">
+          {item.provider === 'x'
+            ? <TweetCard tweet={item.payload} embedded suppressAutoEmbeds />
+            : item.provider === 'reddit'
+              ? <RedditCard item={item} suppressAutoEmbeds />
+              : item.provider === 'rss'
+                ? <RssCard item={item} />
+                : <TelegramCard item={item} suppressAutoEmbeds />}
+        </div>
+        <div class="np-page-grid np-share-promo-section">
+          <SharePromoArticle />
         </div>
       </div>
     </NewspaperShell>

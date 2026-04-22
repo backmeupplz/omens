@@ -3,6 +3,7 @@ import { aiScoringFeeds, getDb } from '@omens/db'
 import { and, desc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { reportEmailFeedSchema, reportEmailSubscribeSchema } from '@omens/shared'
+import { z } from 'zod'
 import env from '../env'
 import { getDemoUserId } from '../helpers/demo'
 import { clientIp } from '../helpers/http'
@@ -12,13 +13,19 @@ import {
   getAccountReportEmailStatus,
   confirmReportEmailSubscription,
   resendAccountReportEmailConfirmation,
+  sendLatestReportTestEmail,
   unsubscribeReportEmailSubscription,
   upsertPublicDemoReportSubscription,
 } from '../email/service'
 import { isEmailFeatureEnabled } from '../email/provider'
+import { emailIcons } from '../email/icons'
 import type { AppEnv } from '../middleware/auth'
 
 const emailRouter = new Hono<AppEnv>()
+const sendLatestReportTestSchema = z.object({
+  feedId: z.string().min(1),
+  email: z.string().email().optional(),
+})
 
 function htmlPage(title: string, body: string) {
   return `<!doctype html>
@@ -116,6 +123,16 @@ async function getOwnedFeed(userId: string, feedId: string) {
 
   return feed || null
 }
+
+emailRouter.get('/icons/:name{[a-z]+\\.svg}', (c) => {
+  const param = c.req.param('name')
+  const name = param.replace(/\.svg$/, '') as keyof typeof emailIcons
+  const body = emailIcons[name]
+  if (!body) return c.text('Not found', 404)
+  c.header('Content-Type', 'image/svg+xml')
+  c.header('Cache-Control', 'public, max-age=2592000, immutable')
+  return c.body(body)
+})
 
 emailRouter.get('/demo/meta', async (c) => {
   const target = isEmailFeatureEnabled() ? await getDemoSubscriptionTarget() : null
@@ -218,6 +235,46 @@ emailRouter.post('/me/feed-subscription/resend-confirmation', zValidator('json',
   })
 
   return c.json({ ok: true, ...status })
+})
+
+emailRouter.post('/me/dev/send-latest-report', zValidator('json', sendLatestReportTestSchema), async (c) => {
+  if (process.env.NODE_ENV === 'production') return c.json({ error: 'Not found' }, 404)
+  if (!isEmailFeatureEnabled()) return c.json({ error: 'Email feature not available' }, 404)
+
+  const user = c.get('user')
+  const { feedId, email } = c.req.valid('json')
+  const feed = await getOwnedFeed(user.id, feedId)
+  if (!feed) return c.json({ error: 'Feed not found' }, 404)
+
+  const result = await sendLatestReportTestEmail({
+    ownerUserId: user.id,
+    feedId: feed.id,
+    toEmail: email,
+  })
+
+  return c.json({ ok: true, ...result })
+})
+
+emailRouter.post('/dev/send-demo-report', async (c) => {
+  if (process.env.NODE_ENV === 'production') return c.json({ error: 'Not found' }, 404)
+  if (!isEmailFeatureEnabled()) return c.json({ error: 'Email feature not available' }, 404)
+  if (!env.DEMO_USER_EMAIL) return c.json({ error: 'DEMO_USER_EMAIL is not configured' }, 404)
+
+  const target = await getDemoSubscriptionTarget()
+  if (!target) return c.json({ error: 'Demo feed not available' }, 404)
+
+  try {
+    const result = await sendLatestReportTestEmail({
+      ownerUserId: target.ownerUserId,
+      feedId: target.feedId,
+      toEmail: env.DEMO_USER_EMAIL,
+    })
+
+    return c.json({ ok: true, feedName: target.feedName, ...result })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not send demo email'
+    return c.json({ error: message }, 503)
+  }
 })
 
 emailRouter.get('/confirm', async (c) => {

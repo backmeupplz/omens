@@ -11,6 +11,8 @@ import {
   inputs,
   promptChanges,
   redditPosts,
+  rssPosts,
+  telegramPosts,
   xPosts,
 } from '@omens/db'
 import {
@@ -49,6 +51,8 @@ type ItemRow = {
   contentItem: typeof contentItems.$inferSelect
   xPost: typeof xPosts.$inferSelect | null
   redditPost: typeof redditPosts.$inferSelect | null
+  rssPost: typeof rssPosts.$inferSelect | null
+  telegramPost: typeof telegramPosts.$inferSelect | null
 }
 
 // --- Helpers ---
@@ -204,6 +208,37 @@ function mapRowToAiItem(row: ItemRow): ItemForAI | null {
     }
   }
 
+  if (row.contentItem.provider === 'rss' && row.rssPost) {
+    return {
+      id: row.contentItem.id,
+      provider: 'rss',
+      feedTitle: row.rssPost.feedTitle,
+      authorName: row.rssPost.authorName,
+      title: row.rssPost.title,
+      body: row.rssPost.body,
+      media: row.rssPost.media,
+      domain: row.rssPost.domain,
+      permalink: row.rssPost.permalink,
+      publishedAt: row.contentItem.publishedAt,
+    }
+  }
+
+  if (row.contentItem.provider === 'telegram' && row.telegramPost) {
+    return {
+      id: row.contentItem.id,
+      provider: 'telegram',
+      channelUsername: row.telegramPost.channelUsername,
+      channelTitle: row.telegramPost.channelTitle,
+      content: row.telegramPost.content,
+      media: row.telegramPost.media,
+      domain: row.telegramPost.domain,
+      linkUrl: row.telegramPost.linkUrl,
+      viewCount: row.telegramPost.viewCount,
+      postType: row.telegramPost.postType,
+      publishedAt: row.contentItem.publishedAt,
+    }
+  }
+
   return null
 }
 
@@ -213,6 +248,18 @@ function summarizeItemForFeedback(item: TimelineItem | null) {
     return {
       label: `@${item.payload.authorHandle}`,
       preview: item.payload.content.slice(0, 200),
+    }
+  }
+  if (item.provider === 'telegram') {
+    return {
+      label: `@${item.payload.channelUsername}`,
+      preview: (item.payload.content || item.payload.linkUrl || item.payload.permalink).slice(0, 200),
+    }
+  }
+  if (item.provider === 'rss') {
+    return {
+      label: item.payload.feedTitle || item.payload.domain || 'Feed',
+      preview: (item.payload.body || item.payload.title || item.payload.permalink).slice(0, 200),
     }
   }
   return {
@@ -820,10 +867,14 @@ export async function scoreUnscoredTweets(userId: string, feedId?: string | null
       contentItem: contentItems,
       xPost: xPosts,
       redditPost: redditPosts,
+      rssPost: rssPosts,
+      telegramPost: telegramPosts,
     })
     .from(contentItems)
     .leftJoin(xPosts, eq(xPosts.contentItemId, contentItems.id))
     .leftJoin(redditPosts, eq(redditPosts.contentItemId, contentItems.id))
+    .leftJoin(rssPosts, eq(rssPosts.contentItemId, contentItems.id))
+    .leftJoin(telegramPosts, eq(telegramPosts.contentItemId, contentItems.id))
     .where(and(
       scope,
       ...(feed.scoreFromAt ? [gte(contentItems.publishedAt, feed.scoreFromAt)] : []),
@@ -1039,11 +1090,15 @@ export async function generateReportForUser(userId: string, feedId?: string | nu
       contentItem: contentItems,
       xPost: xPosts,
       redditPost: redditPosts,
+      rssPost: rssPosts,
+      telegramPost: telegramPosts,
       score: itemScores.score,
     })
     .from(contentItems)
     .leftJoin(xPosts, eq(xPosts.contentItemId, contentItems.id))
     .leftJoin(redditPosts, eq(redditPosts.contentItemId, contentItems.id))
+    .leftJoin(rssPosts, eq(rssPosts.contentItemId, contentItems.id))
+    .leftJoin(telegramPosts, eq(telegramPosts.contentItemId, contentItems.id))
     .innerJoin(itemScores, and(
       eq(itemScores.contentItemId, contentItems.id),
       eq(itemScores.userId, userId),

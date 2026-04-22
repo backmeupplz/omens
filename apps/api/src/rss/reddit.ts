@@ -1,4 +1,4 @@
-import type { RedditPostRecord } from '../reddit/api'
+import type { RedditPostRecord } from '../reddit/public'
 
 export type RedditRssListingType = 'hot' | 'new' | 'top'
 export type RedditRssTimeRange = 'day' | 'week' | 'month' | 'year' | 'all'
