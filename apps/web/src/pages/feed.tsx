@@ -1252,9 +1252,14 @@ function OgEmbed({
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const [card, setCard] = useState<CardData | null>(null)
-  const [attempted, setAttempted] = useState(false)
+  const [status, setStatus] = useState<'idle' | 'loading' | 'done'>('idle')
   const [visible, setVisible] = useState(false)
   const targetUrl = url || text.match(/https?:\/\/[^\s]+/)?.[0] || null
+
+  useEffect(() => {
+    setCard(null)
+    setStatus('idle')
+  }, [targetUrl])
 
   useEffect(() => {
     const node = rootRef.current
@@ -1269,26 +1274,39 @@ function OgEmbed({
 
     observer.observe(node)
     return () => observer.disconnect()
-  }, [text])
+  }, [targetUrl])
 
   useEffect(() => {
     if (!targetUrl || !visible) return
-    setAttempted(true)
+    let cancelled = false
+    setStatus('loading')
     api<CardData | null>(`/og?url=${encodeURIComponent(targetUrl)}`)
       .then((data) => {
+        if (cancelled) return
         if (data) {
           setCard(data)
           onLoaded()
           onResolved?.(true)
         } else {
+          setCard(null)
           onResolved?.(false)
         }
+        setStatus('done')
       })
-      .catch(() => onResolved?.(false))
+      .catch(() => {
+        if (cancelled) return
+        setCard(null)
+        setStatus('done')
+        onResolved?.(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [targetUrl, visible, onLoaded, onResolved])
 
   if (!card) {
-    return attempted ? (
+    return status === 'loading' ? (
       <div ref={rootRef} class="np-skeleton-shell mt-2 overflow-hidden rounded-xl border">
         <div class="np-link-thumb np-skeleton" />
         <div class="p-2.5 space-y-1.5">
@@ -1297,7 +1315,9 @@ function OgEmbed({
           <div class="np-skeleton-line h-3 w-[68%] rounded opacity-60" />
         </div>
       </div>
-    ) : <div ref={rootRef} class="mt-2 h-px w-full" />
+    ) : status === 'done'
+      ? null
+      : <div ref={rootRef} class="mt-2 h-px w-full" />
   }
   return <LinkCard data={card} />
 }

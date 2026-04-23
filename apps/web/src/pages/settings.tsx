@@ -354,6 +354,7 @@ type InputSummary = {
     sourceProvider?: string | null
     sourceKey?: string | null
     sourceLabel?: string | null
+    title?: string | null
     listingType?: string | null
     timeRange?: string | null
     feedUrl?: string | null
