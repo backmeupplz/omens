@@ -677,6 +677,12 @@ interface TelegramMediaPayload {
     fileName: string
     fileSizeLabel: string | null
   }>
+  reply?: {
+    authorName?: string | null
+    content?: string | null
+    url?: string | null
+    thumbnail?: string | null
+  } | null
 }
 
 interface TelegramFeedPayload {
@@ -2191,17 +2197,30 @@ function parseRedditMedia(media: string | null, previewUrl: string | null, thumb
   return items
 }
 
-function parseTelegramMedia(media: string | null, previewUrl: string | null, thumbnailUrl: string | null): TelegramMediaPayload {
+function parseTelegramMedia(
+  media: string | null,
+  previewUrl: string | null,
+  thumbnailUrl: string | null,
+  postType?: string | null,
+): TelegramMediaPayload {
   const parsed = safeParse<TelegramMediaPayload>(media) || {}
   const items = Array.isArray(parsed.items) ? parsed.items.filter((item) => !!item?.url && !!item?.thumbnail) : []
   const files = Array.isArray(parsed.files) ? parsed.files.filter((file) => !!file?.url && !!file?.fileName) : []
+  const reply = parsed.reply && (parsed.reply.content || parsed.reply.authorName || parsed.reply.url || parsed.reply.thumbnail)
+    ? {
+        authorName: parsed.reply.authorName || null,
+        content: parsed.reply.content || null,
+        url: parsed.reply.url || null,
+        thumbnail: parsed.reply.thumbnail || null,
+      }
+    : null
 
-  if (items.length === 0) {
+  if (items.length === 0 && (postType === 'photo' || postType === 'album')) {
     const fallback = previewUrl || thumbnailUrl
     if (fallback) items.push({ type: 'photo', url: fallback, thumbnail: fallback })
   }
 
-  return { items, files }
+  return { items, files, reply }
 }
 
 function parseRssMedia(media: string | null, previewUrl: string | null, thumbnailUrl: string | null): MediaItem[] {
@@ -2474,6 +2493,48 @@ export function RedditCard({
   )
 }
 
+function TelegramReplyPreview({
+  reply,
+}: {
+  reply: NonNullable<TelegramMediaPayload['reply']>
+}) {
+  const content = reply.content?.trim() || null
+  const authorName = reply.authorName?.trim() || 'Quoted post'
+  const thumbnail = reply.thumbnail ? mediaThumbnailUrl(reply.thumbnail) : null
+  const card = (
+    <div class="np-post-quote mt-2 overflow-hidden rounded-xl p-3">
+      <div class="flex items-start gap-3">
+        {thumbnail && (
+          <img
+            src={thumbnail}
+            alt=""
+            class="h-12 w-12 shrink-0 rounded-md object-cover"
+            loading="lazy"
+          />
+        )}
+        <div class="min-w-0">
+          <p class="np-copy-strong text-sm font-medium">{authorName}</p>
+          {content && <p class="np-copy-muted mt-1 line-clamp-4 break-words text-sm">{content}</p>}
+        </div>
+      </div>
+    </div>
+  )
+
+  if (!reply.url) return card
+
+  return (
+    <a
+      href={reply.url}
+      target="_blank"
+      rel="noopener"
+      class="block"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {card}
+    </a>
+  )
+}
+
 export function TelegramCard({
   item,
   nudge,
@@ -2495,25 +2556,32 @@ export function TelegramCard({
   const [ogResolved, setOgResolved] = useState(false)
   const [ogAvailable, setOgAvailable] = useState(false)
   const mediaPayload = useMemo(
-    () => parseTelegramMedia(post.media, post.previewUrl, post.thumbnailUrl),
-    [post.media, post.previewUrl, post.thumbnailUrl],
+    () => parseTelegramMedia(post.media, post.previewUrl, post.thumbnailUrl, post.postType),
+    [post.media, post.previewUrl, post.thumbnailUrl, post.postType],
   )
   const mediaItems = mediaPayload.items || []
   const files = mediaPayload.files || []
+  const reply = mediaPayload.reply || null
   const body = post.content || ''
   const truncatedBody = truncatePostText(body, { maxChars: DEFAULT_POST_MAX_CHARS, maxLines: 12 })
   const bodyNeedsTruncation = truncatedBody.truncated
   const visibleBody = bodyNeedsTruncation && !bodyExpanded ? truncatedBody.text : body
   const bodyParagraphs = splitTextParagraphs(visibleBody)
-  const linkCardData = post.linkUrl && post.domain
+  const linkDomain = post.domain || getUrlHostname(post.linkUrl)
+  const linkCardData = post.linkUrl && linkDomain
     ? {
-        title: post.channelTitle || `@${post.channelUsername}`,
-        description: post.content || null,
-        thumbnail: post.previewUrl || post.thumbnailUrl || mediaItems[0]?.thumbnail || null,
-        domain: post.domain,
+        title: linkDomain,
+        description: null,
+        thumbnail: null,
+        domain: linkDomain,
         url: post.linkUrl,
       }
     : null
+
+  useEffect(() => {
+    setOgResolved(false)
+    setOgAvailable(false)
+  }, [post.telegramPostId, post.linkUrl])
 
   return (
     <article class="np-tweet relative overflow-hidden">
@@ -2525,6 +2593,8 @@ export function TelegramCard({
             {post.publishedAt && <span class="np-copy-muted">{timeAgo(post.publishedAt)}</span>}
           </div>
         </div>
+
+        {reply && <TelegramReplyPreview reply={reply} />}
 
         {bodyParagraphs.length > 0 && (
           <div>
@@ -2572,6 +2642,7 @@ export function TelegramCard({
 
         {post.linkUrl && mediaItems.length === 0 && !suppressAutoEmbeds && (
           <OgEmbed
+            key={post.linkUrl}
             text={post.content || ''}
             url={post.linkUrl}
             onLoaded={() => setOgAvailable(true)}
@@ -3226,9 +3297,13 @@ function estimateFeedItemHeight(item: TimelineItem | Tweet) {
       return 220 + Math.min(220, Math.ceil(bodyLength / 3)) + (media.length > 0 ? 180 : 0)
     }
     if (item.provider === 'telegram') {
-      const media = parseTelegramMedia(item.payload.media, item.payload.previewUrl, item.payload.thumbnailUrl)
+      const media = parseTelegramMedia(item.payload.media, item.payload.previewUrl, item.payload.thumbnailUrl, item.payload.postType)
       const bodyLength = item.payload.content?.length || 0
-      return 220 + Math.min(220, Math.ceil(bodyLength / 3)) + (media.items?.length ? 180 : 0) + (media.files?.length ? 80 : 0)
+      return 220
+        + Math.min(220, Math.ceil(bodyLength / 3))
+        + (media.reply ? 88 : 0)
+        + (media.items?.length ? 180 : 0)
+        + (media.files?.length ? 80 : 0)
     }
     return estimateFeedTweetHeight(item.payload)
   }
@@ -3495,11 +3570,12 @@ function estimateTimelineItemHeight(item: TimelineItem | undefined) {
     return height
   }
   if (item.provider === 'telegram') {
-    const media = parseTelegramMedia(item.payload.media, item.payload.previewUrl, item.payload.thumbnailUrl)
+    const media = parseTelegramMedia(item.payload.media, item.payload.previewUrl, item.payload.thumbnailUrl, item.payload.postType)
     const bodyLength = item.payload.content?.length || 0
     const hasLinkCard = media.items?.length === 0 && !!item.payload.linkUrl
     let height = 210
     height += Math.min(240, Math.ceil(bodyLength / 2.8))
+    if (media.reply) height += 90
     if (media.items && media.items.length > 0) height += 250
     else if (hasLinkCard) height += 150
     if (media.files && media.files.length > 0) height += Math.min(160, media.files.length * 48)

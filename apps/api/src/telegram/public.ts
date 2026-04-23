@@ -10,6 +10,13 @@ export type TelegramFileItem = {
   fileSizeLabel: string | null
 }
 
+export type TelegramReplyItem = {
+  authorName: string | null
+  content: string | null
+  url: string | null
+  thumbnail: string | null
+}
+
 export type TelegramPostRecord = {
   telegramPostId: string
   channelUsername: string
@@ -188,6 +195,35 @@ function extractPreviewImage(block: string) {
   return normalizeUrl(match?.[1] || null)
 }
 
+function extractReply(block: string): TelegramReplyItem | null {
+  const match = block.match(/<a[^>]*class="[^"]*tgme_widget_message_reply[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i)
+  if (!match) return null
+
+  const replyHtml = match[2] || ''
+  const authorName = stripHtml(
+    replyHtml.match(/tgme_widget_message_author_name[^>]*>([\s\S]*?)<\/span>/i)?.[1]
+    || replyHtml.match(/tgme_widget_message_author[^>]*>([\s\S]*?)<\/div>/i)?.[1]
+    || null,
+  )
+  const content = stripHtml(
+    replyHtml.match(/<div class="tgme_widget_message_text js-message_reply_text"[^>]*>([\s\S]*?)<\/div>/i)?.[1]
+    || null,
+  )
+  const url = normalizeUrl(match[1])
+  const thumbnail = normalizeUrl(
+    replyHtml.match(/tgme_widget_message_reply_thumb[^>]*style="[^"]*url\(['"]?([^'")]+)['"]?\)/i)?.[1]
+    || null,
+  )
+
+  if (!authorName && !content && !url && !thumbnail) return null
+  return {
+    authorName,
+    content,
+    url,
+    thumbnail,
+  }
+}
+
 function parseMedia(block: string) {
   const mediaItems: TelegramMediaItem[] = []
   const fileItems: TelegramFileItem[] = []
@@ -286,13 +322,15 @@ function parseMessageBlock(block: string, pageChannelTitle: string | null): Tele
   const linkUrl = hrefCandidates[0] || null
   const domain = getHostname(linkUrl)
   const media = parseMedia(block)
+  const reply = extractReply(block)
   const previewImage = extractPreviewImage(block)
   const previewUrl = media.previewUrl || previewImage
   const viewCount = parseCompactCount(stripHtml(block.match(/tgme_widget_message_views[^>]*>([\s\S]*?)<\/span>/i)?.[1] || null))
-  const mediaPayload = media.mediaItems.length > 0 || media.fileItems.length > 0
+  const mediaPayload = media.mediaItems.length > 0 || media.fileItems.length > 0 || reply
     ? JSON.stringify({
         items: media.mediaItems,
         files: media.fileItems,
+        reply,
       })
     : null
   const channelTitle = pageChannelTitle
@@ -373,9 +411,11 @@ export async function fetchTelegramChannelPosts(params: {
   channelUsername: string
   stopAtMessageId?: number | null
   maxPages?: number
+  overlapCount?: number
 }) {
   const maxPages = Math.max(1, params.maxPages ?? 10)
   const stopAtMessageId = params.stopAtMessageId && params.stopAtMessageId > 0 ? params.stopAtMessageId : null
+  let remainingOverlap = Math.max(0, params.overlapCount ?? 0)
   const collected: TelegramPostRecord[] = []
   const seenIds = new Set<number>()
   let beforeMessageId: number | null = null
@@ -394,8 +434,11 @@ export async function fetchTelegramChannelPosts(params: {
 
     for (const post of page.posts) {
       if (stopAtMessageId != null && post.messageId <= stopAtMessageId) {
-        reachedStop = true
-        break
+        if (remainingOverlap <= 0) {
+          reachedStop = true
+          break
+        }
+        remainingOverlap -= 1
       }
       if (seenIds.has(post.messageId)) continue
       seenIds.add(post.messageId)

@@ -828,6 +828,7 @@ async function fetchTelegramChannelForRows(rows: UniversalTelegramInputRow[]) {
     channelUsername: rows[0]!.channelUsername,
     stopAtMessageId: oldestSeenMessageId,
     maxPages: oldestSeenMessageId == null ? 1 : 10,
+    overlapCount: oldestSeenMessageId == null ? 0 : 20,
   })
 }
 
@@ -893,7 +894,7 @@ async function fetchTelegramInput(row: UniversalTelegramInputRow) {
     const existingSet = new Set(existingItems.map((item) => item.externalId))
     const newPosts = fetched.posts.filter((post) => row.latestSeenMessageId == null || post.messageId > row.latestSeenMessageId)
 
-    await upsertUniversalTelegramData(newPosts.map((post) => ({ post, inputIds: [row.inputId] })))
+    await upsertUniversalTelegramData(fetched.posts.map((post) => ({ post, inputIds: [row.inputId] })))
     await updateFetchedStateForTelegramInputs([row], now, fetched.channelTitle, fetched.newestMessageId)
 
     const newCount = newPosts.filter((post) => !existingSet.has(post.telegramPostId)).length
@@ -1062,25 +1063,10 @@ async function fetchSharedTelegramInputGroup(rows: UniversalTelegramInputRow[]) 
       : []
     const existingSet = new Set(existingItems.map((item) => item.externalId))
 
-    const targetInputIdsByPostId = new Map<string, string[]>()
-    for (const row of rows) {
-      for (const post of fetched.posts) {
-        if (row.latestSeenMessageId != null && post.messageId <= row.latestSeenMessageId) continue
-        const existingTargets = targetInputIdsByPostId.get(post.telegramPostId)
-        if (existingTargets) {
-          existingTargets.push(row.inputId)
-        } else {
-          targetInputIdsByPostId.set(post.telegramPostId, [row.inputId])
-        }
-      }
-    }
-
-    const targetPosts = fetched.posts
-      .filter((post) => targetInputIdsByPostId.has(post.telegramPostId))
-      .map((post) => ({
-        post,
-        inputIds: targetInputIdsByPostId.get(post.telegramPostId)!,
-      }))
+    const targetPosts = fetched.posts.map((post) => ({
+      post,
+      inputIds: rows.map((row) => row.inputId),
+    }))
 
     await upsertUniversalTelegramData(targetPosts)
     await updateFetchedStateForTelegramInputs(rows, now, fetched.channelTitle, fetched.newestMessageId)
