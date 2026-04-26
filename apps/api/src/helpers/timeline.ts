@@ -39,6 +39,7 @@ export interface TimelineTweetPayload {
   replyToHandle: string | null
   replyToTweetId: string | null
   hasSelfThreadReply: boolean
+  selfThreadTweetCount: number
   parentTweet: TimelineTweetPayload | null
   url: string
   likes: number
@@ -163,6 +164,10 @@ function uniqueXPostIds(ids: Array<string | null | undefined>) {
   return [...new Set(ids.filter((id): id is string => !!id))]
 }
 
+function sameHandle(a: string | null | undefined, b: string | null | undefined) {
+  return !!a && !!b && a.toLowerCase() === b.toLowerCase()
+}
+
 async function resolveParentXPosts(rows: TimelineXRow[]) {
   const pendingBase = rows.flatMap((row) => (row.xPost ? [row.xPost.replyToXPostId] : []))
   if (pendingBase.length === 0) return new Map<string, TimelineParentRow>()
@@ -222,7 +227,7 @@ async function resolveSelfThreadReplyIds(rows: TimelineXRow[]) {
   for (const child of children) {
     const parentId = child.replyToXPostId
     if (!parentId) continue
-    if (parentAuthorById.get(parentId) === child.authorHandle) {
+    if (sameHandle(parentAuthorById.get(parentId), child.authorHandle)) {
       ids.add(parentId)
     }
   }
@@ -230,10 +235,119 @@ async function resolveSelfThreadReplyIds(rows: TimelineXRow[]) {
   return ids
 }
 
+async function resolveSelfThreadTweetCounts(
+  rows: TimelineXRow[],
+  parentMap: Map<string, TimelineParentRow>,
+) {
+  const visibleTweets = rows
+    .filter((row) => !!row.xPost)
+    .map((row) => ({ contentItem: row.contentItem, xPost: row.xPost! }))
+  const knownRows = new Map<string, TimelineParentRow>()
+
+  for (const row of visibleTweets) {
+    knownRows.set(row.xPost.xPostId, row)
+  }
+  for (const row of parentMap.values()) {
+    knownRows.set(row.xPost.xPostId, row)
+  }
+
+  if (knownRows.size === 0) return new Map<string, number>()
+
+  const db = getDb()
+  const seenAsParent = new Set<string>()
+  let pendingParentIds = [...knownRows.keys()]
+
+  while (pendingParentIds.length > 0) {
+    const batch = pendingParentIds.filter((id) => !seenAsParent.has(id))
+    if (batch.length === 0) break
+    batch.forEach((id) => seenAsParent.add(id))
+
+    const children = await db
+      .select({
+        contentItem: contentItems,
+        xPost: xPosts,
+      })
+      .from(xPosts)
+      .innerJoin(contentItems, eq(contentItems.id, xPosts.contentItemId))
+      .where(inArray(xPosts.replyToXPostId, batch))
+
+    const nextIds: string[] = []
+    for (const child of children) {
+      const parentId = child.xPost.replyToXPostId
+      if (!parentId) continue
+
+      const parent = knownRows.get(parentId)
+      if (!parent) continue
+      if (
+        !sameHandle(child.xPost.authorHandle, parent.xPost.authorHandle)
+        || !sameHandle(child.xPost.replyToHandle, parent.xPost.authorHandle)
+      ) {
+        continue
+      }
+
+      if (!knownRows.has(child.xPost.xPostId)) {
+        knownRows.set(child.xPost.xPostId, child)
+        nextIds.push(child.xPost.xPostId)
+      }
+    }
+
+    pendingParentIds = nextIds
+  }
+
+  const neighbors = new Map<string, Set<string>>()
+  const addEdge = (a: string, b: string) => {
+    if (!neighbors.has(a)) neighbors.set(a, new Set())
+    if (!neighbors.has(b)) neighbors.set(b, new Set())
+    neighbors.get(a)!.add(b)
+    neighbors.get(b)!.add(a)
+  }
+
+  for (const row of knownRows.values()) {
+    const parentId = row.xPost.replyToXPostId
+    if (!parentId) continue
+
+    const parent = knownRows.get(parentId)
+    if (!parent) continue
+    if (
+      sameHandle(row.xPost.authorHandle, parent.xPost.authorHandle)
+      && sameHandle(row.xPost.replyToHandle, parent.xPost.authorHandle)
+    ) {
+      addEdge(parentId, row.xPost.xPostId)
+    }
+  }
+
+  const counts = new Map<string, number>()
+  const seen = new Set<string>()
+  for (const id of knownRows.keys()) {
+    if (seen.has(id)) continue
+
+    const component: string[] = []
+    const stack = [id]
+    seen.add(id)
+
+    while (stack.length > 0) {
+      const current = stack.pop()!
+      component.push(current)
+      for (const next of neighbors.get(current) || []) {
+        if (seen.has(next)) continue
+        seen.add(next)
+        stack.push(next)
+      }
+    }
+
+    for (const componentId of component) {
+      counts.set(componentId, component.length)
+    }
+  }
+
+  return counts
+}
+
 function serializeTweetPayload(
   row: TimelineParentRow,
   parentMap: Map<string, TimelineParentRow>,
   selfThreadReplyIds: Set<string>,
+  selfThreadTweetCounts: Map<string, number>,
   cache: Map<string, TimelineTweetPayload>,
 ): TimelineTweetPayload {
   const cached = cache.get(row.xPost.xPostId)
@@ -256,7 +370,8 @@ function serializeTweetPayload(
     replyToHandle: row.xPost.replyToHandle,
     replyToTweetId: row.xPost.replyToXPostId,
     hasSelfThreadReply: selfThreadReplyIds.has(row.xPost.xPostId),
-    parentTweet: parent ? serializeTweetPayload(parent, parentMap, selfThreadReplyIds, cache) : null,
+    selfThreadTweetCount: selfThreadTweetCounts.get(row.xPost.xPostId) ?? 1,
+    parentTweet: parent ? serializeTweetPayload(parent, parentMap, selfThreadReplyIds, selfThreadTweetCounts, cache) : null,
     url: row.contentItem.url,
     likes: row.xPost.likes,
     retweets: row.xPost.retweets,
@@ -271,6 +386,7 @@ function serializeTweetPayload(
 export async function serializeTimelineItems(rows: TimelineXRow[]): Promise<TimelineItem[]> {
   const parentMap = await resolveParentXPosts(rows)
   const selfThreadReplyIds = await resolveSelfThreadReplyIds(rows)
+  const selfThreadTweetCounts = await resolveSelfThreadTweetCounts(rows, parentMap)
   const tweetCache = new Map<string, TimelineTweetPayload>()
   const items: TimelineItem[] = []
   for (const row of rows) {
@@ -285,6 +401,7 @@ export async function serializeTimelineItems(rows: TimelineXRow[]): Promise<Time
           { contentItem: row.contentItem, xPost: row.xPost },
           parentMap,
           selfThreadReplyIds,
+          selfThreadTweetCounts,
           tweetCache,
         ),
       })

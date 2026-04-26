@@ -1,3 +1,5 @@
+import { decodeHtmlEntities } from '@omens/shared'
+
 export function fmt(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
@@ -16,24 +18,7 @@ export function timeAgo(dateStr: string): string {
 }
 
 export function decodeEntities(s: string): string {
-  return s.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, entity: string) => {
-    if (entity[0] === '#') {
-      const isHex = entity[1]?.toLowerCase() === 'x'
-      const codePoint = Number.parseInt(entity.slice(isHex ? 2 : 1), isHex ? 16 : 10)
-      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match
-    }
-
-    switch (entity) {
-      case 'amp': return '&'
-      case 'lt': return '<'
-      case 'gt': return '>'
-      case 'quot': return '"'
-      case 'apos':
-      case '#39': return '\''
-      case 'nbsp': return ' '
-      default: return match
-    }
-  })
+  return decodeHtmlEntities(s)
 }
 
 export function safeParse<T>(json: string | null | undefined): T | null {

@@ -5,6 +5,7 @@
 
 import { eq } from 'drizzle-orm'
 import { getDb, ogCache } from '@omens/db'
+import { decodeHtmlEntities } from '@omens/shared'
 import env from '../env'
 
 export interface OgData {
@@ -19,23 +20,7 @@ type OgCacheRow = typeof ogCache.$inferSelect
 
 function decodeEntities(value: string | null | undefined): string | null {
   if (!value) return null
-  return value.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, entity: string) => {
-    if (entity[0] === '#') {
-      const isHex = entity[1]?.toLowerCase() === 'x'
-      const codePoint = Number.parseInt(entity.slice(isHex ? 2 : 1), isHex ? 16 : 10)
-      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match
-    }
-
-    switch (entity) {
-      case 'amp': return '&'
-      case 'lt': return '<'
-      case 'gt': return '>'
-      case 'quot': return '"'
-      case 'apos': return '\''
-      case 'nbsp': return ' '
-      default: return match
-    }
-  })
+  return decodeHtmlEntities(value)
 }
 
 function cacheRowToOgData(cached: OgCacheRow): OgData {

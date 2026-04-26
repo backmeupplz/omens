@@ -1,36 +1,11 @@
 import type { RedditPostRecord } from '../reddit/public'
+import { decodeHtmlEntities } from '@omens/shared'
 
 export type RedditRssListingType = 'hot' | 'new' | 'top'
 export type RedditRssTimeRange = 'day' | 'week' | 'month' | 'year' | 'all'
 
 function decodeEntities(value: string | null | undefined) {
-  if (!value) return ''
-
-  let current = value
-  for (let i = 0; i < 3; i += 1) {
-    const next = current.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (_match, entity: string) => {
-      if (entity[0] === '#') {
-        const isHex = entity[1]?.toLowerCase() === 'x'
-        const codePoint = Number.parseInt(entity.slice(isHex ? 2 : 1), isHex ? 16 : 10)
-        return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : _match
-      }
-
-      switch (entity) {
-        case 'amp': return '&'
-        case 'lt': return '<'
-        case 'gt': return '>'
-        case 'quot': return '"'
-        case 'apos': return '\''
-        case 'nbsp': return ' '
-        default: return _match
-      }
-    })
-
-    if (next === current) break
-    current = next
-  }
-
-  return current
+  return decodeHtmlEntities(value)
 }
 
 function extractTag(block: string, tag: string) {

@@ -593,10 +593,12 @@ function buildSelfThreadChain(
   focalTweet: ParsedTweet,
 ): ParsedTweet[] {
   const authorHandle = focalTweet.authorHandle
+  const sameHandle = (a: string | null | undefined, b: string | null | undefined) =>
+    !!a && !!b && a.toLowerCase() === b.toLowerCase()
 
   // Filter to only same-author non-RT tweets
   const authorTweets = allTweets.filter(
-    (t) => t.authorHandle === authorHandle && !t.isRetweet,
+    (t) => sameHandle(t.authorHandle, authorHandle) && !t.isRetweet,
   )
 
   // Build parent->children map for chain walking
@@ -604,7 +606,7 @@ function buildSelfThreadChain(
   const childrenOf = new Map<string, ParsedTweet[]>()
   for (const t of authorTweets) {
     byId.set(t.tweetId, t)
-    if (t.replyToTweetId && t.replyToHandle === authorHandle) {
+    if (t.replyToTweetId && sameHandle(t.replyToHandle, authorHandle)) {
       const siblings = childrenOf.get(t.replyToTweetId) || []
       siblings.push(t)
       childrenOf.set(t.replyToTweetId, siblings)

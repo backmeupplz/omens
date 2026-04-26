@@ -487,7 +487,7 @@ function RemoteTweetDetailModal({
         onClose={onClose}
         forceExpandedText
         threadTweetId={tweetId}
-        forceShowThreadButton={(data?.thread.length || 0) > 1}
+        forceShowThreadButton={(data?.thread.length || 0) > 2}
       />
     )
     return typeof document !== 'undefined' ? createPortal(detailModal, document.body) : detailModal
@@ -631,6 +631,7 @@ export interface Tweet {
   replyToHandle: string | null
   replyToTweetId: string | null
   hasSelfThreadReply: boolean
+  selfThreadTweetCount: number
   parentTweet: Tweet | null
   url: string
   likes: number
@@ -763,11 +764,15 @@ interface FeedResponse<T> {
 function dedupThreads(tweets: Tweet[]): Tweet[] {
   const selfReplyParentIds = new Set<string>()
   for (const t of tweets) {
-    if (t.replyToTweetId && t.replyToHandle === t.authorHandle) {
+    if (t.replyToTweetId && sameHandle(t.replyToHandle, t.authorHandle)) {
       selfReplyParentIds.add(t.replyToTweetId)
     }
   }
   return tweets.filter((t) => !selfReplyParentIds.has(t.tweetId))
+}
+
+function sameHandle(a: string | null | undefined, b: string | null | undefined) {
+  return !!a && !!b && a.toLowerCase() === b.toLowerCase()
 }
 
 function getSelfThreadAncestors(tweet: Tweet): Tweet[] {
@@ -777,8 +782,8 @@ function getSelfThreadAncestors(tweet: Tweet): Tweet[] {
 
   while (
     current.parentTweet
-    && current.replyToHandle === current.authorHandle
-    && current.parentTweet.authorHandle === current.authorHandle
+    && sameHandle(current.replyToHandle, current.authorHandle)
+    && sameHandle(current.parentTweet.authorHandle, current.authorHandle)
     && !seen.has(current.parentTweet.tweetId)
   ) {
     chain.unshift(current.parentTweet)
@@ -810,6 +815,7 @@ function remoteTweetToTweet(tweet: RemoteTweet, parentTweet: Tweet | null): Twee
     replyToHandle: tweet.replyToHandle,
     replyToTweetId: tweet.replyToTweetId,
     hasSelfThreadReply: false,
+    selfThreadTweetCount: 1,
     parentTweet,
     url: tweet.url,
     likes: tweet.likes,
@@ -927,7 +933,7 @@ function EmbeddedTweet({ tweetId }: { tweetId: string }) {
             mediaUrls: t.media ? JSON.stringify(t.media) : null,
             isRetweet: null, card: t.card ? JSON.stringify(t.card) : null,
             quotedTweet: t.quotedTweet ? JSON.stringify(t.quotedTweet) : null,
-            replyToHandle: null, replyToTweetId: null, hasSelfThreadReply: false, parentTweet: null,
+            replyToHandle: null, replyToTweetId: null, hasSelfThreadReply: false, selfThreadTweetCount: 1, parentTweet: null,
             url: t.url, likes: t.likes || 0, retweets: t.retweets || 0,
             replies: t.replies || 0, views: 0, publishedAt: t.publishedAt || '',
           })
@@ -1841,7 +1847,7 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
   const [showDetail, setShowDetail] = useState(false)
   const [showDetailExpanded, setShowDetailExpanded] = useState(false)
   const [ogLoaded, setOgLoaded] = useState(false)
-  const isSelfThread = tweet.replyToHandle === tweet.authorHandle
+  const isSelfThread = sameHandle(tweet.replyToHandle, tweet.authorHandle)
   const selfThreadAncestors = isSelfThread ? getSelfThreadAncestors(tweet) : []
   const contextTweets = selfThreadAncestors.length > 0
     ? selfThreadAncestors
@@ -1851,7 +1857,9 @@ export function TweetCard({ tweet, nudge, onNudge, score, minScore, embedded, ex
   const replyCount = replyTarget.replies
   const replyContextTweetId = extractTweetIdFromUrl(tweet.url) || tweet.tweetId
   const threadTargetTweetId = threadTweetId || extractTweetIdFromUrl(tweet.url) || tweet.tweetId
-  const showThreadButton = !!threadTargetTweetId && (forceShowThreadButton || isSelfThread || tweet.hasSelfThreadReply)
+  const knownSelfThreadTweetCount = tweet.selfThreadTweetCount
+    || (isSelfThread ? selfThreadAncestors.length + 1 : tweet.hasSelfThreadReply ? 2 : 1)
+  const showThreadButton = !!threadTargetTweetId && (forceShowThreadButton || knownSelfThreadTweetCount > 2)
   const onOgLoaded = useCallback(() => setOgLoaded(true), [])
   const openDetail = useCallback((expandedText = false) => {
     if (embedded) return
@@ -2981,6 +2989,7 @@ function createFixtureTweet(overrides: Partial<Tweet> & Pick<Tweet, 'id' | 'twee
     replyToHandle: null,
     replyToTweetId: null,
     hasSelfThreadReply: false,
+    selfThreadTweetCount: 1,
     parentTweet: null,
     url: `https://x.com/${overrides.authorHandle}/status/${overrides.tweetId}`,
     likes: 1200,

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { decodeHtmlEntities } from '@omens/shared'
 
 export type GenericRssMediaItem = {
   type: 'photo' | 'video' | 'gif'
@@ -35,43 +36,7 @@ const RSS_HEADERS = {
 }
 
 function decodeEntities(value: string | null | undefined) {
-  if (!value) return ''
-
-  let current = value
-    .replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex: string) => {
-      const codePoint = Number.parseInt(hex, 16)
-      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : _match
-    })
-    .replace(/\\x([0-9a-fA-F]{2})/g, (_match, hex: string) => {
-      const codePoint = Number.parseInt(hex, 16)
-      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : _match
-    })
-    .replace(/\\\//g, '/')
-
-  for (let i = 0; i < 3; i += 1) {
-    const next = current.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, entity: string) => {
-      if (entity[0] === '#') {
-        const isHex = entity[1]?.toLowerCase() === 'x'
-        const codePoint = Number.parseInt(entity.slice(isHex ? 2 : 1), isHex ? 16 : 10)
-        return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match
-      }
-
-      switch (entity) {
-        case 'amp': return '&'
-        case 'lt': return '<'
-        case 'gt': return '>'
-        case 'quot': return '"'
-        case 'apos': return '\''
-        case 'nbsp': return ' '
-        default: return match
-      }
-    })
-
-    if (next === current) break
-    current = next
-  }
-
-  return current
+  return decodeHtmlEntities(value)
 }
 
 function normalizeUrl(value: string | null | undefined, base?: string | null) {
