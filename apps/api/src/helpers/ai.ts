@@ -68,6 +68,16 @@ const PROVIDER_BASE_URLS: Record<AiProvider, string> = {
   fireworks: 'https://api.fireworks.ai/inference/v1',
   ollama: 'http://localhost:11434',
   openrouter: 'https://openrouter.ai/api/v1',
+  mimo: 'https://token-plan-sgp.xiaomimimo.com/v1',
+}
+
+// MiMo models reason by default; this kwarg suppresses hidden chain-of-thought
+// so the token budget goes to the visible answer (saves metered tokens).
+function applyProviderTuning(config: AiConfig, body: Record<string, unknown>) {
+  if (config.provider === 'mimo') {
+    body.chat_template_kwargs = { enable_thinking: false }
+  }
+  return body
 }
 
 function getBaseUrl(config: AiConfig): string {
@@ -90,6 +100,7 @@ async function callOpenAICompatible(
   if (config.provider !== 'fireworks') {
     body.max_tokens = 8192
   }
+  applyProviderTuning(config, body)
   const res = await fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -235,6 +246,7 @@ async function* streamOpenAICompatible(config: AiConfig, messages: ChatMessage[]
   const base = getBaseUrl(config)
   const body: Record<string, unknown> = { model: config.model, messages, stream: true }
   if (config.provider !== 'fireworks') body.max_tokens = 8192
+  applyProviderTuning(config, body)
   const res = await fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },

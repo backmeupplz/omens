@@ -33,6 +33,7 @@ export const aiProviders = [
   'fireworks',
   'ollama',
   'openrouter',
+  'mimo',
 ] as const
 
 export type AiProvider = (typeof aiProviders)[number]

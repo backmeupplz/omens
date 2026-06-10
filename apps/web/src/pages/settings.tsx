@@ -1078,6 +1078,7 @@ const AI_PROVIDERS = [
   { id: 'fireworks', name: 'Fireworks AI' },
   { id: 'ollama', name: 'Ollama (local)' },
   { id: 'openrouter', name: 'OpenRouter' },
+  { id: 'mimo', name: 'Xiaomi MiMo' },
 ] as const
 
 function ThemeSection({ compact = false }: { compact?: boolean } = {}) {
