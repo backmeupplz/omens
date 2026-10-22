@@ -18,7 +18,7 @@ RUN cd apps/web && npx vite build
 # Build api (needs bun for bun build)
 FROM deps AS build-api
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip && \
-    rm -rf /var/lib/apt/lists/* && curl -fsSL https://bun.sh/install | bash
+    rm -rf /var/lib/apt/lists/* && curl -fsSL https://bun.sh/install | bash -s bun-v1.4.4
 COPY tsconfig.base.json ./
 COPY apps/api/ apps/api/
 COPY packages/shared/ packages/shared/
@@ -26,7 +26,7 @@ COPY packages/db/ packages/db/
 RUN cd apps/api && /root/.bun/bin/bun build src/index.ts --outdir dist --target bun
 
 # Runtime
-FROM oven/bun:1-slim AS runtime
+FROM oven/bun:1.4.4-slim AS runtime
 WORKDIR /app
 
 # Install curl-impersonate for X/Twitter TLS fingerprint impersonation
