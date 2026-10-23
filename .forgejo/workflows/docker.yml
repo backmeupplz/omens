@@ -47,9 +47,17 @@ jobs:
           git push
 
       - name: Point docker at the runner's Docker daemon
+        # The runner's dind daemon only accepts TLS clients holding its client certificate (repo secrets DIND_*)
+        env:
+          DIND_CA: ${{ secrets.DIND_CA }}
+          DIND_CERT: ${{ secrets.DIND_CERT }}
+          DIND_KEY: ${{ secrets.DIND_KEY }}
         run: |
-          g=$(awk '$2 == "00000000" { print $3; exit }' /proc/net/route)
-          echo "DOCKER_HOST=tcp://$((16#${g:6:2})).$((16#${g:4:2})).$((16#${g:2:2})).$((16#${g:0:2})):2375" >> "$GITHUB_ENV"
+          d=/tmp/dind-certs && mkdir -p "$d" && cd "$d"
+          printf '%s\n' "$DIND_CA" > ca.pem
+          printf '%s\n' "$DIND_CERT" > cert.pem
+          (umask 077 && printf '%s\n' "$DIND_KEY" > key.pem)
+          printf 'DOCKER_HOST=tcp://172.31.250.2:2376\nDOCKER_TLS_VERIFY=1\nDOCKER_CERT_PATH=%s\n' "$d" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@v3
         id: buildx
