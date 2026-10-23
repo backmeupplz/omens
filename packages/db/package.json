@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@paralleldrive/cuid2": "^2.2",
-    "drizzle-orm": "^0.44",
+    "drizzle-orm": "^0.45.0",
     "postgres": "^3.4"
   },
   "devDependencies": {
