@@ -46,13 +46,19 @@ jobs:
           git commit -m "chore: sync package version to $VERSION"
           git push
 
+      - name: Point docker at the runner's Docker daemon
+        run: |
+          g=$(awk '$2 == "00000000" { print $3; exit }' /proc/net/route)
+          echo "DOCKER_HOST=tcp://$((16#${g:6:2})).$((16#${g:4:2})).$((16#${g:2:2})).$((16#${g:0:2})):2375" >> "$GITHUB_ENV"
+
       - uses: docker/setup-buildx-action@v3
+        id: buildx
 
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: backmeupplz
+          password: ${{ secrets.GH_MIRROR_TOKEN }}
 
       - uses: docker/metadata-action@v5
         id: meta
@@ -62,6 +68,10 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
+          # keeps the GHCR package linked to the GitHub mirror
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
 
       - uses: docker/build-push-action@v5
         with:
@@ -70,5 +80,26 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+
+      - name: Remove buildx builder
+        if: always() && steps.buildx.outputs.name
+        env:
+          B: ${{ steps.buildx.outputs.name }}
+        run: docker buildx rm "$B" || { docker rm -f "buildx_buildkit_${B}0"; docker volume rm "buildx_buildkit_${B}0_state"; }
+
+  # Releases don't mirror: publish the same release on GitHub once the tag has reached the mirror
+  github-release:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GH_MIRROR_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+          TITLE: ${{ github.event.release.name }}
+          NOTES: ${{ github.event.release.body }}
+        run: |
+          for i in $(seq 30); do gh api "repos/$REPO/git/ref/tags/$TAG" >/dev/null 2>&1 && break; sleep 10; done
+          gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$REPO" --verify-tag --title "${TITLE:-$TAG}" --notes "$NOTES"
