@@ -25,7 +25,7 @@ importers:
     dependencies:
       '@hono/zod-validator':
         specifier: ^0.5
-        version: 0.5.0(hono@4.12.9)(zod@3.25.76)
+        version: 0.5.0(hono@4.13.11)(zod@3.25.76)
       '@omens/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -55,7 +55,7 @@ importers:
         version: 8.1.1
       hono:
         specifier: ^4
-        version: 4.12.9
+        version: 4.13.11
       jose:
         specifier: ^6
         version: 6.2.2
@@ -1645,8 +1645,8 @@ packages:
     resolution: {integrity: sha512-Ox1pJVrDCyGHMG9CFg1tmrRUMRPRsAWYc/PinY0XzJU4K7y7vjNoLKIQ7BR5UJMCxNN8EM1MNDmHWA/B3aZUuw==}
     engines: {node: '>=6'}
 
-  hono@4.12.9:
-    resolution: {integrity: sha512-wy3T8Zm2bsEvxKZM5w21VdHDDcwVS1yUFFY6i8UobSsKfFceT7TOwhbhfKsDyx7tYQlmRM5FLpIuYvNFyjctiA==}
+  hono@4.13.11:
+    resolution: {integrity: sha512-/SMX/RQNJn7oNmFwH6DtwDqcrzZU2otm1FD6OJe2cWF6cfy/F8hq0XVBv7xW3FTJshRQwuBnXHDq2kNsdZnshg==}
     engines: {node: '>=16.9.0'}
 
   html-to-text@9.0.5:
@@ -2476,9 +2476,9 @@ snapshots:
   '@esbuild/win32-x64@0.27.4':
     optional: true
 
-  '@hono/zod-validator@0.5.0(hono@4.12.9)(zod@3.25.76)':
+  '@hono/zod-validator@0.5.0(hono@4.13.11)(zod@3.25.76)':
     dependencies:
-      hono: 4.12.9
+      hono: 4.13.11
       zod: 3.25.76
 
   '@jridgewell/gen-mapping@0.3.13':
@@ -3227,7 +3227,7 @@ snapshots:
 
   hex-rgb@4.3.0: {}
 
-  hono@4.12.9: {}
+  hono@4.13.11: {}
 
   html-to-text@9.0.5:
     dependencies:
